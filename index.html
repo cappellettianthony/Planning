@@ -111,9 +111,7 @@
 
         .bulk-box { background-color: #f8f9fa; border: 1px solid #ddd; border-radius: 6px; padding: 10px; margin-top: 10px; }
 
-        /* Auth styles */
-        #authModal .modal-content { width: 420px; }
-        .auth-error { color: #e74c3c; margin-top: 10px; text-align: center; }
+        .auth-error { color: #e74c3c; margin-top: 10px; text-align: center; font-weight: bold; }
         .user-info { font-size: 0.85rem; padding: 6px 12px; background: #ecf0f1; border-radius: 4px; display: flex; align-items: center; gap: 8px; }
     </style>
 </head>
@@ -167,8 +165,8 @@
 
     <!-- Login Modal -->
     <div class="modal" id="authModal">
-        <div class="modal-content">
-            <h2>Connexion au Planning</h2>
+        <div class="modal-content" style="width: 420px;">
+            <h2>🔑 Connexion au Planning</h2>
             <div class="form-group">
                 <label for="email">Adresse email</label>
                 <input type="email" id="email" placeholder="votre@email.com" autocomplete="email">
@@ -179,7 +177,7 @@
             </div>
             <div id="authError" class="auth-error"></div>
             <div class="modal-actions">
-                <button class="btn" onclick="login()">Se connecter</button>
+                <button class="btn" onclick="login()" style="width:100%; padding:12px;">Se connecter</button>
             </div>
             <p style="text-align:center; margin-top:15px; font-size:0.8rem; color:#7f8c8d;">
                 Profil RE (modification) : Utilisez l'une des 10 adresses autorisées.<br>
@@ -188,7 +186,7 @@
         </div>
     </div>
 
-    <!-- Modals (Notification, Acquittement, Archives, Rotation, Agent, Paramètres) -->
+    <!-- Modals existants -->
     <div class="modal" id="notificationModal">
         <div class="modal-content" style="width: 480px; border-left: 6px solid var(--status-red);">
             <h2 style="color: var(--status-red);">⚠️ Nouvelle Alerte Détectée !</h2>
@@ -319,9 +317,9 @@
         const planningRef = database.ref('planningData');
         const auth = firebase.auth();
 
-        // Liste des 10 adresses email autorisées pour le profil RE (modification complète)
+        // 10 adresses email pour profil RE
         const RE_EMAILS = [
-            "cappellettianthony@gmail.com",
+            "re1@planning-ps.com",
             "re2@planning-ps.com",
             "re3@planning-ps.com",
             "re4@planning-ps.com",
@@ -331,7 +329,6 @@
             "re8@planning-ps.com",
             "re9@planning-ps.com",
             "re10@planning-ps.com"
-            // Remplacez ces adresses par les vraies adresses email que vous souhaitez autoriser
         ];
 
         let currentUser = null;
@@ -387,29 +384,7 @@
         let teamSchedules = {};
         let agentSchedules = {};
 
-        /* --- AUTHENTIFICATION --- */
-        function checkAuthState() {
-            auth.onAuthStateChanged((user) => {
-                currentUser = user;
-                if (user) {
-                    isReadOnly = !RE_EMAILS.includes(user.email);
-                    document.getElementById('authModal').style.display = 'none';
-                    document.getElementById('userStatus').innerHTML = `
-                        Connecté en tant que : <strong>${user.email}</strong> 
-                        <span style="color:\( {isReadOnly ? '#e67e22' : '#2ecc71'};">( \){isReadOnly ? 'Lecture seule' : 'RE - Modification'})</span>
-                    `;
-                    document.getElementById('userStatus').style.display = 'flex';
-                    document.getElementById('logoutBtn').style.display = 'inline-block';
-                    applyReadOnlyMode();
-                    renderAll(false);
-                } else {
-                    document.getElementById('authModal').style.display = 'flex';
-                    document.getElementById('userStatus').style.display = 'none';
-                    document.getElementById('logoutBtn').style.display = 'none';
-                }
-            });
-        }
-
+        /* ===================== AUTHENTIFICATION ===================== */
         function login() {
             const email = document.getElementById('email').value.trim();
             const password = document.getElementById('password').value;
@@ -424,7 +399,7 @@
             auth.signInWithEmailAndPassword(email, password)
                 .catch((error) => {
                     console.error(error);
-                    errorEl.textContent = 'Erreur de connexion : ' + error.message;
+                    errorEl.textContent = 'Erreur : ' + error.message;
                 });
         }
 
@@ -434,43 +409,40 @@
             }
         }
 
-        function applyReadOnlyMode() {
-            const readOnlyElements = [
-                ...document.querySelectorAll('select.shift-select'),
-                ...document.querySelectorAll('button.btn:not(.btn-secondary):not(.btn-logout)'),
-                document.getElementById('settingsBtn'),
-                document.getElementById('importBtn'),
-                document.getElementById('archiveBtn')
-            ];
-
-            readOnlyElements.forEach(el => {
-                if (el) {
-                    if (isReadOnly) {
-                        el.disabled = true;
-                        el.style.opacity = '0.6';
-                        el.style.cursor = 'not-allowed';
-                    } else {
-                        el.disabled = false;
-                        el.style.opacity = '1';
-                        el.style.cursor = 'pointer';
-                    }
+        function checkAuthState() {
+            auth.onAuthStateChanged((user) => {
+                currentUser = user;
+                if (user) {
+                    isReadOnly = !RE_EMAILS.includes(user.email);
+                    document.getElementById('authModal').style.display = 'none';
+                    document.getElementById('userStatus').innerHTML = `
+                        Connecté : <strong>${user.email}</strong> 
+                        <span style="color:\( {isReadOnly ? '#f39c12' : '#2ecc71'};">( \){isReadOnly ? 'Lecture seule' : 'RE - Modification'})</span>
+                    `;
+                    document.getElementById('userStatus').style.display = 'flex';
+                    document.getElementById('logoutBtn').style.display = 'inline-block';
+                    applyReadOnlyMode();
+                    renderAll(false);
+                } else {
+                    document.getElementById('authModal').style.display = 'flex';
+                    document.getElementById('userStatus').style.display = 'none';
+                    document.getElementById('logoutBtn').style.display = 'none';
                 }
             });
-
-            // Disable bulk and edit buttons in modals
-            if (isReadOnly) {
-                const modalBtns = ['saveAgentBtn', 'bulkApplyBtn', 'saveSettingsBtn', 'addTaskBtn', 'applyRotationBtn', 'ackConfirmBtn'];
-                modalBtns.forEach(id => {
-                    const btn = document.getElementById(id);
-                    if (btn) {
-                        btn.disabled = true;
-                        btn.style.opacity = '0.5';
-                    }
-                });
-            }
         }
 
-        /* --- SAUVEGARDE ET SYNCHRONISATION FIREBASE --- */
+        function applyReadOnlyMode() {
+            const editableElements = document.querySelectorAll('select.shift-select, button.btn:not(.btn-secondary):not(.btn-logout), #settingsBtn, #importBtn, #archiveBtn, #saveAgentBtn, #bulkApplyBtn, #saveSettingsBtn, #addTaskBtn, #applyRotationBtn, #ackConfirmBtn');
+            editableElements.forEach(el => {
+                if (isReadOnly) {
+                    el.disabled = true;
+                    el.style.opacity = '0.6';
+                    el.style.cursor = 'not-allowed';
+                }
+            });
+        }
+
+        /* ===================== FONCTIONS ORIGINALES ===================== */
         function getAppState() {
             return { teamSchedules, agentSchedules, teams, acknowledgedAlerts, skillDefinitions, TASKS, settings };
         }
@@ -486,7 +458,7 @@
         }
 
         function saveToFirebase() {
-            if (isReadOnly) return; // Protection côté client
+            if (isReadOnly) return;
             try {
                 planningRef.set(getAppState());
             } catch(e) {
@@ -506,7 +478,7 @@
         }
 
         function importData(event) {
-            if (isReadOnly) { alert("Accès lecture seule : Import impossible."); return; }
+            if (isReadOnly) { alert("Lecture seule : Import impossible."); return; }
             const file = event.target.files[0];
             if (!file) return;
             const reader = new FileReader();
@@ -517,7 +489,7 @@
                     saveToFirebase();
                     alert("✅ Données chargées avec succès !");
                 } catch (err) {
-                    alert("❌ Erreur lors de la lecture du fichier de sauvegarde.");
+                    alert("❌ Erreur lors de la lecture du fichier.");
                 }
                 event.target.value = ''; 
             };
@@ -529,12 +501,9 @@
             syncDatePicker();
             checkAuthState();
             
-            // Écoute des modifications en temps réel depuis Firebase
             planningRef.on('value', (snapshot) => {
                 const data = snapshot.val();
-                if (data) {
-                    loadAppState(data);
-                }
+                if (data) loadAppState(data);
                 renderAll(false);
             });
         }
@@ -594,7 +563,7 @@
             const parts = dateStr.split('-'); 
             return new Date(parts[0], parts[1] - 1, parts[2]); 
         }
-        
+
         function navigateDays(days) { 
             if (isReadOnly) return;
             startDate.setDate(startDate.getDate() + days); 
@@ -604,7 +573,7 @@
             syncDatePicker(); 
             renderAll(); 
         }
-        
+
         function goToToday() { 
             if (isReadOnly) return;
             startDate = new Date(); 
@@ -614,7 +583,7 @@
             syncDatePicker(); 
             renderAll(); 
         }
-        
+
         function jumpToDate(dateStr) { 
             if (isReadOnly) return;
             if (dateStr) { 
@@ -625,7 +594,7 @@
                 renderAll(); 
             } 
         }
-        
+
         function syncDatePicker() { 
             document.getElementById('datePicker').value = formatDate(startDate); 
         }
@@ -654,19 +623,9 @@
             const dates = getVisibleDates();
 
             teams.forEach(team => {
-                const teamTr = document.createElement('tr'); 
-                teamTr.className = 'team-row';
-                const tdTeamName = document.createElement('td'); 
-                tdTeamName.className = 'sticky-col-1 team-name-td'; 
-                tdTeamName.innerText = team.name; 
-                teamTr.appendChild(tdTeamName);
-                
-                const tdTeamDesc = document.createElement('td'); 
-                tdTeamDesc.className = 'sticky-col-2 team-name-td'; 
-                tdTeamDesc.style.fontSize = '0.7rem'; 
-                tdTeamDesc.style.fontStyle = 'italic'; 
-                tdTeamDesc.innerText = "Roulement d'équipe"; 
-                teamTr.appendChild(tdTeamDesc);
+                const teamTr = document.createElement('tr'); teamTr.className = 'team-row';
+                const tdTeamName = document.createElement('td'); tdTeamName.className = 'sticky-col-1 team-name-td'; tdTeamName.innerText = team.name; teamTr.appendChild(tdTeamName);
+                const tdTeamDesc = document.createElement('td'); tdTeamDesc.className = 'sticky-col-2 team-name-td'; tdTeamDesc.style.fontSize = '0.7rem'; tdTeamDesc.style.fontStyle = 'italic'; tdTeamDesc.innerText = "Roulement d'équipe"; teamTr.appendChild(tdTeamDesc);
 
                 dates.forEach(d => {
                     const dateStr = formatDate(d);
@@ -675,25 +634,17 @@
                     const select = document.createElement('select'); 
                     select.className = 'shift-select team-select';
                     Object.keys(TASKS).forEach(code => { 
-                        const opt = document.createElement('option'); 
-                        opt.value = code; 
-                        opt.innerText = code; 
-                        select.appendChild(opt); 
+                        const opt = document.createElement('option'); opt.value = code; opt.innerText = code; select.appendChild(opt); 
                     });
                     const currentVal = teamSchedules[team.id][dateStr] || 'R'; 
                     select.value = currentVal; 
                     applySelectStyle(select, currentVal);
-                    
                     if (!isReadOnly) {
-                        select.addEventListener('change', (e) => { 
-                            promptTeamRotation(team.id, dateStr, e.target.value); 
-                        });
+                        select.addEventListener('change', (e) => { promptTeamRotation(team.id, dateStr, e.target.value); });
                     } else {
                         select.disabled = true;
                     }
-                    
-                    td.appendChild(select); 
-                    teamTr.appendChild(td);
+                    td.appendChild(select); teamTr.appendChild(td);
                 });
                 tbody.appendChild(teamTr);
 
@@ -721,15 +672,11 @@
                         const select = document.createElement('select'); 
                         select.className = 'shift-select';
                         Object.keys(TASKS).forEach(code => { 
-                            const opt = document.createElement('option'); 
-                            opt.value = code; 
-                            opt.innerText = code; 
-                            select.appendChild(opt); 
+                            const opt = document.createElement('option'); opt.value = code; opt.innerText = code; select.appendChild(opt); 
                         });
                         const effectiveTask = getEffectiveAgentTask(agent, team.id, dateStr); 
                         select.value = effectiveTask; 
                         applySelectStyle(select, effectiveTask);
-                        
                         if (!isReadOnly) {
                             select.addEventListener('change', (e) => {
                                 agentSchedules[agent.id][dateStr] = e.target.value;
@@ -739,9 +686,7 @@
                         } else {
                             select.disabled = true;
                         }
-                        
-                        td.appendChild(select); 
-                        tr.appendChild(td);
+                        td.appendChild(select); tr.appendChild(td);
                     });
                     tbody.appendChild(tr);
                 });
@@ -773,8 +718,7 @@
                     let curr = new Date(startYearDate);
                     while (curr < endYearDate) {
                         const d1Str = formatDate(curr);
-                        let nextDay = new Date(curr); 
-                        nextDay.setDate(nextDay.getDate() + 1); 
+                        let nextDay = new Date(curr); nextDay.setDate(nextDay.getDate() + 1); 
                         const d2Str = formatDate(nextDay);
                         const task1Code = getEffectiveAgentTask(agent, team.id, d1Str); 
                         const task2Code = getEffectiveAgentTask(agent, team.id, d2Str);
@@ -791,11 +735,8 @@
                             let restDuration = start2Abs - end1Abs;
                             if (restDuration < 11) {
                                 generatedAlerts.push({ 
-                                    id: `11H_\( {agent.id}_ \){d1Str}_${d2Str}`, 
-                                    agentId: agent.id, 
-                                    agentName: agent.name, 
-                                    date: `${d1Str} / ${d2Str}`, 
-                                    type: 'Repos Quotidien (11h)', 
+                                    id: `11H_\( {agent.id}_ \){d1Str}_${d2Str}`, agentId: agent.id, agentName: agent.name, 
+                                    date: `${d1Str} / ${d2Str}`, type: 'Repos Quotidien (11h)', 
                                     msg: `Repos inter-postes insuffisant (${restDuration.toFixed(1)}h / 11h requises)` 
                                 });
                             }
@@ -807,18 +748,14 @@
 
             let currentSaturday = getPreviousOrCurrentSaturday(startYearDate);
             while (currentSaturday <= endYearDate) {
-                const windowStart = new Date(currentSaturday); 
-                windowStart.setHours(0, 0, 0, 0);
-                const windowEnd = new Date(currentSaturday); 
-                windowEnd.setDate(windowEnd.getDate() + 7); 
-                windowEnd.setHours(23, 59, 59, 999);
+                const windowStart = new Date(currentSaturday); windowStart.setHours(0, 0, 0, 0);
+                const windowEnd = new Date(currentSaturday); windowEnd.setDate(windowEnd.getDate() + 7); windowEnd.setHours(23, 59, 59, 999);
 
                 teams.forEach(team => {
                     team.agents.forEach(agent => {
                         let shifts = [];
                         for (let k = 0; k <= 8; k++) {
-                            const curr = new Date(windowStart); 
-                            curr.setDate(curr.getDate() + k);
+                            const curr = new Date(windowStart); curr.setDate(curr.getDate() + k);
                             const task = TASKS[getEffectiveAgentTask(agent, team.id, formatDate(curr))] || TASKS['R'];
                             if (!task.isRest) {
                                 let sStart = new Date(curr); 
@@ -832,11 +769,7 @@
                                 } else { 
                                     sEnd.setHours(Math.floor(endDec), (endDec % 1) * 60, 0, 0); 
                                 }
-                                if (sEnd > windowStart && sStart < windowEnd) 
-                                    shifts.push({ 
-                                        start: sStart < windowStart ? new Date(windowStart) : sStart, 
-                                        end: sEnd > windowEnd ? new Date(windowEnd) : sEnd 
-                                    });
+                                if (sEnd > windowStart && sStart < windowEnd) shifts.push({ start: sStart < windowStart ? new Date(windowStart) : sStart, end: sEnd > windowEnd ? new Date(windowEnd) : sEnd });
                             }
                         }
                         shifts.sort((a, b) => a.start - b.start);
@@ -851,9 +784,7 @@
                                     const gap = shifts[idx].start - lastEnd; 
                                     if (gap > maxRestMs) maxRestMs = gap; 
                                 }
-                                if (shifts[idx].end > lastEnd) { 
-                                    lastEnd = shifts[idx].end; 
-                                }
+                                if (shifts[idx].end > lastEnd) { lastEnd = shifts[idx].end; }
                             }
                             if (windowEnd > lastEnd) { 
                                 const gap = windowEnd - lastEnd; 
@@ -865,11 +796,8 @@
                             const startStr = formatDate(windowStart); 
                             const endStr = formatDate(new Date(windowEnd.getTime() - 86400000));
                             generatedAlerts.push({ 
-                                id: `35H_SAMEDI_\( {agent.id}_ \){startStr}`, 
-                                agentId: agent.id, 
-                                agentName: agent.name, 
-                                date: `Semaine du Sam. ${startStr} au Sam. ${endStr}`, 
-                                type: 'Repos Hebdo (35h)', 
+                                id: `35H_SAMEDI_\( {agent.id}_ \){startStr}`, agentId: agent.id, agentName: agent.name, 
+                                date: `Semaine du Sam. ${startStr} au Sam. ${endStr}`, type: 'Repos Hebdo (35h)', 
                                 msg: `Repos consécutif insuffisant (${maxRestHours.toFixed(1)}h / 35h requis)` 
                             });
                         }
@@ -901,9 +829,7 @@
                 activeAlerts.forEach(a => {
                     const li = document.createElement('li');
                     li.innerHTML = `<span><strong>\( {a.agentName}</strong> [ \){a.type} - ${a.date}] : ${a.msg}</span>`;
-                    if (!isReadOnly) {
-                        li.innerHTML += `<button class="btn btn-ack" onclick="openAckModal('\( {a.id}', ' \){a.agentName}', '\( {a.date}', ' \){a.type}', '${a.msg}')">Acquitter</button>`;
-                    }
+                    if (!isReadOnly) li.innerHTML += `<button class="btn btn-ack" onclick="openAckModal('\( {a.id}', ' \){a.agentName}', '\( {a.date}', ' \){a.type}', '${a.msg}')">Acquitter</button>`;
                     alertList.appendChild(li);
                 });
             } else { 
@@ -915,10 +841,7 @@
             document.getElementById('notificationMessage').innerHTML = msgHtml; 
             document.getElementById('notificationModal').style.display = 'flex'; 
         }
-        
-        function closeNotificationModal() { 
-            document.getElementById('notificationModal').style.display = 'none'; 
-        }
+        function closeNotificationModal() { document.getElementById('notificationModal').style.display = 'none'; }
 
         function openAckModal(id, agentName, date, type, msg) {
             if (isReadOnly) return;
@@ -927,25 +850,16 @@
             document.getElementById('ackComment').value = ''; 
             document.getElementById('ackModal').style.display = 'flex';
         }
-        
         function closeAckModal() { 
             document.getElementById('ackModal').style.display = 'none'; 
             pendingAckAlert = null; 
         }
-        
         function confirmAckAlert() {
             if (isReadOnly) return;
             const comment = document.getElementById('ackComment').value.trim();
-            if (!comment) { 
-                alert("Le commentaire est obligatoire pour acquitter une alerte."); 
-                return; 
-            }
+            if (!comment) { alert("Le commentaire est obligatoire."); return; }
             if (pendingAckAlert) { 
-                acknowledgedAlerts.push({ 
-                    ...pendingAckAlert, 
-                    ackDate: new Date().toLocaleString('fr-FR'), 
-                    comment: comment 
-                }); 
+                acknowledgedAlerts.push({ ...pendingAckAlert, ackDate: new Date().toLocaleString('fr-FR'), comment: comment }); 
                 closeAckModal(); 
                 renderAll(true); 
             }
@@ -955,7 +869,7 @@
             const tbody = document.getElementById('archiveTableBody'); 
             tbody.innerHTML = '';
             if (acknowledgedAlerts.length === 0) { 
-                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">Aucune alerte acquittée enregistrée.</td></tr>'; 
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">Aucune alerte acquittée.</td></tr>'; 
             } else {
                 acknowledgedAlerts.forEach(ack => {
                     const tr = document.createElement('tr'); 
@@ -965,10 +879,7 @@
             }
             document.getElementById('archiveModal').style.display = 'flex';
         }
-        
-        function closeArchiveModal() { 
-            document.getElementById('archiveModal').style.display = 'none'; 
-        }
+        function closeArchiveModal() { document.getElementById('archiveModal').style.display = 'none'; }
 
         function promptTeamRotation(teamId, dateStr, taskCode) {
             if (isReadOnly) return;
@@ -976,7 +887,6 @@
             document.getElementById('repeatDateText').innerText = dateStr; 
             document.getElementById('repeatModal').style.display = 'flex';
         }
-        
         function closeRepeatModal() { 
             document.getElementById('repeatModal').style.display = 'none'; 
             renderAll(false); 
@@ -1036,9 +946,7 @@
             dates.forEach(d => {
                 const dateStr = formatDate(d); 
                 metrics[dateStr] = { M: { total: 0, skills: {} }, A: { total: 0, skills: {} }, N: { total: 0, skills: {} } };
-                ['M', 'A', 'N'].forEach(sh => { 
-                    skillDefinitions.forEach(s => metrics[dateStr][sh].skills[s.id] = 0); 
-                });
+                ['M', 'A', 'N'].forEach(sh => { skillDefinitions.forEach(s => metrics[dateStr][sh].skills[s.id] = 0); });
             });
 
             teams.forEach(team => {
@@ -1051,8 +959,7 @@
                         if (['M', 'A', 'N'].includes(shiftType)) {
                             metrics[dateStr][shiftType].total++;
                             agent.skills.forEach(sId => { 
-                                if (metrics[dateStr][shiftType].skills[sId] !== undefined) 
-                                    metrics[dateStr][shiftType].skills[sId]++; 
+                                if (metrics[dateStr][shiftType].skills[sId] !== undefined) metrics[dateStr][shiftType].skills[sId]++; 
                             });
                         }
                     });
@@ -1061,8 +968,7 @@
 
             ['M', 'A', 'N'].forEach(shift => {
                 const shiftNames = { M: 'Quart du Matin', A: 'Quart de l\'Après-Midi', N: 'Quart de Nuit' };
-                const card = document.createElement('div'); 
-                card.className = 'kpi-card';
+                const card = document.createElement('div'); card.className = 'kpi-card';
                 let html = `<h3>${shiftNames[shift]} — Effectifs & Compétences</h3><div class="kpi-grid">`;
                 
                 dates.forEach(d => {
@@ -1071,11 +977,8 @@
                     const count = shiftData.total;
                     const dayLabel = d.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric' });
                     let bgClass = 'bg-green'; 
-                    if (count < settings.thresholds[shift].orange) { 
-                        bgClass = 'bg-red'; 
-                    } else if (count < settings.thresholds[shift].green) { 
-                        bgClass = 'bg-orange'; 
-                    }
+                    if (count < settings.thresholds[shift].orange) bgClass = 'bg-red'; 
+                    else if (count < settings.thresholds[shift].green) bgClass = 'bg-orange';
 
                     html += `<div class="kpi-block"><div class="kpi-day">${dayLabel}</div><div class="kpi-val \( {bgClass}" title="Total agents"> \){count}</div><div class="skill-list">`;
                     skillDefinitions.forEach(s => {
@@ -1094,10 +997,7 @@
         function openAgentModal(agentId) {
             if (isReadOnly) return;
             let foundAgent = null; 
-            teams.forEach(t => { 
-                const a = t.agents.find(item => item.id === agentId); 
-                if (a) foundAgent = a; 
-            });
+            teams.forEach(t => { const a = t.agents.find(item => item.id === agentId); if (a) foundAgent = a; });
             if (!foundAgent) return;
 
             document.getElementById('editAgentId').value = foundAgent.id; 
@@ -1125,10 +1025,7 @@
             document.getElementById('bulkEndDate').value = formatDate(endDateDefault);
             document.getElementById('agentModal').style.display = 'flex';
         }
-        
-        function closeAgentModal() { 
-            document.getElementById('agentModal').style.display = 'none'; 
-        }
+        function closeAgentModal() { document.getElementById('agentModal').style.display = 'none'; }
 
         function applyBulkAgentTask() {
             if (isReadOnly) return;
@@ -1136,16 +1033,10 @@
             const taskCode = document.getElementById('bulkAgentTask').value;
             const startStr = document.getElementById('bulkStartDate').value; 
             const endStr = document.getElementById('bulkEndDate').value;
-            if (!startStr || !endStr) { 
-                alert("Veuillez sélectionner une date de début et une date de fin."); 
-                return; 
-            }
+            if (!startStr || !endStr) { alert("Veuillez sélectionner une période."); return; }
             const curr = parseDate(startStr); 
             const end = parseDate(endStr);
-            if (curr > end) { 
-                alert("La date de début doit être antérieure à la date de fin."); 
-                return; 
-            }
+            if (curr > end) { alert("Date de début doit être avant la date de fin."); return; }
 
             if (!agentSchedules[agentId]) agentSchedules[agentId] = {};
             while (curr <= end) {
@@ -1154,7 +1045,7 @@
                 ensureYearExists(curr.getFullYear()); 
                 curr.setDate(curr.getDate() + 1);
             }
-            alert(`Le statut ${taskCode} a été appliqué.`); 
+            alert(`Statut ${taskCode} appliqué.`); 
             closeAgentModal(); 
             renderAll(true);
         }
@@ -1164,15 +1055,10 @@
             const agentId = document.getElementById('editAgentId').value; 
             const newName = document.getElementById('editAgentName').value;
             const checkedSkills = []; 
-            document.querySelectorAll('#skillsCheckboxes input[type="checkbox"]:checked').forEach(cb => { 
-                checkedSkills.push(cb.value); 
-            });
+            document.querySelectorAll('#skillsCheckboxes input[type="checkbox"]:checked').forEach(cb => checkedSkills.push(cb.value));
             teams.forEach(t => { 
                 const a = t.agents.find(item => item.id === agentId); 
-                if (a) { 
-                    a.name = newName; 
-                    a.skills = checkedSkills; 
-                } 
+                if (a) { a.name = newName; a.skills = checkedSkills; } 
             });
             closeAgentModal(); 
             renderAll(true);
@@ -1183,7 +1069,7 @@
             const skContainer = document.getElementById('skillsConfigContainer'); 
             skContainer.innerHTML = '';
             skillDefinitions.forEach((s, idx) => {
-                skContainer.innerHTML += `<div class="skill-config-row"><div><label style="font-size:0.75rem;">Intitulé (\( {s.id})</label><input type="text" id="sk_name_ \){idx}" value="\( {s.name}"></div><div><label style="font-size:0.75rem;">Min. requis / quart</label><input type="number" id="sk_min_ \){idx}" value="${s.min}"></div></div>`;
+                skContainer.innerHTML += `<div class="skill-config-row"><div><label style="font-size:0.75rem;">Intitulé (\( {s.id})</label><input type="text" id="sk_name_ \){idx}" value="\( {s.name}"></div><div><label style="font-size:0.75rem;">Min. requis</label><input type="number" id="sk_min_ \){idx}" value="${s.min}"></div></div>`;
             });
 
             renderTasksForm();
@@ -1221,8 +1107,8 @@
                 <input type="time" value="${start}" class="task-start">
                 <input type="time" value="${end}" class="task-end">
                 <input type="checkbox" class="task-rest" ${isRest ? 'checked' : ''} style="margin:auto;">
-                <input type="color" value="${color}" class="task-bg" title="Couleur de Fond">
-                <input type="color" value="${textColor}" class="task-txt" title="Couleur du Texte">
+                <input type="color" value="${color}" class="task-bg">
+                <input type="color" value="${textColor}" class="task-txt">
                 <button class="btn btn-danger" style="padding:2px 4px;" onclick="this.parentElement.remove()">X</button>
             `;
             return div;
@@ -1232,10 +1118,7 @@
             if (isReadOnly) return;
             document.getElementById('tasksContainer').appendChild(createTaskRow('T1', 'Nouvelle Tâche', 'M', '08:00', '16:00', false, '#9b59b6', '#ffffff')); 
         }
-        
-        function closeSettings() { 
-            document.getElementById('settingsModal').style.display = 'none'; 
-        }
+        function closeSettings() { document.getElementById('settingsModal').style.display = 'none'; }
 
         function saveSettings() {
             if (isReadOnly) return;
