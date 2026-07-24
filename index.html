@@ -111,7 +111,7 @@
 
         .bulk-box { background-color: #f8f9fa; border: 1px solid #ddd; border-radius: 6px; padding: 10px; margin-top: 10px; }
 
-        /* --- STYLES AUTHENTIFICATION ISSUS DE INDEX.HTML-1.TXT --- */
+        /* --- STYLES AUTHENTIFICATION --- */
         #authModal .modal-content {
             background: #1e1e38;
             color: #e0e0ff;
@@ -228,7 +228,7 @@
         </table>
     </div>
 
-    <!-- Login Modal (MISE EN PAGE ET DESIGN ISSUS DE INDEX.HTML-1.TXT) -->
+    <!-- Login Modal -->
     <div class="modal" id="authModal" style="display: flex;">
         <div class="modal-content">
             <h2>Connexion requise</h2>
@@ -255,7 +255,7 @@
         </div>
     </div>
 
-    <!-- Modals (Notification, Acquittement, Archives, Rotation, Agent, Paramètres) -->
+    <!-- Modals -->
     <div class="modal" id="notificationModal">
         <div class="modal-content" style="width: 480px; border-left: 6px solid var(--status-red);">
             <h2 style="color: var(--status-red);">⚠️ Nouvelle Alerte Détectée !</h2>
@@ -386,7 +386,7 @@
         const planningRef = database.ref('planningData');
         const auth = firebase.auth();
 
-        // Liste des 10 adresses email autorisées pour le profil RE (modification complète)
+        // Liste des adresses email autorisées pour le profil RE (modification)
         const RE_EMAILS = [
             "cappellettianthony@gmail.com",
             "re2@planning-ps.com",
@@ -499,7 +499,6 @@
                 });
         }
 
-        /* Fonctionnalité issue de index.html-1.txt */
         function motDePasseOublie() {
             const email = document.getElementById('email').value.trim();
             const errorEl = document.getElementById('authError');
@@ -538,26 +537,12 @@
         }
 
         function applyReadOnlyMode() {
-            const readOnlyElements = [
-                ...document.querySelectorAll('select.shift-select'),
-                ...document.querySelectorAll('button.btn:not(.btn-secondary):not(.btn-logout)'),
-                document.getElementById('settingsBtn'),
-                document.getElementById('importBtn'),
-                document.getElementById('archiveBtn')
-            ];
-
-            readOnlyElements.forEach(el => {
-                if (el) {
-                    if (isReadOnly) {
-                        el.disabled = true;
-                        el.style.opacity = '0.6';
-                        el.style.cursor = 'not-allowed';
-                    } else {
-                        el.disabled = false;
-                        el.style.opacity = '1';
-                        el.style.cursor = 'pointer';
-                    }
-                }
+            // Désactiver les actions de modifications si en lecture seule
+            document.getElementById('settingsBtn').disabled = isReadOnly;
+            document.getElementById('importBtn').disabled = isReadOnly;
+            
+            [document.getElementById('settingsBtn'), document.getElementById('importBtn')].forEach(el => {
+                if(el) el.style.opacity = isReadOnly ? '0.6' : '1';
             });
 
             if (isReadOnly) {
@@ -578,13 +563,14 @@
         }
 
         function loadAppState(data) {
-            if (data.teamSchedules) teamSchedules = data.teamSchedules;
-            if (data.agentSchedules) agentSchedules = data.agentSchedules;
-            if (data.teams) teams = data.teams;
-            if (data.acknowledgedAlerts) acknowledgedAlerts = data.acknowledgedAlerts;
-            if (data.skillDefinitions) skillDefinitions = data.skillDefinitions;
-            if (data.TASKS) TASKS = data.TASKS;
-            if (data.settings) settings = data.settings;
+            if (!data) return;
+            teamSchedules = data.teamSchedules || {};
+            agentSchedules = data.agentSchedules || {};
+            teams = data.teams || teams;
+            acknowledgedAlerts = data.acknowledgedAlerts || [];
+            skillDefinitions = data.skillDefinitions || skillDefinitions;
+            TASKS = data.TASKS || TASKS;
+            settings = data.settings || settings;
         }
 
         function saveToFirebase() {
@@ -657,12 +643,40 @@
             if (year > maxYearAvailable) { maxYearAvailable = year + 1; initYearSelect(); }
         }
 
+        // NAVIGATION (Accessible même en ReadOnly)
         function changeYear(val) { 
-            if (isReadOnly) return;
             currentYear = parseInt(val); 
             startDate = new Date(currentYear, 0, 1); 
             syncDatePicker(); 
-            renderAll(); 
+            renderAll(false); 
+        }
+
+        function navigateDays(days) { 
+            startDate.setDate(startDate.getDate() + days); 
+            currentYear = startDate.getFullYear(); 
+            ensureYearExists(currentYear); 
+            document.getElementById('yearSelect').value = currentYear; 
+            syncDatePicker(); 
+            renderAll(false); 
+        }
+        
+        function goToToday() { 
+            startDate = new Date(); 
+            currentYear = startDate.getFullYear(); 
+            ensureYearExists(currentYear); 
+            document.getElementById('yearSelect').value = currentYear; 
+            syncDatePicker(); 
+            renderAll(false); 
+        }
+        
+        function jumpToDate(dateStr) { 
+            if (dateStr) { 
+                startDate = parseDate(dateStr); 
+                currentYear = startDate.getFullYear(); 
+                ensureYearExists(currentYear); 
+                document.getElementById('yearSelect').value = currentYear; 
+                renderAll(false); 
+            } 
         }
 
         function renderAll(save = true) {
@@ -694,37 +708,6 @@
         function parseDate(dateStr) { 
             const parts = dateStr.split('-'); 
             return new Date(parts[0], parts[1] - 1, parts[2]); 
-        }
-        
-        function navigateDays(days) { 
-            if (isReadOnly) return;
-            startDate.setDate(startDate.getDate() + days); 
-            currentYear = startDate.getFullYear(); 
-            ensureYearExists(currentYear); 
-            document.getElementById('yearSelect').value = currentYear; 
-            syncDatePicker(); 
-            renderAll(); 
-        }
-        
-        function goToToday() { 
-            if (isReadOnly) return;
-            startDate = new Date(); 
-            currentYear = startDate.getFullYear(); 
-            ensureYearExists(currentYear); 
-            document.getElementById('yearSelect').value = currentYear; 
-            syncDatePicker(); 
-            renderAll(); 
-        }
-        
-        function jumpToDate(dateStr) { 
-            if (isReadOnly) return;
-            if (dateStr) { 
-                startDate = parseDate(dateStr); 
-                currentYear = startDate.getFullYear(); 
-                ensureYearExists(currentYear); 
-                document.getElementById('yearSelect').value = currentYear; 
-                renderAll(); 
-            } 
         }
         
         function syncDatePicker() { 
@@ -1080,6 +1063,7 @@
         
         function closeRepeatModal() { 
             document.getElementById('repeatModal').style.display = 'none'; 
+            pendingRotation = null;
             renderAll(false); 
         }
 
@@ -1105,7 +1089,8 @@
                     currDate.setDate(currDate.getDate() + (weeksStep * 7));
                 }
             }
-            closeRepeatModal(); 
+            pendingRotation = null;
+            document.getElementById('repeatModal').style.display = 'none';
             renderAll(true);
         }
 
