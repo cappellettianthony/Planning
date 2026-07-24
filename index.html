@@ -435,21 +435,25 @@
 
         let settings = { thresholds: { M: { orange: 5, green: 7 }, A: { orange: 5, green: 7 }, N: { orange: 3, green: 5 } } };
 
-        let teams = [];
-        for (let t = 1; t <= 6; t++) {
-            let team = { id: `team_${t}`, name: `Équipe ${t}`, isDayTeam: false, agents: [] };
-            for (let a = 1; a <= 7; a++) {
-                team.agents.push({ id: `e${t}_a${a}`, name: `Agent ${t}.${a}`, skills: [`C${((t + a) % 6) + 1}`, `C${((t + a + 2) % 6) + 1}`] });
+        // Génération de la structure de référence complète par défaut (7 équipes)
+        function createDefaultTeams() {
+            let defaultTeams = [];
+            for (let t = 1; t <= 6; t++) {
+                let team = { id: `team_${t}`, name: `Équipe ${t}`, isDayTeam: false, agents: [] };
+                for (let a = 1; a <= 7; a++) {
+                    team.agents.push({ id: `e${t}_a${a}`, name: `Agent ${t}.${a}`, skills: [`C${((t + a) % 6) + 1}`, `C${((t + a + 2) % 6) + 1}`] });
+                }
+                defaultTeams.push(team);
             }
-            teams.push(team);
+            let dayTeam = { id: `team_7`, name: `Équipe 7 (Journée Modulable)`, isDayTeam: true, agents: [] };
+            for (let a = 1; a <= 7; a++) {
+                dayTeam.agents.push({ id: `e7_a${a}`, name: `Agent Journée ${a}`, skills: ['C1', 'C4'] });
+            }
+            defaultTeams.push(dayTeam);
+            return defaultTeams;
         }
 
-        let dayTeam = { id: `team_7`, name: `Équipe 7 (Journée Modulable)`, isDayTeam: true, agents: [] };
-        for (let a = 1; a <= 7; a++) {
-            dayTeam.agents.push({ id: `e7_a${a}`, name: `Agent Journée ${a}`, skills: ['C1', 'C4'] });
-        }
-        teams.push(dayTeam);
-
+        let teams = createDefaultTeams();
         let teamSchedules = {};
         let agentSchedules = {};
 
@@ -539,7 +543,6 @@
         }
 
         function applyReadOnlyMode() {
-            // Activer ou désactiver la barre de navigation
             const settingsBtn = document.getElementById('settingsBtn');
             const importBtn = document.getElementById('importBtn');
             if (settingsBtn) {
@@ -551,7 +554,6 @@
                 importBtn.style.opacity = isReadOnly ? '0.6' : '1';
             }
 
-            // Activer ou désactiver dynamiquement tous les boutons dans les modales
             const modalBtns = ['saveAgentBtn', 'bulkApplyBtn', 'saveSettingsBtn', 'addTaskBtn', 'applyRotationBtn', 'ackConfirmBtn'];
             modalBtns.forEach(id => {
                 const btn = document.getElementById(id);
@@ -567,11 +569,23 @@
             return { teamSchedules, agentSchedules, teams, acknowledgedAlerts, skillDefinitions, TASKS, settings };
         }
 
+        // CORRECTION DE LA FAILLE : Fusion des équipes manquantes si la donnée est tronquée
         function loadAppState(data) {
             if (!data) return;
             teamSchedules = data.teamSchedules || {};
             agentSchedules = data.agentSchedules || {};
-            teams = data.teams || teams;
+            
+            // Garantir que les 7 équipes existent toujours
+            const defaultTeams = createDefaultTeams();
+            if (Array.isArray(data.teams) && data.teams.length > 0) {
+                teams = defaultTeams.map(defTeam => {
+                    const loadedTeam = data.teams.find(t => t && t.id === defTeam.id);
+                    return loadedTeam || defTeam;
+                });
+            } else {
+                teams = defaultTeams;
+            }
+
             acknowledgedAlerts = data.acknowledgedAlerts || [];
             skillDefinitions = data.skillDefinitions || skillDefinitions;
             TASKS = data.TASKS || TASKS;
@@ -581,6 +595,11 @@
         function saveToFirebase() {
             if (isReadOnly) return;
             try {
+                // Sécurité : s'assurer qu'on ne pousse pas un tableau d'équipes incomplet
+                if (!teams || teams.length < 7) {
+                    const defaultTeams = createDefaultTeams();
+                    teams = defaultTeams.map(defTeam => teams.find(t => t && t.id === defTeam.id) || defTeam);
+                }
                 planningRef.set(getAppState());
             } catch(e) {
                 console.error("Erreur de sauvegarde Firebase : ", e);
@@ -648,7 +667,6 @@
             if (year > maxYearAvailable) { maxYearAvailable = year + 1; initYearSelect(); }
         }
 
-        // NAVIGATION (Accessible même en ReadOnly)
         function changeYear(val) { 
             currentYear = parseInt(val); 
             startDate = new Date(currentYear, 0, 1); 
