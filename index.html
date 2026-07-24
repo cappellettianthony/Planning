@@ -472,6 +472,8 @@
                     document.getElementById('authModal').style.display = 'flex';
                     document.getElementById('userStatus').style.display = 'none';
                     document.getElementById('logoutBtn').style.display = 'none';
+                    isReadOnly = true;
+                    applyReadOnlyMode();
                 }
             });
         }
@@ -537,24 +539,27 @@
         }
 
         function applyReadOnlyMode() {
-            // Désactiver les actions de modifications si en lecture seule
-            document.getElementById('settingsBtn').disabled = isReadOnly;
-            document.getElementById('importBtn').disabled = isReadOnly;
-            
-            [document.getElementById('settingsBtn'), document.getElementById('importBtn')].forEach(el => {
-                if(el) el.style.opacity = isReadOnly ? '0.6' : '1';
-            });
-
-            if (isReadOnly) {
-                const modalBtns = ['saveAgentBtn', 'bulkApplyBtn', 'saveSettingsBtn', 'addTaskBtn', 'applyRotationBtn', 'ackConfirmBtn'];
-                modalBtns.forEach(id => {
-                    const btn = document.getElementById(id);
-                    if (btn) {
-                        btn.disabled = true;
-                        btn.style.opacity = '0.5';
-                    }
-                });
+            // Activer ou désactiver la barre de navigation
+            const settingsBtn = document.getElementById('settingsBtn');
+            const importBtn = document.getElementById('importBtn');
+            if (settingsBtn) {
+                settingsBtn.disabled = isReadOnly;
+                settingsBtn.style.opacity = isReadOnly ? '0.6' : '1';
             }
+            if (importBtn) {
+                importBtn.disabled = isReadOnly;
+                importBtn.style.opacity = isReadOnly ? '0.6' : '1';
+            }
+
+            // Activer ou désactiver dynamiquement tous les boutons dans les modales
+            const modalBtns = ['saveAgentBtn', 'bulkApplyBtn', 'saveSettingsBtn', 'addTaskBtn', 'applyRotationBtn', 'ackConfirmBtn'];
+            modalBtns.forEach(id => {
+                const btn = document.getElementById(id);
+                if (btn) {
+                    btn.disabled = isReadOnly;
+                    btn.style.opacity = isReadOnly ? '0.5' : '1';
+                }
+            });
         }
 
         /* --- SAUVEGARDE ET SYNCHRONISATION FIREBASE --- */
