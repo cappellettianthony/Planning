@@ -55,12 +55,41 @@
         .alert-banner ul { margin-top: 8px; list-style: none; }
         .alert-banner li { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px dashed #e74c3c; font-weight: normal; }
 
-        .dashboard { display: flex; flex-direction: column; gap: 12px; margin-bottom: 15px; }
-        .kpi-card { background: var(--card-bg); padding: 12px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-        .kpi-card h3 { font-size: 0.9rem; margin-bottom: 8px; color: var(--primary); border-bottom: 2px solid var(--bg-color); padding-bottom: 4px; }
+        /* Style pour le conteneur rétractable du Dashboard */
+        details.dashboard-wrapper {
+            background: var(--card-bg);
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            margin-bottom: 15px;
+            overflow: hidden;
+        }
+        details.dashboard-wrapper summary {
+            padding: 10px 15px;
+            font-weight: bold;
+            font-size: 0.9rem;
+            color: var(--primary);
+            cursor: pointer;
+            user-select: none;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #ffffff;
+            border-radius: 8px;
+        }
+        details.dashboard-wrapper summary:hover {
+            background: #f8f9fa;
+        }
+        details.dashboard-wrapper[open] summary {
+            border-bottom: 1px solid var(--border-color);
+            border-radius: 8px 8px 0 0;
+        }
+
+        .dashboard { display: flex; flex-direction: column; gap: 12px; padding: 12px; }
+        .kpi-card { background: var(--bg-color); padding: 12px; border-radius: 8px; border: 1px solid var(--border-color); }
+        .kpi-card h3 { font-size: 0.9rem; margin-bottom: 8px; color: var(--primary); border-bottom: 2px solid var(--border-color); padding-bottom: 4px; }
         .kpi-grid { display: grid; grid-template-columns: repeat(14, 1fr); gap: 4px; text-align: center; }
         .kpi-day { font-size: 0.65rem; font-weight: bold; margin-bottom: 2px; }
-        .kpi-block { border: 1px solid var(--border-color); border-radius: 4px; padding: 4px 2px; background: #fafafa; }
+        .kpi-block { border: 1px solid var(--border-color); border-radius: 4px; padding: 4px 2px; background: #ffffff; }
         .kpi-val { border-radius: 3px; font-weight: bold; font-size: 0.8rem; color: white; padding: 2px; margin-bottom: 3px; }
         
         .skill-list { display: flex; flex-direction: column; gap: 2px; }
@@ -83,6 +112,8 @@
         .team-name-td { text-align: left; padding-left: 8px; color: var(--primary); background-color: #d5dbdb; }
 
         .badge { display: inline-block; padding: 2px 4px; font-size: 0.65rem; border-radius: 3px; color: white; margin-right: 2px; font-weight: bold; }
+        .badge-none { display: inline-block; padding: 2px 4px; font-size: 0.65rem; border-radius: 3px; color: #7f8c8d; font-style: italic; font-weight: normal; }
+        
         select.shift-select { border: 1px solid transparent; background: transparent; font-weight: bold; cursor: pointer; width: 100%; text-align: center; border-radius: 4px; padding: 2px; }
         select.team-select { border: 1px dashed #7f8c8d; font-weight: bold; }
 
@@ -214,7 +245,14 @@
         <ul id="alertList"></ul>
     </div>
 
-    <div class="dashboard" id="dashboard"></div>
+    <!-- Section rétractable pour masquer/afficher la surveillance des effectifs -->
+    <details class="dashboard-wrapper" id="dashboardWrapper">
+        <summary>
+            <span>📊 Surveillance des effectifs & compétences</span>
+            <span style="font-size: 0.75rem; color: #7f8c8d; font-weight: normal;">Cliquez pour afficher / masquer</span>
+        </summary>
+        <div class="dashboard" id="dashboard"></div>
+    </details>
 
     <div class="table-container">
         <table id="planningTable">
@@ -569,18 +607,25 @@
             return { teamSchedules, agentSchedules, teams, acknowledgedAlerts, skillDefinitions, TASKS, settings };
         }
 
-        // CORRECTION DE LA FAILLE : Fusion des équipes manquantes si la donnée est tronquée
         function loadAppState(data) {
             if (!data) return;
             teamSchedules = data.teamSchedules || {};
             agentSchedules = data.agentSchedules || {};
             
-            // Garantir que les 7 équipes existent toujours
             const defaultTeams = createDefaultTeams();
             if (Array.isArray(data.teams) && data.teams.length > 0) {
                 teams = defaultTeams.map(defTeam => {
                     const loadedTeam = data.teams.find(t => t && t.id === defTeam.id);
-                    return loadedTeam || defTeam;
+                    if (loadedTeam) {
+                        // S'assurer que chaque agent a un tableau de compétences valide
+                        if (Array.isArray(loadedTeam.agents)) {
+                            loadedTeam.agents.forEach(a => {
+                                if (!Array.isArray(a.skills)) a.skills = [];
+                            });
+                        }
+                        return loadedTeam;
+                    }
+                    return defTeam;
                 });
             } else {
                 teams = defaultTeams;
@@ -595,11 +640,20 @@
         function saveToFirebase() {
             if (isReadOnly) return;
             try {
-                // Sécurité : s'assurer qu'on ne pousse pas un tableau d'équipes incomplet
                 if (!teams || teams.length < 7) {
                     const defaultTeams = createDefaultTeams();
                     teams = defaultTeams.map(defTeam => teams.find(t => t && t.id === defTeam.id) || defTeam);
                 }
+                
+                // Nettoyage de sécurité avant l'envoi
+                teams.forEach(t => {
+                    if (t && Array.isArray(t.agents)) {
+                        t.agents.forEach(a => {
+                            if (!Array.isArray(a.skills)) a.skills = [];
+                        });
+                    }
+                });
+
                 planningRef.set(getAppState());
             } catch(e) {
                 console.error("Erreur de sauvegarde Firebase : ", e);
@@ -1119,6 +1173,14 @@
 
         function renderSkillBadges(container, agentSkillIds) {
             container.innerHTML = '';
+            if (!Array.isArray(agentSkillIds) || agentSkillIds.length === 0) {
+                const span = document.createElement('span');
+                span.className = 'badge-none';
+                span.innerText = 'Aucune';
+                container.appendChild(span);
+                return;
+            }
+
             agentSkillIds.forEach(sId => {
                 const def = skillDefinitions.find(s => s.id === sId);
                 if (def) { 
@@ -1159,10 +1221,12 @@
                         const shiftType = task.shift;
                         if (['M', 'A', 'N'].includes(shiftType)) {
                             metrics[dateStr][shiftType].total++;
-                            agent.skills.forEach(sId => { 
-                                if (metrics[dateStr][shiftType].skills[sId] !== undefined) 
-                                    metrics[dateStr][shiftType].skills[sId]++; 
-                            });
+                            if (Array.isArray(agent.skills)) {
+                                agent.skills.forEach(sId => { 
+                                    if (metrics[dateStr][shiftType].skills[sId] !== undefined) 
+                                        metrics[dateStr][shiftType].skills[sId]++; 
+                                });
+                            }
                         }
                     });
                 });
@@ -1213,8 +1277,10 @@
             document.getElementById('editAgentName').value = foundAgent.name;
             const boxContainer = document.getElementById('skillsCheckboxes'); 
             boxContainer.innerHTML = '';
+            
+            const agentSkills = Array.isArray(foundAgent.skills) ? foundAgent.skills : [];
             skillDefinitions.forEach(s => { 
-                const isChecked = foundAgent.skills.includes(s.id) ? 'checked' : ''; 
+                const isChecked = agentSkills.includes(s.id) ? 'checked' : ''; 
                 boxContainer.innerHTML += `<label><input type="checkbox" value="${s.id}" ${isChecked}> ${s.name}</label>`; 
             });
 
@@ -1273,9 +1339,11 @@
             const agentId = document.getElementById('editAgentId').value; 
             const newName = document.getElementById('editAgentName').value;
             const checkedSkills = []; 
+            
             document.querySelectorAll('#skillsCheckboxes input[type="checkbox"]:checked').forEach(cb => { 
                 checkedSkills.push(cb.value); 
             });
+            
             teams.forEach(t => { 
                 const a = t.agents.find(item => item.id === agentId); 
                 if (a) { 
@@ -1283,6 +1351,7 @@
                     a.skills = checkedSkills; 
                 } 
             });
+            
             closeAgentModal(); 
             renderAll(true);
         }
