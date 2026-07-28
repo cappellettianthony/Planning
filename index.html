@@ -497,8 +497,30 @@
                 <label>Compétences attribuées</label>
                 <div class="checkbox-group" id="skillsCheckboxes"></div>
             </div>
+
+            <!-- Option A : Copier le roulement d'une équipe -->
+            <div class="bulk-box" style="background-color: #eef7fc; border-color: #3498db;">
+                <h3 style="color: #2980b9;">Copier le roulement d'une équipe sur l'agent</h3>
+                <div class="form-group">
+                    <label>Équipe source :</label>
+                    <select id="copyTeamSelect"></select>
+                </div>
+                <div style="display:flex; gap:10px;">
+                    <div class="form-group" style="flex:1;">
+                        <label>Du :</label>
+                        <input type="date" id="copyTeamStartDate">
+                    </div>
+                    <div class="form-group" style="flex:1;">
+                        <label>Au :</label>
+                        <input type="date" id="copyTeamEndDate">
+                    </div>
+                </div>
+                <button class="btn btn-purple" style="width:100%; font-weight:bold; padding: 8px;" onclick="applyCopyTeamSchedule()" id="copyTeamApplyBtn">📋 Copier le roulement de l'équipe</button>
+            </div>
+
+            <!-- Option B : Affecter une tâche avec récurrence -->
             <div class="bulk-box">
-                <h3>Affecter une tâche avec récurrence sur l'agent</h3>
+                <h3>Affecter une tâche unique avec récurrence</h3>
                 <div class="form-group">
                     <label>Tâche / Statut :</label>
                     <select id="bulkAgentTask"></select>
@@ -789,7 +811,7 @@
                 importBtn.style.opacity = isReadOnly ? '0.6' : '1';
             }
 
-            const modalBtns = ['saveAgentBtn', 'bulkApplyBtn', 'saveSettingsBtn', 'addTaskBtn', 'applyRotationBtn', 'ackConfirmBtn'];
+            const modalBtns = ['saveAgentBtn', 'bulkApplyBtn', 'copyTeamApplyBtn', 'saveSettingsBtn', 'addTaskBtn', 'applyRotationBtn', 'ackConfirmBtn'];
             modalBtns.forEach(id => {
                 const btn = document.getElementById(id);
                 if (btn) {
@@ -1558,6 +1580,24 @@
                 boxContainer.innerHTML += `<label><input type="checkbox" value="${s.id}" ${isChecked}> ${s.name}</label>`; 
             });
 
+            // Remplir le selecteur des équipes pour la copie de roulement
+            const teamSelect = document.getElementById('copyTeamSelect');
+            teamSelect.innerHTML = '';
+            teams.forEach(t => {
+                const opt = document.createElement('option');
+                opt.value = t.id;
+                opt.innerText = t.name;
+                teamSelect.appendChild(opt);
+            });
+
+            const todayStr = formatDate(startDate);
+            document.getElementById('copyTeamStartDate').value = todayStr;
+            
+            // Par défaut, date de fin = 1 an plus tard
+            const defaultEndDate = new Date(startDate);
+            defaultEndDate.setFullYear(defaultEndDate.getFullYear() + 1);
+            document.getElementById('copyTeamEndDate').value = formatDate(defaultEndDate);
+
             const bulkSelect = document.getElementById('bulkAgentTask'); 
             bulkSelect.innerHTML = '';
             Object.keys(TASKS).forEach(code => {
@@ -1568,11 +1608,47 @@
                 bulkSelect.appendChild(opt);
             });
 
-            document.getElementById('bulkStartDate').value = formatDate(startDate);
+            document.getElementById('bulkStartDate').value = todayStr;
             document.getElementById('bulkAgentFreq').value = '1_DAY';
             document.getElementById('bulkAgentDuration').value = '1';
 
             document.getElementById('agentModal').style.display = 'flex';
+        }
+
+        function applyCopyTeamSchedule() {
+            if (isReadOnly) return;
+            const agentId = document.getElementById('editAgentId').value;
+            const teamId = document.getElementById('copyTeamSelect').value;
+            const startStr = document.getElementById('copyTeamStartDate').value;
+            const endStr = document.getElementById('copyTeamEndDate').value;
+
+            if (!startStr || !endStr) {
+                alert("Veuillez sélectionner une date de début et une date de fin.");
+                return;
+            }
+
+            const startDateObj = parseDate(startStr);
+            const endDateObj = parseDate(endStr);
+
+            if (startDateObj > endDateObj) {
+                alert("La date de début doit être antérieure à la date de fin.");
+                return;
+            }
+
+            if (!agentSchedules[agentId]) agentSchedules[agentId] = {};
+
+            let currDate = new Date(startDateObj);
+            while (currDate <= endDateObj) {
+                const dStr = formatDate(currDate);
+                const teamTaskCode = teamSchedules[teamId] ? (teamSchedules[teamId][dStr] || 'R') : 'R';
+                agentSchedules[agentId][dStr] = teamTaskCode;
+                ensureYearExists(currDate.getFullYear());
+                currDate.setDate(currDate.getDate() + 1);
+            }
+
+            alert("Le roulement de l'équipe a été copié avec succès sur l'agent pour la période sélectionnée.");
+            closeAgentModal();
+            renderAll(true);
         }
         
         function closeAgentModal() { 
