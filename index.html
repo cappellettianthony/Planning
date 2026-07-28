@@ -167,8 +167,103 @@
             font-weight: bold;
         }
 
-        select.shift-select { border: 1px solid transparent; background: transparent; font-weight: bold; cursor: pointer; width: 100%; text-align: center; border-radius: 4px; padding: 2px; }
-        select.team-select { border: 1px dashed #7f8c8d; font-weight: bold; }
+        /* Styles pour les cellules cliquables de tâches */
+        .task-cell {
+            cursor: pointer;
+            font-weight: bold;
+            border-radius: 4px;
+            padding: 4px;
+            user-select: none;
+            position: relative;
+            transition: transform 0.1s, box-shadow 0.1s;
+        }
+        .task-cell:hover {
+            transform: scale(1.03);
+            box-shadow: 0 0 4px rgba(0,0,0,0.3);
+            z-index: 2;
+        }
+        .task-cell-disabled {
+            cursor: default;
+        }
+        .task-cell-disabled:hover {
+            transform: none;
+            box-shadow: none;
+        }
+
+        /* Témoin visuel de description dans une cellule (triangle orange en haut à droite) */
+        .has-desc-indicator {
+            position: relative;
+        }
+        .has-desc-indicator::after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            right: 2px;
+            width: 0;
+            height: 0;
+            border-style: solid;
+            border-width: 0 6px 6px 0;
+            border-color: transparent #e67e22 transparent transparent;
+        }
+
+        /* Tooltip personnalisé */
+        .custom-tooltip {
+            position: fixed;
+            background: #2c3e50;
+            color: #ffffff;
+            padding: 6px 10px;
+            border-radius: 5px;
+            font-size: 0.75rem;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.25);
+            z-index: 2000;
+            pointer-events: none;
+            max-width: 220px;
+            word-wrap: break-word;
+            display: none;
+            border: 1px solid #34495e;
+        }
+
+        /* Grille de sélection des tâches dans la modale */
+        .task-picker-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+            gap: 10px;
+            margin-bottom: 15px;
+            max-height: 250px;
+            overflow-y: auto;
+            padding: 5px;
+        }
+        .task-picker-btn {
+            padding: 10px 8px;
+            border-radius: 6px;
+            border: 2px solid transparent;
+            cursor: pointer;
+            text-align: center;
+            font-weight: bold;
+            font-size: 0.85rem;
+            transition: all 0.15s;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+        }
+        .task-picker-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 3px 6px rgba(0,0,0,0.2);
+        }
+        .task-picker-btn.selected {
+            border-color: #2c3e50;
+            box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.5);
+        }
+        .task-picker-btn .task-code-badge {
+            font-size: 1rem;
+        }
+        .task-picker-btn .task-label-sub {
+            font-size: 0.7rem;
+            opacity: 0.9;
+            font-weight: normal;
+        }
 
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.75); z-index: 1000; justify-content: center; align-items: center; }
         .modal-content { background: white; padding: 20px; border-radius: 8px; width: 750px; max-width: 95%; max-height: 90vh; overflow-y: auto; }
@@ -317,6 +412,9 @@
         </div>
     </header>
 
+    <!-- Element HTML Tooltip personnalisé -->
+    <div id="customTooltip" class="custom-tooltip"></div>
+
     <!-- Section rétractable pour l'état des utilisateurs connectés -->
     <details class="presence-wrapper" id="presenceWrapper">
         <summary>
@@ -358,6 +456,28 @@
 
     <!-- Container temporaire d'impression -->
     <div id="printSection"></div>
+
+    <!-- Modale Sélection & Attribution de Tâche -->
+    <div class="modal" id="taskModal">
+        <div class="modal-content" style="width: 500px;">
+            <h2>Affecter une Tâche</h2>
+            <p style="font-size: 0.85rem; margin-bottom: 12px; color: var(--primary);" id="taskModalTargetInfo"></p>
+            
+            <label style="font-weight: bold; font-size: 0.85rem; margin-bottom: 6px; display: block;">Sélectionner la tâche :</label>
+            <div id="taskPickerGrid" class="task-picker-grid"></div>
+
+            <div class="form-group">
+                <label for="taskModalDescription">Description / Note explicative (Optionnelle) :</label>
+                <textarea id="taskModalDescription" rows="3" placeholder="Saisir un commentaire ou une précision sur cette tâche..."></textarea>
+            </div>
+
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeTaskModal()">Annuler</button>
+                <button class="btn btn-danger" onclick="clearTaskAndDesc()" id="clearTaskBtn">Supprimer / Réinitialiser</button>
+                <button class="btn btn-success" onclick="confirmTaskSelection()" id="saveTaskModalBtn">Valider</button>
+            </div>
+        </div>
+    </div>
 
     <!-- Login Modal -->
     <div class="modal" id="authModal" style="display: flex;">
@@ -526,6 +646,10 @@
                     <select id="bulkAgentTask"></select>
                 </div>
                 <div class="form-group">
+                    <label>Description / Note (appliquée à la récurrence) :</label>
+                    <input type="text" id="bulkAgentDesc" placeholder="Ex: Formation continue, Mission spéciale...">
+                </div>
+                <div class="form-group">
                     <label>Date de début :</label>
                     <input type="date" id="bulkStartDate">
                 </div>
@@ -633,6 +757,11 @@
         let knownAlertKeys = new Set(); 
         let dailyAlertColors = {}; // Stocke la couleur d'alerte calculée par jour
 
+        // Variables pour la modale de tâche et les descriptions
+        let activeTaskCellSelection = null; // { isTeam: bool, targetId: string, dateStr: string }
+        let selectedTaskCodeInModal = null;
+        let cellHoverTimer = null;
+
         let skillDefinitions = [
             { id: 'C1', name: 'Électricité', color: '#3498db', min: 2 },
             { id: 'C2', name: 'Mécanique', color: '#e67e22', min: 1 },
@@ -674,6 +803,7 @@
         let teams = createDefaultTeams();
         let teamSchedules = {};
         let agentSchedules = {};
+        let taskDescriptions = {}; // Stocke les descriptions par clé unique ("targetId_dateStr")
 
         /* --- AUTHENTIFICATION ET PRÉSENCE EN LIGNE --- */
         function checkAuthState() {
@@ -811,7 +941,7 @@
                 importBtn.style.opacity = isReadOnly ? '0.6' : '1';
             }
 
-            const modalBtns = ['saveAgentBtn', 'bulkApplyBtn', 'copyTeamApplyBtn', 'saveSettingsBtn', 'addTaskBtn', 'applyRotationBtn', 'ackConfirmBtn'];
+            const modalBtns = ['saveAgentBtn', 'bulkApplyBtn', 'copyTeamApplyBtn', 'saveSettingsBtn', 'addTaskBtn', 'applyRotationBtn', 'ackConfirmBtn', 'saveTaskModalBtn', 'clearTaskBtn'];
             modalBtns.forEach(id => {
                 const btn = document.getElementById(id);
                 if (btn) {
@@ -823,13 +953,14 @@
 
         /* --- SAUVEGARDE ET SYNCHRONISATION FIREBASE --- */
         function getAppState() {
-            return { teamSchedules, agentSchedules, teams, acknowledgedAlerts, skillDefinitions, TASKS, settings };
+            return { teamSchedules, agentSchedules, taskDescriptions, teams, acknowledgedAlerts, skillDefinitions, TASKS, settings };
         }
 
         function loadAppState(data) {
             if (!data) return;
             teamSchedules = data.teamSchedules || {};
             agentSchedules = data.agentSchedules || {};
+            taskDescriptions = data.taskDescriptions || {};
             
             const defaultTeams = createDefaultTeams();
             if (Array.isArray(data.teams) && data.teams.length > 0) {
@@ -1067,6 +1198,36 @@
             return count;
         }
 
+        /* --- FONCTIONS GESTION TOOLTIP SURVOL 2S & CELLULES CELL-TASK --- */
+        function attachCellHoverEvents(element, description) {
+            if (!description || !description.trim()) return;
+
+            element.addEventListener('mouseenter', (e) => {
+                clearTimeout(cellHoverTimer);
+                cellHoverTimer = setTimeout(() => {
+                    const tooltip = document.getElementById('customTooltip');
+                    tooltip.innerText = description;
+                    tooltip.style.display = 'block';
+                    tooltip.style.left = (e.clientX + 10) + 'px';
+                    tooltip.style.top = (e.clientY + 10) + 'px';
+                }, 2000); // Déclenchement au bout de 2000 ms (2 sec)
+            });
+
+            element.addEventListener('mousemove', (e) => {
+                const tooltip = document.getElementById('customTooltip');
+                if (tooltip.style.display === 'block') {
+                    tooltip.style.left = (e.clientX + 10) + 'px';
+                    tooltip.style.top = (e.clientY + 10) + 'px';
+                }
+            });
+
+            element.addEventListener('mouseleave', () => {
+                clearTimeout(cellHoverTimer);
+                const tooltip = document.getElementById('customTooltip');
+                tooltip.style.display = 'none';
+            });
+        }
+
         function generateTable() {
             const tbody = document.getElementById('tableBody'); 
             tbody.innerHTML = '';
@@ -1091,27 +1252,24 @@
                     const dateStr = formatDate(d);
                     if (!teamSchedules[team.id]) teamSchedules[team.id] = {};
                     const td = document.createElement('td'); 
-                    const select = document.createElement('select'); 
-                    select.className = 'shift-select team-select';
-                    Object.keys(TASKS).forEach(code => { 
-                        const opt = document.createElement('option'); 
-                        opt.value = code; 
-                        opt.innerText = code; 
-                        select.appendChild(opt); 
-                    });
+                    
                     const currentVal = teamSchedules[team.id][dateStr] || 'R'; 
-                    select.value = currentVal; 
-                    applySelectStyle(select, currentVal);
-                    
+                    const taskDef = TASKS[currentVal] || TASKS['R'];
+                    const descKey = `${team.id}_${dateStr}`;
+                    const desc = taskDescriptions[descKey] || '';
+
+                    const cellDiv = document.createElement('div');
+                    cellDiv.className = `task-cell ${isReadOnly ? 'task-cell-disabled' : ''} ${desc ? 'has-desc-indicator' : ''}`;
+                    cellDiv.style.backgroundColor = taskDef.color;
+                    cellDiv.style.color = taskDef.text;
+                    cellDiv.innerText = currentVal;
+
                     if (!isReadOnly) {
-                        select.addEventListener('change', (e) => { 
-                            promptTeamRotation(team.id, dateStr, e.target.value); 
-                        });
-                    } else {
-                        select.disabled = true;
+                        cellDiv.onclick = () => openTaskModal(true, team.id, team.name, dateStr, currentVal, desc);
                     }
-                    
-                    td.appendChild(select); 
+                    attachCellHoverEvents(cellDiv, desc);
+
+                    td.appendChild(cellDiv); 
                     teamTr.appendChild(td);
                 });
                 tbody.appendChild(teamTr);
@@ -1140,34 +1298,117 @@
                         const dateStr = formatDate(d);
                         if (!agentSchedules[agent.id]) agentSchedules[agent.id] = {};
                         const td = document.createElement('td'); 
-                        const select = document.createElement('select'); 
-                        select.className = 'shift-select';
-                        Object.keys(TASKS).forEach(code => { 
-                            const opt = document.createElement('option'); 
-                            opt.value = code; 
-                            opt.innerText = code; 
-                            select.appendChild(opt); 
-                        });
+                        
                         const effectiveTask = getEffectiveAgentTask(agent, team.id, dateStr); 
-                        select.value = effectiveTask; 
-                        applySelectStyle(select, effectiveTask);
-                        
+                        const taskDef = TASKS[effectiveTask] || TASKS['R'];
+                        const descKey = `${agent.id}_${dateStr}`;
+                        const desc = taskDescriptions[descKey] || '';
+
+                        const cellDiv = document.createElement('div');
+                        cellDiv.className = `task-cell ${isReadOnly ? 'task-cell-disabled' : ''} ${desc ? 'has-desc-indicator' : ''}`;
+                        cellDiv.style.backgroundColor = taskDef.color;
+                        cellDiv.style.color = taskDef.text;
+                        cellDiv.innerText = effectiveTask;
+
                         if (!isReadOnly) {
-                            select.addEventListener('change', (e) => {
-                                agentSchedules[agent.id][dateStr] = e.target.value;
-                                applySelectStyle(select, e.target.value);
-                                renderAll(true);
-                            });
-                        } else {
-                            select.disabled = true;
+                            cellDiv.onclick = () => openTaskModal(false, agent.id, agent.name, dateStr, effectiveTask, desc);
                         }
-                        
-                        td.appendChild(select); 
+                        attachCellHoverEvents(cellDiv, desc);
+
+                        td.appendChild(cellDiv); 
                         tr.appendChild(td);
                     });
                     tbody.appendChild(tr);
                 });
             });
+        }
+
+        /* --- MODALE D'AFFECTATION DE TÂCHE --- */
+        function openTaskModal(isTeam, targetId, targetName, dateStr, currentTaskCode, currentDesc) {
+            if (isReadOnly) return;
+            activeTaskCellSelection = { isTeam, targetId, targetName, dateStr };
+            selectedTaskCodeInModal = currentTaskCode || 'R';
+
+            document.getElementById('taskModalTargetInfo').innerHTML = `
+                Target: <strong>${targetName}</strong> | Date: <strong>${dateStr}</strong>
+            `;
+            document.getElementById('taskModalDescription').value = currentDesc || '';
+
+            // Génération de la grille des boutons de tâche
+            const grid = document.getElementById('taskPickerGrid');
+            grid.innerHTML = '';
+            Object.keys(TASKS).forEach(code => {
+                const task = TASKS[code];
+                const btn = document.createElement('div');
+                btn.className = `task-picker-btn ${code === selectedTaskCodeInModal ? 'selected' : ''}`;
+                btn.style.backgroundColor = task.color;
+                btn.style.color = task.text;
+                btn.innerHTML = `
+                    <span class="task-code-badge">${code}</span>
+                    <span class="task-label-sub">${task.label}</span>
+                `;
+                btn.onclick = () => {
+                    document.querySelectorAll('.task-picker-btn').forEach(b => b.classList.remove('selected'));
+                    btn.classList.add('selected');
+                    selectedTaskCodeInModal = code;
+                };
+                grid.appendChild(btn);
+            });
+
+            document.getElementById('taskModal').style.display = 'flex';
+        }
+
+        function closeTaskModal() {
+            document.getElementById('taskModal').style.display = 'none';
+            activeTaskCellSelection = null;
+            selectedTaskCodeInModal = null;
+        }
+
+        function confirmTaskSelection() {
+            if (isReadOnly || !activeTaskCellSelection) return;
+
+            const { isTeam, targetId, dateStr } = activeTaskCellSelection;
+            const descValue = document.getElementById('taskModalDescription').value.trim();
+            const descKey = `${targetId}_${dateStr}`;
+
+            if (isTeam) {
+                // S'il s'agit d'une équipe, proposer d'appliquer la récurrence du roulement
+                promptTeamRotation(targetId, dateStr, selectedTaskCodeInModal);
+                if (descValue) {
+                    taskDescriptions[descKey] = descValue;
+                } else {
+                    delete taskDescriptions[descKey];
+                }
+            } else {
+                // S'il s'agit d'un agent
+                if (!agentSchedules[targetId]) agentSchedules[targetId] = {};
+                agentSchedules[targetId][dateStr] = selectedTaskCodeInModal;
+
+                if (descValue) {
+                    taskDescriptions[descKey] = descValue;
+                } else {
+                    delete taskDescriptions[descKey];
+                }
+            }
+
+            closeTaskModal();
+            renderAll(true);
+        }
+
+        function clearTaskAndDesc() {
+            if (isReadOnly || !activeTaskCellSelection) return;
+            const { isTeam, targetId, dateStr } = activeTaskCellSelection;
+            const descKey = `${targetId}_${dateStr}`;
+
+            delete taskDescriptions[descKey];
+            if (isTeam) {
+                if (teamSchedules[targetId]) delete teamSchedules[targetId][dateStr];
+            } else {
+                if (agentSchedules[targetId]) delete agentSchedules[targetId][dateStr];
+            }
+
+            closeTaskModal();
+            renderAll(true);
         }
 
         function timeToDecimal(timeStr) {
@@ -1461,12 +1702,6 @@
                 }
             });
         }
-        
-        function applySelectStyle(select, taskCode) { 
-            const task = TASKS[taskCode] || TASKS['R']; 
-            select.style.backgroundColor = task.color; 
-            select.style.color = task.text; 
-        }
 
         function updateDashboard() {
             const dates = getVisibleDates(); 
@@ -1580,7 +1815,7 @@
                 boxContainer.innerHTML += `<label><input type="checkbox" value="${s.id}" ${isChecked}> ${s.name}</label>`; 
             });
 
-            // Remplir le selecteur des équipes pour la copie de roulement
+            // Remplir le sélecteur des équipes pour la copie de roulement
             const teamSelect = document.getElementById('copyTeamSelect');
             teamSelect.innerHTML = '';
             teams.forEach(t => {
@@ -1608,6 +1843,7 @@
                 bulkSelect.appendChild(opt);
             });
 
+            document.getElementById('bulkAgentDesc').value = '';
             document.getElementById('bulkStartDate').value = todayStr;
             document.getElementById('bulkAgentFreq').value = '1_DAY';
             document.getElementById('bulkAgentDuration').value = '1';
@@ -1659,6 +1895,7 @@
             if (isReadOnly) return;
             const agentId = document.getElementById('editAgentId').value; 
             const taskCode = document.getElementById('bulkAgentTask').value;
+            const taskDesc = document.getElementById('bulkAgentDesc').value.trim();
             const startStr = document.getElementById('bulkStartDate').value; 
             const freqVal = document.getElementById('bulkAgentFreq').value;
             const yearsDuration = parseInt(document.getElementById('bulkAgentDuration').value, 10);
@@ -1676,10 +1913,20 @@
 
             if (!agentSchedules[agentId]) agentSchedules[agentId] = {};
 
+            const applyToDate = (dStr) => {
+                agentSchedules[agentId][dStr] = taskCode;
+                const descKey = `${agentId}_${dStr}`;
+                if (taskDesc) {
+                    taskDescriptions[descKey] = taskDesc;
+                } else {
+                    delete taskDescriptions[descKey];
+                }
+            };
+
             if (freqVal === '1_DAY') {
                 while (currDate < endDateObj) {
                     const dStr = formatDate(currDate);
-                    agentSchedules[agentId][dStr] = taskCode;
+                    applyToDate(dStr);
                     ensureYearExists(currDate.getFullYear());
                     currDate.setDate(currDate.getDate() + 1);
                 }
@@ -1687,7 +1934,7 @@
                 const stepWeeks = parseInt(freqVal, 10);
                 while (currDate < endDateObj) {
                     const dStr = formatDate(currDate);
-                    agentSchedules[agentId][dStr] = taskCode;
+                    applyToDate(dStr);
                     ensureYearExists(currDate.getFullYear());
                     currDate.setDate(currDate.getDate() + (stepWeeks * 7));
                 }
