@@ -55,15 +55,15 @@
         .alert-banner ul { margin-top: 8px; list-style: none; }
         .alert-banner li { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px dashed #e74c3c; font-weight: normal; }
 
-        /* Style pour le conteneur rétractable du Dashboard */
-        details.dashboard-wrapper {
+        /* Conteneurs rétractables (<details>) */
+        details.dashboard-wrapper, details.presence-wrapper {
             background: var(--card-bg);
             border-radius: 8px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.05);
             margin-bottom: 15px;
             overflow: hidden;
         }
-        details.dashboard-wrapper summary {
+        details.dashboard-wrapper summary, details.presence-wrapper summary {
             padding: 10px 15px;
             font-weight: bold;
             font-size: 0.9rem;
@@ -76,12 +76,43 @@
             background: #ffffff;
             border-radius: 8px;
         }
-        details.dashboard-wrapper summary:hover {
+        details.dashboard-wrapper summary:hover, details.presence-wrapper summary:hover {
             background: #f8f9fa;
         }
-        details.dashboard-wrapper[open] summary {
+        details.dashboard-wrapper[open] summary, details.presence-wrapper[open] summary {
             border-bottom: 1px solid var(--border-color);
             border-radius: 8px 8px 0 0;
+        }
+
+        .presence-container {
+            padding: 12px 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .online-users-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            list-style: none;
+        }
+        .online-user-badge {
+            background: #e8f8f5;
+            border: 1px solid #2ecc71;
+            color: #117a65;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .online-indicator {
+            width: 8px;
+            height: 8px;
+            background-color: #2ecc71;
+            border-radius: 50%;
+            display: inline-block;
         }
 
         .dashboard { display: flex; flex-direction: column; gap: 12px; padding: 12px; }
@@ -95,9 +126,20 @@
         .skill-list { display: flex; flex-direction: column; gap: 2px; }
         .skill-item { font-size: 0.6rem; padding: 1px 2px; border-radius: 2px; color: white; font-weight: bold; display: flex; justify-content: space-between; }
 
-        .bg-green { background-color: var(--status-green); }
-        .bg-orange { background-color: var(--status-orange); }
-        .bg-red { background-color: var(--status-red); }
+        .bg-green { background-color: var(--status-green) !important; }
+        .bg-orange { background-color: var(--status-orange) !important; }
+        .bg-red { background-color: var(--status-red) !important; }
+
+        /* Report de couleur d'alerte dans les en-têtes du planning */
+        .header-date-badge {
+            display: block;
+            margin-top: 3px;
+            padding: 2px 4px;
+            border-radius: 3px;
+            color: white;
+            font-size: 0.7rem;
+            font-weight: bold;
+        }
 
         .table-container { background: var(--card-bg); border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); overflow: auto; max-height: 60vh; }
         table { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 0.85rem; }
@@ -221,6 +263,17 @@
             display: none;
         }
         .user-info { font-size: 0.85rem; padding: 6px 12px; background: #ecf0f1; border-radius: 4px; display: flex; align-items: center; gap: 8px; }
+
+        /* Styles spécialisés pour l'impression du planning au mois */
+        @media print {
+            body * { visibility: hidden; }
+            #printSection, #printSection * { visibility: visible; }
+            #printSection { position: absolute; left: 0; top: 0; width: 100%; }
+            #printSection table { width: 100%; border-collapse: collapse; font-size: 7pt; }
+            #printSection th, #printSection td { border: 1px solid #000; padding: 2px; text-align: center; }
+            #printSection th { background-color: #ddd !important; color: #000 !important; }
+            @page { size: landscape; margin: 5mm; }
+        }
     </style>
 </head>
 <body>
@@ -241,7 +294,8 @@
             <input type="date" id="datePicker" onchange="jumpToDate(this.value)">
         </div>
 
-        <div style="display:flex; gap:8px;">
+        <div style="display:flex; gap:8px; flex-wrap: wrap;">
+            <button class="btn btn-purple" onclick="openPrintModal()">🖨️ Imprimer Mois</button>
             <button class="btn btn-success" onclick="exportData()" title="Sauvegarder les données dans un fichier">💾 Exporter JSON</button>
             <button class="btn btn-purple" onclick="document.getElementById('importFile').click()" title="Charger un fichier de sauvegarde" id="importBtn">📂 Importer JSON</button>
             <input type="file" id="importFile" style="display:none" accept=".json" onchange="importData(event)">
@@ -251,6 +305,19 @@
             <button class="btn btn-logout" onclick="logout()" id="logoutBtn" style="display: none;">Déconnexion</button>
         </div>
     </header>
+
+    <!-- Section rétractable pour l'état des utilisateurs connectés -->
+    <details class="presence-wrapper" id="presenceWrapper">
+        <summary>
+            <span>👥 Utilisateurs actuellement connectés</span>
+            <span style="font-size: 0.75rem; color: #7f8c8d; font-weight: normal;">Cliquez pour afficher / masquer</span>
+        </summary>
+        <div class="presence-container">
+            <ul id="onlineUsersList" class="online-users-list">
+                <!-- Rempli dynamiquement -->
+            </ul>
+        </div>
+    </details>
 
     <div class="alert-banner" id="alertBanner">
         ⚠️ <strong>DÉFAUTS DE REPOS DÉTECTÉS SUR LE PLANNING ANNUEL :</strong>
@@ -278,6 +345,9 @@
         </table>
     </div>
 
+    <!-- Container temporaire d'impression -->
+    <div id="printSection"></div>
+
     <!-- Login Modal -->
     <div class="modal" id="authModal" style="display: flex;">
         <div class="modal-content">
@@ -299,9 +369,41 @@
             </div>
 
             <p style="text-align:center; margin-top:20px; font-size:0.8rem; color:#88aaff;">
-                Profil RE (modification) : Adresses autorisées.<br>
+                Profil Admin / RE (modification) : Adresses autorisées.<br>
                 Autres profils : Lecture seule.
             </p>
+        </div>
+    </div>
+
+    <!-- Modal d'impression par mois -->
+    <div class="modal" id="printModal">
+        <div class="modal-content" style="width: 400px;">
+            <h2>Imprimer le Planning d'un Mois</h2>
+            <div class="form-group">
+                <label for="printMonth">Sélectionner le Mois :</label>
+                <select id="printMonth">
+                    <option value="0">Janvier</option>
+                    <option value="1">Février</option>
+                    <option value="2">Mars</option>
+                    <option value="3">Avril</option>
+                    <option value="4">Mai</option>
+                    <option value="5">Juin</option>
+                    <option value="6">Juillet</option>
+                    <option value="7">Août</option>
+                    <option value="8">Septembre</option>
+                    <option value="9">Octobre</option>
+                    <option value="10">Novembre</option>
+                    <option value="11">Décembre</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="printYear">Sélectionner l'Année :</label>
+                <select id="printYear"></select>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closePrintModal()">Annuler</button>
+                <button class="btn btn-purple" onclick="generateAndPrintMonth()">📄 Imprimer / Exporter PDF</button>
+            </div>
         </div>
     </div>
 
@@ -349,7 +451,9 @@
             <div class="form-group">
                 <label>Fréquence :</label>
                 <select id="repeatWeeks">
-                    <option value="1">Cette date uniquement</option>
+                    <option value="1_DAY">Tous les jours</option>
+                    <option value="1">Toutes les semaines</option>
+                    <option value="2">Toutes les 2 semaines</option>
                     <option value="6" selected>Toutes les 6 semaines</option>
                     <option value="12">Toutes les 12 semaines</option>
                 </select>
@@ -402,7 +506,7 @@
 
     <div class="modal" id="settingsModal">
         <div class="modal-content">
-            <h2>Paramétrage Général</h2>
+            <h2>Paramétrage Général (Accès Administrateur)</h2>
             <h3>1. Intitulés et Minimas</h3><div id="skillsConfigContainer"></div>
             <h3>2. Gestion des Tâches</h3>
             <div class="task-header"><span>Code</span><span>Libellé</span><span>Quart</span><span>Début</span><span>Fin</span><span>Repos?</span><span>Fond</span><span>Texte</span><span></span></div>
@@ -434,12 +538,18 @@
         firebase.initializeApp(firebaseConfig);
         const database = firebase.database();
         const planningRef = database.ref('planningData');
+        const presenceRef = database.ref('onlineUsers');
         const auth = firebase.auth();
 
-        // Liste des adresses email autorisées pour le profil RE (modification)
-        const RE_EMAILS = [
+        // Liste des administrateurs (Accès exclusif à la modale Paramètres)
+        const ADMIN_EMAILS = [
             "cappellettianthony@gmail.com",
-            "mustapha.iberrakene@edf.fr",
+            "anthony.cappelletti@edf.fr"
+        ];
+
+        // Liste des adresses autorisées pour la modification du planning (RE + Admins)
+        const RE_EMAILS = [
+            ...ADMIN_EMAILS,
             "re3@planning-ps.com",
             "re4@planning-ps.com",
             "re5@planning-ps.com",
@@ -452,6 +562,7 @@
 
         let currentUser = null;
         let isReadOnly = true;
+        let isAdmin = false;
 
         const DAYS_TO_SHOW = 14; 
         let currentYear = new Date().getFullYear();
@@ -463,6 +574,7 @@
         let pendingAckAlert = null;
         let acknowledgedAlerts = [];
         let knownAlertKeys = new Set(); 
+        let dailyAlertColors = {}; // Stocke la couleur d'alerte calculée par jour
 
         let skillDefinitions = [
             { id: 'C1', name: 'Électricité', color: '#3498db', min: 2 },
@@ -485,7 +597,6 @@
 
         let settings = { thresholds: { M: { orange: 5, green: 7 }, A: { orange: 5, green: 7 }, N: { orange: 3, green: 5 } } };
 
-        // Génération de la structure de référence complète par défaut (7 équipes)
         function createDefaultTeams() {
             let defaultTeams = [];
             for (let t = 1; t <= 6; t++) {
@@ -507,19 +618,25 @@
         let teamSchedules = {};
         let agentSchedules = {};
 
-        /* --- AUTHENTIFICATION --- */
+        /* --- AUTHENTIFICATION ET PRÉSENCE EN LIGNE --- */
         function checkAuthState() {
             auth.onAuthStateChanged((user) => {
                 currentUser = user;
                 if (user) {
                     isReadOnly = !RE_EMAILS.includes(user.email);
+                    isAdmin = ADMIN_EMAILS.includes(user.email);
+
                     document.getElementById('authModal').style.display = 'none';
                     document.getElementById('userStatus').innerHTML = `
                         Connecté en tant que : <strong>${user.email}</strong> 
-                        <span style="color:${isReadOnly ? '#e67e22' : '#2ecc71'};">(${isReadOnly ? 'Lecture seule' : 'RE - Modification'})</span>
+                        <span style="color:${isAdmin ? '#8e44ad' : (isReadOnly ? '#e67e22' : '#2ecc71')};">
+                            (${isAdmin ? 'ADMIN' : (isReadOnly ? 'Lecture seule' : 'RE - Modification')})
+                        </span>
                     `;
                     document.getElementById('userStatus').style.display = 'flex';
                     document.getElementById('logoutBtn').style.display = 'inline-block';
+                    
+                    setupPresence(user);
                     applyReadOnlyMode();
                     renderAll(false);
                 } else {
@@ -527,8 +644,39 @@
                     document.getElementById('userStatus').style.display = 'none';
                     document.getElementById('logoutBtn').style.display = 'none';
                     isReadOnly = true;
+                    isAdmin = false;
                     applyReadOnlyMode();
                 }
+            });
+        }
+
+        function setupPresence(user) {
+            const userKey = user.uid;
+            const myPresenceRef = database.ref(`onlineUsers/${userKey}`);
+            const connectedRef = database.ref('.info/connected');
+
+            connectedRef.on('value', (snap) => {
+                if (snap.val() === true) {
+                    myPresenceRef.onDisconnect().remove();
+                    myPresenceRef.set({
+                        email: user.email,
+                        lastSeen: firebase.database.ServerValue.TIMESTAMP
+                    });
+                }
+            });
+
+            presenceRef.on('value', (snapshot) => {
+                const users = snapshot.val() || {};
+                const listEl = document.getElementById('onlineUsersList');
+                listEl.innerHTML = '';
+                Object.values(users).forEach(u => {
+                    if (u && u.email) {
+                        const li = document.createElement('li');
+                        li.className = 'online-user-badge';
+                        li.innerHTML = `<span class="online-indicator"></span> ${u.email}`;
+                        listEl.appendChild(li);
+                    }
+                });
             });
         }
 
@@ -595,9 +743,12 @@
         function applyReadOnlyMode() {
             const settingsBtn = document.getElementById('settingsBtn');
             const importBtn = document.getElementById('importBtn');
+
+            // Seul l'administrateur peut utiliser la modale de réglages
             if (settingsBtn) {
-                settingsBtn.disabled = isReadOnly;
-                settingsBtn.style.opacity = isReadOnly ? '0.6' : '1';
+                settingsBtn.disabled = !isAdmin;
+                settingsBtn.style.opacity = !isAdmin ? '0.5' : '1';
+                settingsBtn.title = !isAdmin ? "Accès réservé aux Administrateurs" : "Paramétrage Général";
             }
             if (importBtn) {
                 importBtn.disabled = isReadOnly;
@@ -767,10 +918,10 @@
         }
 
         function renderAll(save = true) {
+            updateDashboard(); // Met aussi à jour les couleurs calculées par jour
             generateHeaders();
             generateTable();
             checkRestRulesAndAlert();
-            updateDashboard();
             if (save && !isReadOnly) saveToFirebase();
             applyReadOnlyMode();
         }
@@ -808,7 +959,24 @@
                 const th = document.createElement('th');
                 const dayName = d.toLocaleDateString('fr-FR', { weekday: 'short' });
                 const dayNum = d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
-                th.innerHTML = `${dayName}<br>${dayNum}`;
+                const dateStr = formatDate(d);
+
+                let badgeHtml = '';
+                const dayStatus = dailyAlertColors[dateStr];
+                if (dayStatus) {
+                    let colorClass = 'bg-green';
+                    let label = 'OK';
+                    if (dayStatus === 'RED') {
+                        colorClass = 'bg-red';
+                        label = 'Alerte';
+                    } else if (dayStatus === 'ORANGE') {
+                        colorClass = 'bg-orange';
+                        label = 'Attention';
+                    }
+                    badgeHtml = `<span class="header-date-badge ${colorClass}">${label}</span>`;
+                }
+
+                th.innerHTML = `${dayName}<br>${dayNum}${badgeHtml}`;
                 headerTr.appendChild(th);
             });
         }
@@ -819,7 +987,6 @@
             return 'R';
         }
 
-        // Calcule le nombre total de quarts (M, A, N) réalisés par un agent en dehors de ses jours de roulement théorique (quand l'équipe est au repos)
         function calculateExtraShiftsCount(agent, teamId) {
             let count = 0;
             const startYearDate = new Date(currentYear, 0, 1);
@@ -831,12 +998,10 @@
                 const teamTaskCode = teamSchedules[teamId] ? (teamSchedules[teamId][dStr] || 'R') : 'R';
                 const teamTask = TASKS[teamTaskCode] || TASKS['R'];
 
-                // Le roulement d'équipe prévoit un repos sur cette date
                 if (teamTask.isRest) {
                     const agentTaskCode = getEffectiveAgentTask(agent, teamId, dStr);
                     const agentTask = TASKS[agentTaskCode] || TASKS['R'];
 
-                    // L'agent effectue un quart (Matin, Après-midi ou Nuit)
                     if (['M', 'A', 'N'].includes(agentTask.shift)) {
                         count++;
                     }
@@ -903,7 +1068,6 @@
                     tdName.className = 'sticky-col-1'; 
                     tdName.style.paddingLeft = '15px'; 
                     
-                    // Intégration du nom de l'agent + Badge du nombre de quarts hors roulement
                     tdName.innerHTML = `<span>${agent.name}</span> <span class="extra-shifts-badge" title="Quarts (M/A/N) hors roulement d'équipe dans l'année">${extraShifts} q.</span>`; 
                     tdName.style.cursor = isReadOnly ? 'default' : 'pointer'; 
                     if (!isReadOnly) tdName.onclick = () => openAgentModal(agent.id); 
@@ -1188,17 +1352,24 @@
         function applyTeamRotation() {
             if (isReadOnly || !pendingRotation) return;
             const { teamId, dateStr, taskCode } = pendingRotation;
-            const weeksStep = parseInt(document.getElementById('repeatWeeks').value, 10);
+            const freqVal = document.getElementById('repeatWeeks').value;
             const durationWeeks = parseInt(document.getElementById('repeatDuration').value, 10);
             const baseDate = parseDate(dateStr); 
             let currDate = new Date(baseDate);
 
-            if (weeksStep === 1) {
-                if (!teamSchedules[teamId]) teamSchedules[teamId] = {}; 
-                teamSchedules[teamId][dateStr] = taskCode;
+            const endDate = new Date(baseDate); 
+            endDate.setDate(endDate.getDate() + (durationWeeks * 7));
+
+            if (freqVal === '1_DAY') {
+                while (currDate <= endDate) {
+                    const dStr = formatDate(currDate);
+                    if (!teamSchedules[teamId]) teamSchedules[teamId] = {}; 
+                    teamSchedules[teamId][dStr] = taskCode;
+                    ensureYearExists(currDate.getFullYear()); 
+                    currDate.setDate(currDate.getDate() + 1);
+                }
             } else {
-                const endDate = new Date(baseDate); 
-                endDate.setDate(endDate.getDate() + (durationWeeks * 7));
+                const weeksStep = parseInt(freqVal, 10);
                 while (currDate <= endDate) {
                     const dStr = formatDate(currDate);
                     if (!teamSchedules[teamId]) teamSchedules[teamId] = {}; 
@@ -1207,6 +1378,7 @@
                     currDate.setDate(currDate.getDate() + (weeksStep * 7));
                 }
             }
+
             pendingRotation = null;
             document.getElementById('repeatModal').style.display = 'none';
             renderAll(true);
@@ -1245,6 +1417,8 @@
             const dash = document.getElementById('dashboard'); 
             dash.innerHTML = '';
             const metrics = {};
+            dailyAlertColors = {}; // Réinitialise les alertes du header
+
             dates.forEach(d => {
                 const dateStr = formatDate(d); 
                 metrics[dateStr] = { M: { total: 0, skills: {} }, A: { total: 0, skills: {} }, N: { total: 0, skills: {} } };
@@ -1271,6 +1445,32 @@
                         }
                     });
                 });
+            });
+
+            // Déterminer la couleur de criticité par jour (priorité au ROUGE puis ORANGE)
+            dates.forEach(d => {
+                const dateStr = formatDate(d);
+                let worstStatus = 'GREEN';
+
+                ['M', 'A', 'N'].forEach(shift => {
+                    const shiftData = metrics[dateStr][shift];
+                    const count = shiftData.total;
+
+                    if (count < settings.thresholds[shift].orange) {
+                        worstStatus = 'RED';
+                    } else if (count < settings.thresholds[shift].green && worstStatus !== 'RED') {
+                        worstStatus = 'ORANGE';
+                    }
+
+                    skillDefinitions.forEach(s => {
+                        const skCount = shiftData.skills[s.id];
+                        if (skCount < s.min) {
+                            worstStatus = 'RED'; // Défaut de compétence = ROUGE
+                        }
+                    });
+                });
+
+                dailyAlertColors[dateStr] = worstStatus;
             });
 
             ['M', 'A', 'N'].forEach(shift => {
@@ -1398,7 +1598,10 @@
         }
 
         function openSettings() {
-            if (isReadOnly) return;
+            if (!isAdmin) {
+                alert("Accès refusé : Seuls les administrateurs peuvent accéder au paramétrage général.");
+                return;
+            }
             const skContainer = document.getElementById('skillsConfigContainer'); 
             skContainer.innerHTML = '';
             skillDefinitions.forEach((s, idx) => {
@@ -1448,7 +1651,7 @@
         }
 
         function addTaskRow() { 
-            if (isReadOnly) return;
+            if (!isAdmin) return;
             document.getElementById('tasksContainer').appendChild(createTaskRow('T1', 'Nouvelle Tâche', 'M', '08:00', '16:00', false, '#9b59b6', '#ffffff')); 
         }
         
@@ -1457,7 +1660,7 @@
         }
 
         function saveSettings() {
-            if (isReadOnly) return;
+            if (!isAdmin) return;
             skillDefinitions.forEach((s, idx) => { 
                 const nameInput = document.getElementById(`sk_name_${idx}`); 
                 const minInput = document.getElementById(`sk_min_${idx}`); 
@@ -1487,6 +1690,94 @@
             
             closeSettings(); 
             renderAll(true);
+        }
+
+        /* --- FONCTIONS D'IMPRESSION DU PLANNING AU MOIS --- */
+        function openPrintModal() {
+            const printYearSelect = document.getElementById('printYear');
+            printYearSelect.innerHTML = '';
+            for (let y = minYearAvailable; y <= maxYearAvailable; y++) {
+                const opt = document.createElement('option');
+                opt.value = y;
+                opt.innerText = y;
+                if (y === currentYear) opt.selected = true;
+                printYearSelect.appendChild(opt);
+            }
+            document.getElementById('printMonth').value = new Date().getMonth();
+            document.getElementById('printModal').style.display = 'flex';
+        }
+
+        function closePrintModal() {
+            document.getElementById('printModal').style.display = 'none';
+        }
+
+        function generateAndPrintMonth() {
+            const selectedMonth = parseInt(document.getElementById('printMonth').value, 10);
+            const selectedYear = parseInt(document.getElementById('printYear').value, 10);
+
+            const daysInMonth = new Date(selectedYear, selectedMonth + 1, 0).getDate();
+            const monthDates = [];
+            for (let day = 1; day <= daysInMonth; day++) {
+                monthDates.push(new Date(selectedYear, selectedMonth, day));
+            }
+
+            const monthNames = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
+            
+            let html = `
+                <div style="padding: 10px;">
+                    <h2 style="text-align:center; margin-bottom: 10px;">Planning Opérationnel — ${monthNames[selectedMonth]} ${selectedYear}</h2>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Équipe / Agent</th>
+                                <th>Compétences</th>
+            `;
+
+            monthDates.forEach(d => {
+                const dayName = d.toLocaleDateString('fr-FR', { weekday: 'short' });
+                const dayNum = String(d.getDate()).padStart(2, '0');
+                html += `<th>${dayName}<br>${dayNum}</th>`;
+            });
+
+            html += `</tr></thead><tbody>`;
+
+            teams.forEach(team => {
+                html += `<tr style="background-color: #eee; font-weight: bold;">`;
+                html += `<td style="text-align: left;">${team.name}</td><td>Roulement</td>`;
+                monthDates.forEach(d => {
+                    const dStr = formatDate(d);
+                    const taskCode = teamSchedules[team.id] ? (teamSchedules[team.id][dStr] || 'R') : 'R';
+                    const task = TASKS[taskCode] || TASKS['R'];
+                    html += `<td style="background-color: ${task.color}; color: ${task.text}; font-weight: bold;">${taskCode}</td>`;
+                });
+                html += `</tr>`;
+
+                team.agents.forEach(agent => {
+                    html += `<tr>`;
+                    html += `<td style="text-align: left; padding-left: 10px;">${agent.name}</td>`;
+                    
+                    let skillNames = (agent.skills || []).map(sId => {
+                        const def = skillDefinitions.find(s => s.id === sId);
+                        return def ? def.name : sId;
+                    }).join(', ');
+                    
+                    html += `<td style="font-size: 6pt;">${skillNames || '-'}</td>`;
+
+                    monthDates.forEach(d => {
+                        const dStr = formatDate(d);
+                        const taskCode = getEffectiveAgentTask(agent, team.id, dStr);
+                        const task = TASKS[taskCode] || TASKS['R'];
+                        html += `<td style="background-color: ${task.color}; color: ${task.text}; font-weight: bold;">${taskCode}</td>`;
+                    });
+                    html += `</tr>`;
+                });
+            });
+
+            html += `</tbody></table></div>`;
+
+            document.getElementById('printSection').innerHTML = html;
+            closePrintModal();
+            window.print();
         }
 
         window.onload = init;
