@@ -142,7 +142,7 @@
 
         .table-container { background: var(--card-bg); border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); overflow: auto; max-height: 60vh; }
         table { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 0.85rem; }
-        th, td { border-right: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color); padding: 4px; text-align: center; white-space: nowrap; position: relative; }
+        th, td { border-right: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color); padding: 4px; text-align: center; white-space: nowrap; }
         th { background-color: var(--primary); color: white; position: sticky; top: 0; z-index: 10; }
         
         .sticky-col-1 { position: sticky; left: 0; background-color: white; z-index: 5; width: 180px; text-align: left; font-weight: bold; }
@@ -170,16 +170,6 @@
         select.shift-select { border: 1px solid transparent; background: transparent; font-weight: bold; cursor: pointer; width: 100%; text-align: center; border-radius: 4px; padding: 2px; }
         select.team-select { border: 1px dashed #7f8c8d; font-weight: bold; }
 
-        /* Icone de commentaire sur les cellules du planning */
-        .comment-indicator {
-            position: absolute;
-            top: 1px;
-            right: 2px;
-            font-size: 0.65rem;
-            pointer-events: none;
-            line-height: 1;
-        }
-
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.75); z-index: 1000; justify-content: center; align-items: center; }
         .modal-content { background: white; padding: 20px; border-radius: 8px; width: 750px; max-width: 95%; max-height: 90vh; overflow-y: auto; }
         .modal h2 { margin-bottom: 12px; font-size: 1.1rem; border-bottom: 2px solid var(--bg-color); padding-bottom: 5px; }
@@ -204,10 +194,6 @@
         .archive-table th { background-color: var(--primary); color: white; }
 
         .bulk-box { background-color: #f8f9fa; border: 1px solid #ddd; border-radius: 6px; padding: 10px; margin-top: 10px; }
-
-        /* Radio selection styling */
-        .copy-source-type { display: flex; gap: 15px; margin-bottom: 10px; }
-        .copy-source-type label { font-size: 0.85rem; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 4px; }
 
         /* --- STYLES AUTHENTIFICATION --- */
         #authModal .modal-content {
@@ -512,30 +498,13 @@
                 <div class="checkbox-group" id="skillsCheckboxes"></div>
             </div>
 
-            <!-- Option A : Copier le roulement d'une équipe ou d'un agent -->
+            <!-- Option A : Copier le roulement d'une équipe -->
             <div class="bulk-box" style="background-color: #eef7fc; border-color: #3498db;">
-                <h3 style="color: #2980b9;">Copier un roulement sur l'agent</h3>
-                
-                <div class="copy-source-type">
-                    <label><input type="radio" name="copySourceType" value="team" checked onchange="toggleCopySourceType()"> Roulement d'une équipe</label>
-                    <label><input type="radio" name="copySourceType" value="agent" onchange="toggleCopySourceType()"> Roulement d'un agent</label>
-                </div>
-
-                <div class="form-group" id="copyTeamGroup">
+                <h3 style="color: #2980b9;">Copier le roulement d'une équipe sur l'agent</h3>
+                <div class="form-group">
                     <label>Équipe source :</label>
                     <select id="copyTeamSelect"></select>
                 </div>
-
-                <div class="form-group" id="copyAgentGroup" style="display: none;">
-                    <label>Agent source :</label>
-                    <select id="copyAgentSelect"></select>
-                </div>
-
-                <div class="form-group" id="copyCommentGroup" style="display: none;">
-                    <label>Commentaire à intégrer (optionnel) :</label>
-                    <input type="text" id="copyCommentInput" placeholder="Ex: Remplacement agent, Échange de roulement...">
-                </div>
-
                 <div style="display:flex; gap:10px;">
                     <div class="form-group" style="flex:1;">
                         <label>Du :</label>
@@ -546,7 +515,7 @@
                         <input type="date" id="copyTeamEndDate">
                     </div>
                 </div>
-                <button class="btn btn-purple" style="width:100%; font-weight:bold; padding: 8px;" onclick="applyCopySchedule()" id="copyTeamApplyBtn">📋 Copier le roulement</button>
+                <button class="btn btn-purple" style="width:100%; font-weight:bold; padding: 8px;" onclick="applyCopyTeamSchedule()" id="copyTeamApplyBtn">📋 Copier le roulement de l'équipe</button>
             </div>
 
             <!-- Option B : Affecter une tâche avec récurrence -->
@@ -1068,27 +1037,10 @@
             });
         }
 
-        function getAgentCellData(agentId, dateStr) {
-            if (agentSchedules[agentId] && agentSchedules[agentId][dateStr] !== undefined) {
-                const val = agentSchedules[agentId][dateStr];
-                if (typeof val === 'object' && val !== null) {
-                    return { task: val.task || 'R', comment: val.comment || '' };
-                }
-                return { task: val, comment: '' };
-            }
-            return null;
-        }
-
         function getEffectiveAgentTask(agent, teamId, dateStr) {
-            const cell = getAgentCellData(agent.id, dateStr);
-            if (cell) return cell.task;
+            if (agentSchedules[agent.id] && agentSchedules[agent.id][dateStr] !== undefined) return agentSchedules[agent.id][dateStr];
             if (teamSchedules[teamId] && teamSchedules[teamId][dateStr] !== undefined) return teamSchedules[teamId][dateStr];
             return 'R';
-        }
-
-        function getEffectiveAgentComment(agentId, dateStr) {
-            const cell = getAgentCellData(agentId, dateStr);
-            return cell ? cell.comment : '';
         }
 
         function calculateExtraShiftsCount(agent, teamId) {
@@ -1188,7 +1140,6 @@
                         const dateStr = formatDate(d);
                         if (!agentSchedules[agent.id]) agentSchedules[agent.id] = {};
                         const td = document.createElement('td'); 
-                        
                         const select = document.createElement('select'); 
                         select.className = 'shift-select';
                         Object.keys(TASKS).forEach(code => { 
@@ -1197,40 +1148,13 @@
                             opt.innerText = code; 
                             select.appendChild(opt); 
                         });
-                        
                         const effectiveTask = getEffectiveAgentTask(agent, team.id, dateStr); 
-                        const comment = getEffectiveAgentComment(agent.id, dateStr);
-
                         select.value = effectiveTask; 
                         applySelectStyle(select, effectiveTask);
-
-                        // Gestion du survol avec delai de 2 secondes si un commentaire est présent
-                        if (comment) {
-                            let hoverTimer = null;
-                            td.addEventListener('mouseenter', () => {
-                                hoverTimer = setTimeout(() => {
-                                    td.title = `💬 Commentaire : ${comment}`;
-                                }, 2000);
-                            });
-                            td.addEventListener('mouseleave', () => {
-                                clearTimeout(hoverTimer);
-                                td.removeAttribute('title');
-                            });
-
-                            const indicator = document.createElement('span');
-                            indicator.className = 'comment-indicator';
-                            indicator.innerText = '💬';
-                            td.appendChild(indicator);
-                        }
                         
                         if (!isReadOnly) {
                             select.addEventListener('change', (e) => {
-                                const currentComment = getEffectiveAgentComment(agent.id, dateStr);
-                                if (currentComment) {
-                                    agentSchedules[agent.id][dateStr] = { task: e.target.value, comment: currentComment };
-                                } else {
-                                    agentSchedules[agent.id][dateStr] = e.target.value;
-                                }
+                                agentSchedules[agent.id][dateStr] = e.target.value;
                                 applySelectStyle(select, e.target.value);
                                 renderAll(true);
                             });
@@ -1636,23 +1560,6 @@
             });
         }
 
-        function toggleCopySourceType() {
-            const sourceType = document.querySelector('input[name="copySourceType"]:checked').value;
-            const copyTeamGroup = document.getElementById('copyTeamGroup');
-            const copyAgentGroup = document.getElementById('copyAgentGroup');
-            const copyCommentGroup = document.getElementById('copyCommentGroup');
-
-            if (sourceType === 'team') {
-                copyTeamGroup.style.display = 'block';
-                copyAgentGroup.style.display = 'none';
-                copyCommentGroup.style.display = 'none';
-            } else {
-                copyTeamGroup.style.display = 'none';
-                copyAgentGroup.style.display = 'block';
-                copyCommentGroup.style.display = 'block';
-            }
-        }
-
         function openAgentModal(agentId) {
             if (isReadOnly) return;
             let foundAgent = null; 
@@ -1673,7 +1580,7 @@
                 boxContainer.innerHTML += `<label><input type="checkbox" value="${s.id}" ${isChecked}> ${s.name}</label>`; 
             });
 
-            // Remplir le selecteur des équipes
+            // Remplir le selecteur des équipes pour la copie de roulement
             const teamSelect = document.getElementById('copyTeamSelect');
             teamSelect.innerHTML = '';
             teams.forEach(t => {
@@ -1682,26 +1589,6 @@
                 opt.innerText = t.name;
                 teamSelect.appendChild(opt);
             });
-
-            // Remplir le selecteur des agents
-            const agentSelect = document.getElementById('copyAgentSelect');
-            agentSelect.innerHTML = '';
-            teams.forEach(t => {
-                t.agents.forEach(a => {
-                    if (a.id !== agentId) { // Exclure l'agent en cours d'édition
-                        const opt = document.createElement('option');
-                        opt.value = a.id;
-                        opt.dataset.teamId = t.id;
-                        opt.innerText = `${a.name} (${t.name})`;
-                        agentSelect.appendChild(opt);
-                    }
-                });
-            });
-
-            // Réinitialiser la sélection par défaut sur la copie d'équipe
-            document.querySelectorAll('input[name="copySourceType"]')[0].checked = true;
-            toggleCopySourceType();
-            document.getElementById('copyCommentInput').value = '';
 
             const todayStr = formatDate(startDate);
             document.getElementById('copyTeamStartDate').value = todayStr;
@@ -1728,10 +1615,10 @@
             document.getElementById('agentModal').style.display = 'flex';
         }
 
-        function applyCopySchedule() {
+        function applyCopyTeamSchedule() {
             if (isReadOnly) return;
             const agentId = document.getElementById('editAgentId').value;
-            const sourceType = document.querySelector('input[name="copySourceType"]:checked').value;
+            const teamId = document.getElementById('copyTeamSelect').value;
             const startStr = document.getElementById('copyTeamStartDate').value;
             const endStr = document.getElementById('copyTeamEndDate').value;
 
@@ -1750,46 +1637,16 @@
 
             if (!agentSchedules[agentId]) agentSchedules[agentId] = {};
 
-            if (sourceType === 'team') {
-                const teamId = document.getElementById('copyTeamSelect').value;
-                let currDate = new Date(startDateObj);
-                while (currDate <= endDateObj) {
-                    const dStr = formatDate(currDate);
-                    const teamTaskCode = teamSchedules[teamId] ? (teamSchedules[teamId][dStr] || 'R') : 'R';
-                    agentSchedules[agentId][dStr] = teamTaskCode;
-                    ensureYearExists(currDate.getFullYear());
-                    currDate.setDate(currDate.getDate() + 1);
-                }
-                alert("Le roulement de l'équipe a été copié avec succès sur l'agent pour la période sélectionnée.");
-            } else {
-                const sourceAgentId = document.getElementById('copyAgentSelect').value;
-                const comment = document.getElementById('copyCommentInput').value.trim();
-                
-                // Retrouver l'équipe de l'agent source pour fallback
-                let sourceTeamId = null;
-                teams.forEach(t => {
-                    if (t.agents.some(a => a.id === sourceAgentId)) sourceTeamId = t.id;
-                });
-
-                const sourceAgent = { id: sourceAgentId };
-
-                let currDate = new Date(startDateObj);
-                while (currDate <= endDateObj) {
-                    const dStr = formatDate(currDate);
-                    const sourceTaskCode = getEffectiveAgentTask(sourceAgent, sourceTeamId, dStr);
-                    
-                    if (comment) {
-                        agentSchedules[agentId][dStr] = { task: sourceTaskCode, comment: comment };
-                    } else {
-                        agentSchedules[agentId][dStr] = sourceTaskCode;
-                    }
-
-                    ensureYearExists(currDate.getFullYear());
-                    currDate.setDate(currDate.getDate() + 1);
-                }
-                alert("Le roulement de l'agent a été copié avec succès pour la période sélectionnée.");
+            let currDate = new Date(startDateObj);
+            while (currDate <= endDateObj) {
+                const dStr = formatDate(currDate);
+                const teamTaskCode = teamSchedules[teamId] ? (teamSchedules[teamId][dStr] || 'R') : 'R';
+                agentSchedules[agentId][dStr] = teamTaskCode;
+                ensureYearExists(currDate.getFullYear());
+                currDate.setDate(currDate.getDate() + 1);
             }
 
+            alert("Le roulement de l'équipe a été copié avec succès sur l'agent pour la période sélectionnée.");
             closeAgentModal();
             renderAll(true);
         }
