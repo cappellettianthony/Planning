@@ -130,7 +130,6 @@
         .bg-orange { background-color: var(--status-orange) !important; }
         .bg-red { background-color: var(--status-red) !important; }
 
-        /* Report de couleur d'alerte dans les en-têtes du planning */
         .header-date-badge {
             display: block;
             margin-top: 3px;
@@ -455,6 +454,7 @@
                     <option value="1">Toutes les semaines</option>
                     <option value="2">Toutes les 2 semaines</option>
                     <option value="6" selected>Toutes les 6 semaines</option>
+                    <option value="8">Toutes les 8 semaines</option>
                     <option value="12">Toutes les 12 semaines</option>
                 </select>
             </div>
@@ -503,6 +503,7 @@
                             <option value="1">Toutes les semaines</option>
                             <option value="2">Toutes les 2 semaines</option>
                             <option value="6">Toutes les 6 semaines</option>
+                            <option value="8">Toutes les 8 semaines</option>
                             <option value="12">Toutes les 12 semaines</option>
                         </select>
                     </div>
@@ -766,7 +767,6 @@
             const settingsBtn = document.getElementById('settingsBtn');
             const importBtn = document.getElementById('importBtn');
 
-            // Seul l'administrateur peut utiliser la modale de réglages
             if (settingsBtn) {
                 settingsBtn.disabled = !isAdmin;
                 settingsBtn.style.opacity = !isAdmin ? '0.5' : '1';
@@ -940,7 +940,7 @@
         }
 
         function renderAll(save = true) {
-            updateDashboard(); // Met aussi à jour les couleurs calculées par jour
+            updateDashboard();
             generateHeaders();
             generateTable();
             checkRestRulesAndAlert();
@@ -1439,7 +1439,7 @@
             const dash = document.getElementById('dashboard'); 
             dash.innerHTML = '';
             const metrics = {};
-            dailyAlertColors = {}; // Réinitialise les alertes du header
+            dailyAlertColors = {};
 
             dates.forEach(d => {
                 const dateStr = formatDate(d); 
@@ -1469,7 +1469,6 @@
                 });
             });
 
-            // Déterminer la couleur de criticité par jour (priorité au ROUGE puis ORANGE)
             dates.forEach(d => {
                 const dateStr = formatDate(d);
                 let worstStatus = 'GREEN';
@@ -1487,7 +1486,7 @@
                     skillDefinitions.forEach(s => {
                         const skCount = shiftData.skills[s.id];
                         if (skCount < s.min) {
-                            worstStatus = 'RED'; // Défaut de compétence = ROUGE
+                            worstStatus = 'RED';
                         }
                     });
                 });
@@ -1584,7 +1583,6 @@
             const startDateObj = parseDate(startStr);
             let currDate = new Date(startDateObj);
             
-            // Calcul de la date de fin en fonction du nombre d'années
             const endDateObj = new Date(startDateObj);
             endDateObj.setFullYear(endDateObj.getFullYear() + yearsDuration);
 
