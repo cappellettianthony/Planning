@@ -55,7 +55,6 @@
         .alert-banner ul { margin-top: 8px; list-style: none; }
         .alert-banner li { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px dashed #e74c3c; font-weight: normal; }
 
-        /* Conteneurs rétractables (<details>) */
         details.dashboard-wrapper, details.presence-wrapper {
             background: var(--card-bg);
             border-radius: 8px;
@@ -189,6 +188,7 @@
             box-shadow: none;
         }
 
+        /* Indicateur de commentaire présent (Triangle orange en haut à droite) */
         .has-desc-indicator {
             position: relative;
         }
@@ -578,7 +578,31 @@
                 <button class="btn btn-purple" style="width:100%; font-weight:bold; padding: 8px;" onclick="applyCopyTeamSchedule()" id="copyTeamApplyBtn">📋 Copier le roulement de l'équipe</button>
             </div>
 
-            <!-- Option B : Affecter une tâche (Période fixe ou récurrence) -->
+            <!-- Option B : Copier le roulement d'un agent existant -->
+            <div class="bulk-box" style="background-color: #fcf8e3; border-color: #f39c12;">
+                <h3 style="color: #d35400;">Copier le roulement d'un agent existant</h3>
+                <div class="form-group">
+                    <label>Agent source :</label>
+                    <select id="copyAgentSelect"></select>
+                </div>
+                <div class="form-group">
+                    <label>Commentaire associé (Optionnel - visible au survol 2s) :</label>
+                    <input type="text" id="copyAgentComment" placeholder="Ex: Copie de roulement, Remplacement...">
+                </div>
+                <div style="display:flex; gap:10px;">
+                    <div class="form-group" style="flex:1;">
+                        <label>Du :</label>
+                        <input type="date" id="copyAgentStartDate">
+                    </div>
+                    <div class="form-group" style="flex:1;">
+                        <label>Au :</label>
+                        <input type="date" id="copyAgentEndDate">
+                    </div>
+                </div>
+                <button class="btn btn-ack" style="width:100%; font-weight:bold; padding: 8px;" onclick="applyCopyAgentSchedule()" id="copyAgentApplyBtn">👤 Copier le roulement de l'agent</button>
+            </div>
+
+            <!-- Option C : Affecter une tâche (Période fixe ou récurrence) -->
             <div class="bulk-box">
                 <h3>Affecter une tâche sur une période</h3>
                 <div class="form-group">
@@ -887,7 +911,7 @@
                 importBtn.style.opacity = isReadOnly ? '0.6' : '1';
             }
 
-            const modalBtns = ['saveAgentBtn', 'bulkApplyBtn', 'copyTeamApplyBtn', 'saveSettingsBtn', 'addTaskBtn', 'applyRotationBtn', 'ackConfirmBtn', 'saveTaskModalBtn', 'clearTaskBtn'];
+            const modalBtns = ['saveAgentBtn', 'bulkApplyBtn', 'copyTeamApplyBtn', 'copyAgentApplyBtn', 'saveSettingsBtn', 'addTaskBtn', 'applyRotationBtn', 'ackConfirmBtn', 'saveTaskModalBtn', 'clearTaskBtn'];
             modalBtns.forEach(id => {
                 const btn = document.getElementById(id);
                 if (btn) {
@@ -1143,6 +1167,7 @@
             return count;
         }
 
+        // Affichage du commentaire au survol pendant 2 secondes immobiles
         function attachCellHoverEvents(element, description) {
             if (!description || !description.trim()) return;
 
@@ -1735,7 +1760,7 @@
             });
         }
 
-        /* --- FONCTIONS MODALE AGENT AVEC OPTION SANS RÉCURRENCE --- */
+        /* --- FONCTIONS MODALE AGENT AVEC OPTION AGENT SOURCE ET RÉCURRENCE --- */
         function toggleAgentRecurrenceUI() {
             const freqVal = document.getElementById('bulkAgentFreq').value;
             const endDateGroup = document.getElementById('bulkEndDateGroup');
@@ -1770,6 +1795,7 @@
                 boxContainer.innerHTML += `<label><input type="checkbox" value="${s.id}" ${isChecked}> ${s.name}</label>`; 
             });
 
+            // Population du menu déroulant d'équipes
             const teamSelect = document.getElementById('copyTeamSelect');
             teamSelect.innerHTML = '';
             teams.forEach(t => {
@@ -1779,12 +1805,31 @@
                 teamSelect.appendChild(opt);
             });
 
+            // Population du menu déroulant des agents existants
+            const agentSelect = document.getElementById('copyAgentSelect');
+            agentSelect.innerHTML = '';
+            teams.forEach(t => {
+                t.agents.forEach(a => {
+                    if (a.id !== agentId) { // Exclure l'agent cible
+                        const opt = document.createElement('option');
+                        opt.value = a.id;
+                        opt.setAttribute('data-team-id', t.id);
+                        opt.innerText = `${a.name} (${t.name})`;
+                        agentSelect.appendChild(opt);
+                    }
+                });
+            });
+
             const todayStr = formatDate(startDate);
             document.getElementById('copyTeamStartDate').value = todayStr;
+            document.getElementById('copyAgentStartDate').value = todayStr;
             
             const defaultEndDate = new Date(startDate);
             defaultEndDate.setFullYear(defaultEndDate.getFullYear() + 1);
             document.getElementById('copyTeamEndDate').value = formatDate(defaultEndDate);
+            document.getElementById('copyAgentEndDate').value = formatDate(defaultEndDate);
+
+            document.getElementById('copyAgentComment').value = '';
 
             const bulkSelect = document.getElementById('bulkAgentTask'); 
             bulkSelect.innerHTML = '';
@@ -1840,6 +1885,67 @@
             }
 
             alert("Le roulement de l'équipe a été copié avec succès sur l'agent pour la période sélectionnée.");
+            closeAgentModal();
+            renderAll(true);
+        }
+
+        // Action de copie du roulement d'un agent source vers l'agent cible
+        function applyCopyAgentSchedule() {
+            if (isReadOnly) return;
+            const agentId = document.getElementById('editAgentId').value;
+            const sourceAgentSelect = document.getElementById('copyAgentSelect');
+            const sourceAgentId = sourceAgentSelect.value;
+            const startStr = document.getElementById('copyAgentStartDate').value;
+            const endStr = document.getElementById('copyAgentEndDate').value;
+            const comment = document.getElementById('copyAgentComment').value.trim();
+
+            if (!sourceAgentId) {
+                alert("Veuillez sélectionner un agent source.");
+                return;
+            }
+
+            if (!startStr || !endStr) {
+                alert("Veuillez sélectionner une date de début et une date de fin.");
+                return;
+            }
+
+            const startDateObj = parseDate(startStr);
+            const endDateObj = parseDate(endStr);
+
+            if (startDateObj > endDateObj) {
+                alert("La date de début doit être antérieure à la date de fin.");
+                return;
+            }
+
+            // Récupérer l'équipe de l'agent source pour obtenir sa tâche effective (si aucune tâche explicite n'est enregistrée pour lui)
+            const selectedOpt = sourceAgentSelect.options[sourceAgentSelect.selectedIndex];
+            const sourceTeamId = selectedOpt ? selectedOpt.getAttribute('data-team-id') : null;
+
+            let sourceAgent = null;
+            teams.forEach(t => {
+                const a = t.agents.find(item => item.id === sourceAgentId);
+                if (a) sourceAgent = a;
+            });
+
+            if (!agentSchedules[agentId]) agentSchedules[agentId] = {};
+
+            let currDate = new Date(startDateObj);
+            while (currDate <= endDateObj) {
+                const dStr = formatDate(currDate);
+                const sourceTaskCode = getEffectiveAgentTask(sourceAgent, sourceTeamId, dStr);
+                
+                agentSchedules[agentId][dStr] = sourceTaskCode;
+                
+                const descKey = `${agentId}_${dStr}`;
+                if (comment) {
+                    taskDescriptions[descKey] = comment;
+                }
+
+                ensureYearExists(currDate.getFullYear());
+                currDate.setDate(currDate.getDate() + 1);
+            }
+
+            alert("Le roulement de l'agent a été copié avec succès sur la période sélectionnée.");
             closeAgentModal();
             renderAll(true);
         }
@@ -2014,28 +2120,31 @@
                 if (nameInput) s.name = nameInput.value; 
                 if (minInput) s.min = parseInt(minInput.value, 10) || 0; 
             });
+            
             const newTasks = {};
             document.querySelectorAll('#tasksContainer .task-row').forEach(row => {
-                const code = row.querySelector('.task-code').value.trim().toUpperCase(); 
-                const label = row.querySelector('.task-label').value.trim(); 
+                const code = row.querySelector('.task-code').value.trim().toUpperCase();
+                const label = row.querySelector('.task-label').value.trim();
                 const shift = row.querySelector('.task-shift').value;
-                const start = row.querySelector('.task-start').value; 
-                const end = row.querySelector('.task-end').value; 
+                const start = row.querySelector('.task-start').value;
+                const end = row.querySelector('.task-end').value;
                 const isRest = row.querySelector('.task-rest').checked;
-                const color = row.querySelector('.task-bg').value; 
-                const text = row.querySelector('.task-txt').value;
-                if (code) newTasks[code] = { label, color, text, shift, start, end, isRest };
+                const color = row.querySelector('.task-bg').value;
+                const textColor = row.querySelector('.task-txt').value;
+                if (code) {
+                    newTasks[code] = { label, shift, start, end, isRest, color, text: textColor };
+                }
             });
-            if (Object.keys(newTasks).length > 0) TASKS = newTasks;
 
-            settings.thresholds.M.orange = parseInt(document.getElementById('th_M_orange').value, 10) || 5; 
-            settings.thresholds.M.green = parseInt(document.getElementById('th_M_green').value, 10) || 7;
-            settings.thresholds.A.orange = parseInt(document.getElementById('th_A_orange').value, 10) || 5; 
-            settings.thresholds.A.green = parseInt(document.getElementById('th_A_green').value, 10) || 7;
-            settings.thresholds.N.orange = parseInt(document.getElementById('th_N_orange').value, 10) || 3; 
-            settings.thresholds.N.green = parseInt(document.getElementById('th_N_green').value, 10) || 5;
-            
-            closeSettings(); 
+            TASKS = newTasks;
+            settings.thresholds.M.orange = parseInt(document.getElementById('th_M_orange').value, 10) || 0;
+            settings.thresholds.M.green = parseInt(document.getElementById('th_M_green').value, 10) || 0;
+            settings.thresholds.A.orange = parseInt(document.getElementById('th_A_orange').value, 10) || 0;
+            settings.thresholds.A.green = parseInt(document.getElementById('th_A_green').value, 10) || 0;
+            settings.thresholds.N.orange = parseInt(document.getElementById('th_N_orange').value, 10) || 0;
+            settings.thresholds.N.green = parseInt(document.getElementById('th_N_green').value, 10) || 0;
+
+            closeSettings();
             renderAll(true);
         }
 
@@ -2049,7 +2158,6 @@
                 if (y === currentYear) opt.selected = true;
                 printYearSelect.appendChild(opt);
             }
-            document.getElementById('printMonth').value = new Date().getMonth();
             document.getElementById('printModal').style.display = 'flex';
         }
 
@@ -2058,72 +2166,76 @@
         }
 
         function generateAndPrintMonth() {
-            const selectedMonth = parseInt(document.getElementById('printMonth').value, 10);
-            const selectedYear = parseInt(document.getElementById('printYear').value, 10);
+            const month = parseInt(document.getElementById('printMonth').value, 10);
+            const year = parseInt(document.getElementById('printYear').value, 10);
 
-            const daysInMonth = new Date(selectedYear, selectedMonth + 1, 0).getDate();
-            const monthDates = [];
-            for (let day = 1; day <= daysInMonth; day++) {
-                monthDates.push(new Date(selectedYear, selectedMonth, day));
-            }
+            const firstDay = new Date(year, month, 1);
+            const lastDay = new Date(year, month + 1, 0);
+            const totalDays = lastDay.getDate();
 
-            const monthNames = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
-            
-            let html = `
-                <div style="padding: 10px;">
-                    <h2 style="text-align:center; margin-bottom: 10px;">Planning Opérationnel — ${monthNames[selectedMonth]} ${selectedYear}</h2>
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Équipe / Agent</th>
-                                <th>Compétences</th>
+            const monthName = firstDay.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+
+            let printHtml = `
+                <div style="text-align: center; margin-bottom: 10px;">
+                    <h2>Planning Opérationnel — ${monthName.toUpperCase()}</h2>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width: 140px;">Équipe / Agent</th>
+                            <th style="width: 120px;">Compétences</th>
             `;
 
-            monthDates.forEach(d => {
-                const dayName = d.toLocaleDateString('fr-FR', { weekday: 'short' });
-                const dayNum = String(d.getDate()).padStart(2, '0');
-                html += `<th>${dayName}<br>${dayNum}</th>`;
-            });
-
-            html += `</tr></thead><tbody>`;
+            for (let d = 1; d <= totalDays; d++) {
+                const dateObj = new Date(year, month, d);
+                const dayName = dateObj.toLocaleDateString('fr-FR', { weekday: 'narrow' });
+                printHtml += `<th>${dayName}<br>${d}</th>`;
+            }
+            printHtml += `</tr></thead><tbody>`;
 
             teams.forEach(team => {
-                html += `<tr style="background-color: #eee; font-weight: bold;">`;
-                html += `<td style="text-align: left;">${team.name}</td><td>Roulement</td>`;
-                monthDates.forEach(d => {
-                    const dStr = formatDate(d);
+                printHtml += `
+                    <tr style="background-color: #eee; font-weight: bold;">
+                        <td style="text-align: left; padding-left: 5px;">${team.name}</td>
+                        <td style="font-size: 6pt; font-style: italic;">Roulement d'équipe</td>
+                `;
+
+                for (let d = 1; d <= totalDays; d++) {
+                    const dateObj = new Date(year, month, d);
+                    const dStr = formatDate(dateObj);
                     const taskCode = teamSchedules[team.id] ? (teamSchedules[team.id][dStr] || 'R') : 'R';
-                    const task = TASKS[taskCode] || TASKS['R'];
-                    html += `<td style="background-color: ${task.color} !important; color: ${task.text} !important; font-weight: bold;">${taskCode}</td>`;
-                });
-                html += `</tr>`;
+                    const taskDef = TASKS[taskCode] || TASKS['R'];
+                    printHtml += `<td style="background-color: ${taskDef.color}; color: ${taskDef.text}; font-weight: bold;">${taskCode}</td>`;
+                }
+                printHtml += `</tr>`;
 
                 team.agents.forEach(agent => {
-                    html += `<tr>`;
-                    html += `<td style="text-align: left; padding-left: 10px;">${agent.name}</td>`;
-                    
-                    let skillNames = (agent.skills || []).map(sId => {
-                        const def = skillDefinitions.find(s => s.id === sId);
-                        return def ? def.name : sId;
-                    }).join(', ');
-                    
-                    html += `<td style="font-size: 6pt;">${skillNames || '-'}</td>`;
+                    let skillsStr = (agent.skills || []).join(', ');
+                    printHtml += `
+                        <tr>
+                            <td style="text-align: left; padding-left: 10px;">${agent.name}</td>
+                            <td style="font-size: 6pt;">${skillsStr}</td>
+                    `;
 
-                    monthDates.forEach(d => {
-                        const dStr = formatDate(d);
-                        const taskCode = getEffectiveAgentTask(agent, team.id, dStr);
-                        const task = TASKS[taskCode] || TASKS['R'];
-                        html += `<td style="background-color: ${task.color} !important; color: ${task.text} !important; font-weight: bold;">${taskCode}</td>`;
-                    });
-                    html += `</tr>`;
+                    for (let d = 1; d <= totalDays; d++) {
+                        const dateObj = new Date(year, month, d);
+                        const dStr = formatDate(dateObj);
+                        const effectiveTask = getEffectiveAgentTask(agent, team.id, dStr);
+                        const taskDef = TASKS[effectiveTask] || TASKS['R'];
+                        printHtml += `<td style="background-color: ${taskDef.color}; color: ${taskDef.text}; font-weight: bold;">${effectiveTask}</td>`;
+                    }
+                    printHtml += `</tr>`;
                 });
             });
 
-            html += `</tbody></table></div>`;
+            printHtml += `</tbody></table>`;
 
-            document.getElementById('printSection').innerHTML = html;
+            document.getElementById('printSection').innerHTML = printHtml;
             closePrintModal();
-            window.print();
+
+            setTimeout(() => {
+                window.print();
+            }, 300);
         }
 
         window.onload = init;
