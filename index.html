@@ -486,16 +486,38 @@
                 <div class="checkbox-group" id="skillsCheckboxes"></div>
             </div>
             <div class="bulk-box">
-                <h3>Affecter un statut sur la ligne</h3>
+                <h3>Affecter une tâche avec récurrence sur l'agent</h3>
                 <div class="form-group">
-                    <label>Statut :</label>
+                    <label>Tâche / Statut :</label>
                     <select id="bulkAgentTask"></select>
                 </div>
-                <div style="display:flex; gap:10px;">
-                    <div class="form-group" style="flex:1;"><label>Du :</label><input type="date" id="bulkStartDate"></div>
-                    <div class="form-group" style="flex:1;"><label>Au :</label><input type="date" id="bulkEndDate"></div>
+                <div class="form-group">
+                    <label>Date de début :</label>
+                    <input type="date" id="bulkStartDate">
                 </div>
-                <button class="btn btn-secondary" style="width:100%;" onclick="applyBulkAgentTask()" id="bulkApplyBtn">Appliquer sur la période</button>
+                <div style="display:flex; gap:10px;">
+                    <div class="form-group" style="flex:1;">
+                        <label>Occurrence / Fréquence :</label>
+                        <select id="bulkAgentFreq">
+                            <option value="1_DAY" selected>Tous les jours</option>
+                            <option value="1">Toutes les semaines</option>
+                            <option value="2">Toutes les 2 semaines</option>
+                            <option value="6">Toutes les 6 semaines</option>
+                            <option value="12">Toutes les 12 semaines</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="flex:1;">
+                        <label>Durée de récurrence :</label>
+                        <select id="bulkAgentDuration">
+                            <option value="1" selected>Sur 1 an</option>
+                            <option value="2">Sur 2 ans</option>
+                            <option value="3">Sur 3 ans</option>
+                            <option value="4">Sur 4 ans</option>
+                            <option value="5">Sur 5 ans</option>
+                        </select>
+                    </div>
+                </div>
+                <button class="btn btn-secondary" style="width:100%; font-weight:bold; padding: 8px;" onclick="applyBulkAgentTask()" id="bulkApplyBtn">Appliquer la récurrence</button>
             </div>
             <div class="modal-actions">
                 <button class="btn btn-secondary" onclick="closeAgentModal()">Annuler</button>
@@ -1536,9 +1558,9 @@
             });
 
             document.getElementById('bulkStartDate').value = formatDate(startDate);
-            const endDateDefault = new Date(startDate); 
-            endDateDefault.setDate(endDateDefault.getDate() + 13);
-            document.getElementById('bulkEndDate').value = formatDate(endDateDefault);
+            document.getElementById('bulkAgentFreq').value = '1_DAY';
+            document.getElementById('bulkAgentDuration').value = '1';
+
             document.getElementById('agentModal').style.display = 'flex';
         }
         
@@ -1551,26 +1573,41 @@
             const agentId = document.getElementById('editAgentId').value; 
             const taskCode = document.getElementById('bulkAgentTask').value;
             const startStr = document.getElementById('bulkStartDate').value; 
-            const endStr = document.getElementById('bulkEndDate').value;
-            if (!startStr || !endStr) { 
-                alert("Veuillez sélectionner une date de début et une date de fin."); 
-                return; 
-            }
-            const curr = parseDate(startStr); 
-            const end = parseDate(endStr);
-            if (curr > end) { 
-                alert("La date de début doit être antérieure à la date de fin."); 
+            const freqVal = document.getElementById('bulkAgentFreq').value;
+            const yearsDuration = parseInt(document.getElementById('bulkAgentDuration').value, 10);
+
+            if (!startStr) { 
+                alert("Veuillez sélectionner une date de début."); 
                 return; 
             }
 
+            const startDateObj = parseDate(startStr);
+            let currDate = new Date(startDateObj);
+            
+            // Calcul de la date de fin en fonction du nombre d'années
+            const endDateObj = new Date(startDateObj);
+            endDateObj.setFullYear(endDateObj.getFullYear() + yearsDuration);
+
             if (!agentSchedules[agentId]) agentSchedules[agentId] = {};
-            while (curr <= end) {
-                const dStr = formatDate(curr); 
-                agentSchedules[agentId][dStr] = taskCode; 
-                ensureYearExists(curr.getFullYear()); 
-                curr.setDate(curr.getDate() + 1);
+
+            if (freqVal === '1_DAY') {
+                while (currDate < endDateObj) {
+                    const dStr = formatDate(currDate);
+                    agentSchedules[agentId][dStr] = taskCode;
+                    ensureYearExists(currDate.getFullYear());
+                    currDate.setDate(currDate.getDate() + 1);
+                }
+            } else {
+                const stepWeeks = parseInt(freqVal, 10);
+                while (currDate < endDateObj) {
+                    const dStr = formatDate(currDate);
+                    agentSchedules[agentId][dStr] = taskCode;
+                    ensureYearExists(currDate.getFullYear());
+                    currDate.setDate(currDate.getDate() + (stepWeeks * 7));
+                }
             }
-            alert(`Le statut ${taskCode} a été appliqué.`); 
+
+            alert(`La tâche ${taskCode} a été appliquée récursivement avec succès.`); 
             closeAgentModal(); 
             renderAll(true);
         }
