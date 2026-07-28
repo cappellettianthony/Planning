@@ -268,8 +268,20 @@
             body * { visibility: hidden; }
             #printSection, #printSection * { visibility: visible; }
             #printSection { position: absolute; left: 0; top: 0; width: 100%; }
-            #printSection table { width: 100%; border-collapse: collapse; font-size: 7pt; }
-            #printSection th, #printSection td { border: 1px solid #000; padding: 2px; text-align: center; }
+            #printSection table { 
+                width: 100%; 
+                border-collapse: collapse; 
+                font-size: 7pt; 
+                -webkit-print-color-adjust: exact !important; 
+                print-color-adjust: exact !important; 
+            }
+            #printSection th, #printSection td { 
+                border: 1px solid #000; 
+                padding: 2px; 
+                text-align: center; 
+                -webkit-print-color-adjust: exact !important; 
+                print-color-adjust: exact !important; 
+            }
             #printSection th { background-color: #ddd !important; color: #000 !important; }
             @page { size: landscape; margin: 5mm; }
         }
@@ -1783,7 +1795,7 @@
                     const dStr = formatDate(d);
                     const taskCode = teamSchedules[team.id] ? (teamSchedules[team.id][dStr] || 'R') : 'R';
                     const task = TASKS[taskCode] || TASKS['R'];
-                    html += `<td style="background-color: ${task.color}; color: ${task.text}; font-weight: bold;">${taskCode}</td>`;
+                    html += `<td style="background-color: ${task.color} !important; color: ${task.text} !important; font-weight: bold;">${taskCode}</td>`;
                 });
                 html += `</tr>`;
 
@@ -1802,7 +1814,7 @@
                         const dStr = formatDate(d);
                         const taskCode = getEffectiveAgentTask(agent, team.id, dStr);
                         const task = TASKS[taskCode] || TASKS['R'];
-                        html += `<td style="background-color: ${task.color}; color: ${task.text}; font-weight: bold;">${taskCode}</td>`;
+                        html += `<td style="background-color: ${task.color} !important; color: ${task.text} !important; font-weight: bold;">${taskCode}</td>`;
                     });
                     html += `</tr>`;
                 });
