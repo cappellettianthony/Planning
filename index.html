@@ -188,7 +188,6 @@
             box-shadow: none;
         }
 
-        /* Indicateur de commentaire présent (Triangle orange en haut à droite) */
         .has-desc-indicator {
             position: relative;
         }
@@ -272,7 +271,10 @@
         .task-row input[type="color"] { padding: 0; height: 26px; cursor: pointer; }
 
         .task-header { display: grid; grid-template-columns: 50px 110px 100px 75px 75px 55px 35px 35px 30px; gap: 4px; font-weight: bold; font-size: 0.7rem; color: var(--primary); margin-bottom: 5px; text-align: center; }
-        .skill-config-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 8px; }
+
+        .skill-config-row { display: grid; grid-template-columns: 60px 1fr 100px 80px 30px; gap: 8px; align-items: center; margin-bottom: 6px; font-size: 0.8rem; }
+        .skill-config-row input { padding: 4px; font-size: 0.8rem; }
+        .skill-config-row input[type="color"] { padding: 0; height: 28px; cursor: pointer; }
 
         .archive-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; margin-top: 10px; }
         .archive-table th, .archive-table td { border: 1px solid #ddd; padding: 8px; text-align: left; }
@@ -662,11 +664,15 @@
     <div class="modal" id="settingsModal">
         <div class="modal-content">
             <h2>Paramétrage Général (Accès Administrateur)</h2>
-            <h3>1. Intitulés et Minimas</h3><div id="skillsConfigContainer"></div>
+            <h3>1. Intitulés et Minimas des Compétences</h3>
+            <div id="skillsConfigContainer"></div>
+            <button class="btn btn-secondary" style="margin-top: 5px; font-size: 0.75rem; margin-bottom: 15px;" onclick="addSkillRow()" id="addSkillBtn">+ Ajouter une compétence</button>
+
             <h3>2. Gestion des Tâches</h3>
             <div class="task-header"><span>Code</span><span>Libellé</span><span>Quart</span><span>Début</span><span>Fin</span><span>Repos?</span><span>Fond</span><span>Texte</span><span></span></div>
             <div id="tasksContainer"></div>
             <button class="btn btn-secondary" style="margin-top: 5px; font-size: 0.75rem;" onclick="addTaskRow()" id="addTaskBtn">+ Ajouter une tâche</button>
+            
             <h3>3. Seuils d'Effectifs Globaux</h3>
             <div class="form-group"><label>Matin (Or / Vert)</label><div style="display:flex; gap:10px;"><input type="number" id="th_M_orange" value="5"><input type="number" id="th_M_green" value="7"></div></div>
             <div class="form-group"><label>Après-midi (Or / Vert)</label><div style="display:flex; gap:10px;"><input type="number" id="th_A_orange" value="5"><input type="number" id="th_A_green" value="7"></div></div>
@@ -911,7 +917,7 @@
                 importBtn.style.opacity = isReadOnly ? '0.6' : '1';
             }
 
-            const modalBtns = ['saveAgentBtn', 'bulkApplyBtn', 'copyTeamApplyBtn', 'copyAgentApplyBtn', 'saveSettingsBtn', 'addTaskBtn', 'applyRotationBtn', 'ackConfirmBtn', 'saveTaskModalBtn', 'clearTaskBtn'];
+            const modalBtns = ['saveAgentBtn', 'bulkApplyBtn', 'copyTeamApplyBtn', 'copyAgentApplyBtn', 'saveSettingsBtn', 'addTaskBtn', 'addSkillBtn', 'applyRotationBtn', 'ackConfirmBtn', 'saveTaskModalBtn', 'clearTaskBtn'];
             modalBtns.forEach(id => {
                 const btn = document.getElementById(id);
                 if (btn) {
@@ -1137,6 +1143,25 @@
             });
         }
 
+        function renderSkillBadges(container, agentSkills) {
+            container.innerHTML = '';
+            if (!agentSkills || agentSkills.length === 0) {
+                container.innerHTML = '<span class="badge-none">Aucune</span>';
+                return;
+            }
+            agentSkills.forEach(sId => {
+                const sk = skillDefinitions.find(s => s.id === sId);
+                if (sk) {
+                    const span = document.createElement('span');
+                    span.className = 'badge';
+                    span.style.backgroundColor = sk.color;
+                    span.innerText = sk.id;
+                    span.title = sk.name;
+                    container.appendChild(span);
+                }
+            });
+        }
+
         function getEffectiveAgentTask(agent, teamId, dateStr) {
             if (agentSchedules[agent.id] && agentSchedules[agent.id][dateStr] !== undefined) return agentSchedules[agent.id][dateStr];
             if (teamSchedules[teamId] && teamSchedules[teamId][dateStr] !== undefined) return teamSchedules[teamId][dateStr];
@@ -1167,7 +1192,6 @@
             return count;
         }
 
-        // Affichage du commentaire au survol pendant 2 secondes immobiles
         function attachCellHoverEvents(element, description) {
             if (!description || !description.trim()) return;
 
@@ -1194,6 +1218,88 @@
                 clearTimeout(cellHoverTimer);
                 const tooltip = document.getElementById('customTooltip');
                 tooltip.style.display = 'none';
+            });
+        }
+
+        function updateDashboard() {
+            const dashboard = document.getElementById('dashboard');
+            dashboard.innerHTML = '';
+            const dates = getVisibleDates();
+            dailyAlertColors = {};
+
+            const shifts = [
+                { id: 'M', name: 'Matin' },
+                { id: 'A', name: 'Après-Midi' },
+                { id: 'N', name: 'Nuit' }
+            ];
+
+            shifts.forEach(shift => {
+                const card = document.createElement('div');
+                card.className = 'kpi-card';
+                card.innerHTML = `<h3>Quart de ${shift.name}</h3>`;
+                const grid = document.createElement('div');
+                grid.className = 'kpi-grid';
+
+                dates.forEach(d => {
+                    const dateStr = formatDate(d);
+                    let count = 0;
+                    let skillCounts = {};
+                    skillDefinitions.forEach(s => skillCounts[s.id] = 0);
+
+                    teams.forEach(team => {
+                        team.agents.forEach(agent => {
+                            const taskCode = getEffectiveAgentTask(agent, team.id, dateStr);
+                            const task = TASKS[taskCode] || TASKS['R'];
+                            if (task.shift === shift.id) {
+                                count++;
+                                (agent.skills || []).forEach(sId => {
+                                    if (skillCounts[sId] !== undefined) skillCounts[sId]++;
+                                });
+                            }
+                        });
+                    });
+
+                    const th = settings.thresholds[shift.id] || { orange: 5, green: 7 };
+                    let statusClass = 'bg-red';
+                    if (count >= th.green) statusClass = 'bg-green';
+                    else if (count >= th.orange) statusClass = 'bg-orange';
+
+                    if (statusClass === 'bg-red') {
+                        dailyAlertColors[dateStr] = 'RED';
+                    } else if (statusClass === 'bg-orange' && dailyAlertColors[dateStr] !== 'RED') {
+                        dailyAlertColors[dateStr] = 'ORANGE';
+                    } else if (!dailyAlertColors[dateStr]) {
+                        dailyAlertColors[dateStr] = 'GREEN';
+                    }
+
+                    const block = document.createElement('div');
+                    block.className = 'kpi-block';
+                    const dayName = d.toLocaleDateString('fr-FR', { weekday: 'short' }).slice(0, 3);
+                    const dayNum = d.getDate();
+
+                    let skillsHtml = '<div class="skill-list">';
+                    skillDefinitions.forEach(s => {
+                        const sCount = skillCounts[s.id] || 0;
+                        const sMin = s.min !== undefined ? s.min : 1;
+                        let sClass = sCount >= sMin ? 'bg-green' : 'bg-red';
+                        
+                        if (sClass === 'bg-red') {
+                            dailyAlertColors[dateStr] = 'RED';
+                        }
+
+                        skillsHtml += `<div class="skill-item ${sClass}"><span>${s.id}</span><span>${sCount}/${sMin}</span></div>`;
+                    });
+                    skillsHtml += '</div>';
+
+                    block.innerHTML = `
+                        <div class="kpi-day">${dayName} ${dayNum}</div>
+                        <div class="kpi-val ${statusClass}">${count}</div>
+                        ${skillsHtml}
+                    `;
+                    grid.appendChild(block);
+                });
+                card.appendChild(grid);
+                dashboard.appendChild(card);
             });
         }
 
@@ -1619,154 +1725,101 @@
             const baseDate = parseDate(dateStr); 
             let currDate = new Date(baseDate);
 
-            const endDate = new Date(baseDate); 
-            endDate.setDate(endDate.getDate() + (durationWeeks * 7));
+            if (!teamSchedules[teamId]) teamSchedules[teamId] = {};
+
+            let intervalDays = 1;
+            let totalSteps = durationWeeks * 7;
 
             if (freqVal === '1_DAY') {
-                while (currDate <= endDate) {
-                    const dStr = formatDate(currDate);
-                    if (!teamSchedules[teamId]) teamSchedules[teamId] = {}; 
-                    teamSchedules[teamId][dStr] = taskCode;
-                    ensureYearExists(currDate.getFullYear()); 
-                    currDate.setDate(currDate.getDate() + 1);
-                }
+                intervalDays = 1;
             } else {
-                const weeksStep = parseInt(freqVal, 10);
-                while (currDate <= endDate) {
-                    const dStr = formatDate(currDate);
-                    if (!teamSchedules[teamId]) teamSchedules[teamId] = {}; 
-                    teamSchedules[teamId][dStr] = taskCode;
-                    ensureYearExists(currDate.getFullYear()); 
-                    currDate.setDate(currDate.getDate() + (weeksStep * 7));
-                }
+                intervalDays = parseInt(freqVal, 10) * 7;
+                totalSteps = Math.floor((durationWeeks * 7) / intervalDays);
             }
 
-            pendingRotation = null;
-            document.getElementById('repeatModal').style.display = 'none';
+            for (let i = 0; i < totalSteps; i++) {
+                const targetStr = formatDate(currDate);
+                teamSchedules[teamId][targetStr] = taskCode;
+                currDate.setDate(currDate.getDate() + intervalDays);
+            }
+
+            closeRepeatModal();
             renderAll(true);
         }
 
-        function renderSkillBadges(container, agentSkillIds) {
-            container.innerHTML = '';
-            if (!Array.isArray(agentSkillIds) || agentSkillIds.length === 0) {
-                const span = document.createElement('span');
-                span.className = 'badge-none';
-                span.innerText = 'Aucune';
-                container.appendChild(span);
-                return;
-            }
+        function openAgentModal(agentId) {
+            if (isReadOnly) return;
+            let targetAgent = null;
+            let targetTeam = null;
 
-            agentSkillIds.forEach(sId => {
-                const def = skillDefinitions.find(s => s.id === sId);
-                if (def) { 
-                    const span = document.createElement('span'); 
-                    span.className = 'badge'; 
-                    span.style.backgroundColor = def.color; 
-                    span.innerText = def.name; 
-                    container.appendChild(span); 
-                }
+            teams.forEach(t => {
+                const a = t.agents.find(ag => ag.id === agentId);
+                if (a) { targetAgent = a; targetTeam = t; }
             });
+
+            if (!targetAgent) return;
+
+            document.getElementById('editAgentId').value = agentId;
+            document.getElementById('editAgentName').value = targetAgent.name;
+
+            const skillsContainer = document.getElementById('skillsCheckboxes');
+            skillsContainer.innerHTML = '';
+            skillDefinitions.forEach(sk => {
+                const checked = targetAgent.skills.includes(sk.id) ? 'checked' : '';
+                skillsContainer.innerHTML += `<label><input type="checkbox" value="${sk.id}" ${checked}> <span class="badge" style="background-color:${sk.color}">${sk.id}</span> ${sk.name}</label>`;
+            });
+
+            const teamSelect = document.getElementById('copyTeamSelect');
+            teamSelect.innerHTML = '';
+            teams.forEach(t => {
+                teamSelect.innerHTML += `<option value="${t.id}">${t.name}</option>`;
+            });
+
+            const agentSelect = document.getElementById('copyAgentSelect');
+            agentSelect.innerHTML = '';
+            teams.forEach(t => {
+                t.agents.forEach(a => {
+                    if (a.id !== agentId) {
+                        agentSelect.innerHTML += `<option value="${a.id}">${a.name} (${t.name})</option>`;
+                    }
+                });
+            });
+
+            const defaultStart = `${currentYear}-01-01`;
+            const defaultEnd = `${currentYear}-12-31`;
+
+            document.getElementById('copyTeamStartDate').value = defaultStart;
+            document.getElementById('copyTeamEndDate').value = defaultEnd;
+            document.getElementById('copyAgentStartDate').value = defaultStart;
+            document.getElementById('copyAgentEndDate').value = defaultEnd;
+            document.getElementById('copyAgentComment').value = '';
+
+            const taskSelect = document.getElementById('bulkAgentTask');
+            taskSelect.innerHTML = '';
+            Object.keys(TASKS).forEach(code => {
+                taskSelect.innerHTML += `<option value="${code}">${code} - ${TASKS[code].label}</option>`;
+            });
+
+            document.getElementById('bulkAgentDesc').value = '';
+            document.getElementById('bulkStartDate').value = defaultStart;
+            document.getElementById('bulkEndDate').value = defaultEnd;
+            document.getElementById('bulkAgentFreq').value = 'NONE';
+            document.getElementById('bulkAgentDuration').value = '1';
+            toggleAgentRecurrenceUI();
+
+            document.getElementById('agentModal').style.display = 'flex';
         }
 
-        function updateDashboard() {
-            const dates = getVisibleDates(); 
-            const dash = document.getElementById('dashboard'); 
-            dash.innerHTML = '';
-            const metrics = {};
-            dailyAlertColors = {};
-
-            dates.forEach(d => {
-                const dateStr = formatDate(d); 
-                metrics[dateStr] = { M: { total: 0, skills: {} }, A: { total: 0, skills: {} }, N: { total: 0, skills: {} } };
-                ['M', 'A', 'N'].forEach(sh => { 
-                    skillDefinitions.forEach(s => metrics[dateStr][sh].skills[s.id] = 0); 
-                });
-            });
-
-            teams.forEach(team => {
-                team.agents.forEach(agent => {
-                    dates.forEach(d => {
-                        const dateStr = formatDate(d); 
-                        const taskCode = getEffectiveAgentTask(agent, team.id, dateStr); 
-                        const task = TASKS[taskCode] || TASKS['R']; 
-                        const shiftType = task.shift;
-                        if (['M', 'A', 'N'].includes(shiftType)) {
-                            metrics[dateStr][shiftType].total++;
-                            if (Array.isArray(agent.skills)) {
-                                agent.skills.forEach(sId => { 
-                                    if (metrics[dateStr][shiftType].skills[sId] !== undefined) 
-                                        metrics[dateStr][shiftType].skills[sId]++; 
-                                });
-                            }
-                        }
-                    });
-                });
-            });
-
-            dates.forEach(d => {
-                const dateStr = formatDate(d);
-                let worstStatus = 'GREEN';
-
-                ['M', 'A', 'N'].forEach(shift => {
-                    const shiftData = metrics[dateStr][shift];
-                    const count = shiftData.total;
-
-                    if (count < settings.thresholds[shift].orange) {
-                        worstStatus = 'RED';
-                    } else if (count < settings.thresholds[shift].green && worstStatus !== 'RED') {
-                        worstStatus = 'ORANGE';
-                    }
-
-                    skillDefinitions.forEach(s => {
-                        const skCount = shiftData.skills[s.id];
-                        if (skCount < s.min) {
-                            worstStatus = 'RED';
-                        }
-                    });
-                });
-
-                dailyAlertColors[dateStr] = worstStatus;
-            });
-
-            ['M', 'A', 'N'].forEach(shift => {
-                const shiftNames = { M: 'Quart du Matin', A: 'Quart de l\'Après-Midi', N: 'Quart de Nuit' };
-                const card = document.createElement('div'); 
-                card.className = 'kpi-card';
-                let html = `<h3>${shiftNames[shift]} — Effectifs & Compétences</h3><div class="kpi-grid">`;
-                
-                dates.forEach(d => {
-                    const dateStr = formatDate(d); 
-                    const shiftData = metrics[dateStr][shift]; 
-                    const count = shiftData.total;
-                    const dayLabel = d.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric' });
-                    let bgClass = 'bg-green'; 
-                    if (count < settings.thresholds[shift].orange) { 
-                        bgClass = 'bg-red'; 
-                    } else if (count < settings.thresholds[shift].green) { 
-                        bgClass = 'bg-orange'; 
-                    }
-
-                    html += `<div class="kpi-block"><div class="kpi-day">${dayLabel}</div><div class="kpi-val ${bgClass}" title="Total agents">${count}</div><div class="skill-list">`;
-                    skillDefinitions.forEach(s => {
-                        const skCount = shiftData.skills[s.id]; 
-                        const skClass = skCount < s.min ? 'bg-red' : 'bg-green';
-                        html += `<div class="skill-item ${skClass}" title="${s.name} : ${skCount}/${s.min}"><span>${s.name.substring(0, 3)}.</span><span>${skCount}</span></div>`;
-                    });
-                    html += `</div></div>`;
-                });
-                html += `</div>`; 
-                card.innerHTML = html; 
-                dash.appendChild(card);
-            });
+        function closeAgentModal() {
+            document.getElementById('agentModal').style.display = 'none';
         }
 
-        /* --- FONCTIONS MODALE AGENT AVEC OPTION AGENT SOURCE ET RÉCURRENCE --- */
         function toggleAgentRecurrenceUI() {
-            const freqVal = document.getElementById('bulkAgentFreq').value;
+            const freq = document.getElementById('bulkAgentFreq').value;
             const endDateGroup = document.getElementById('bulkEndDateGroup');
             const durationGroup = document.getElementById('bulkDurationGroup');
 
-            if (freqVal === 'NONE') {
+            if (freq === 'NONE') {
                 endDateGroup.style.display = 'block';
                 durationGroup.style.display = 'none';
             } else {
@@ -1775,389 +1828,346 @@
             }
         }
 
-        function openAgentModal(agentId) {
+        function saveAgent() {
             if (isReadOnly) return;
-            let foundAgent = null; 
-            teams.forEach(t => { 
-                const a = t.agents.find(item => item.id === agentId); 
-                if (a) foundAgent = a; 
-            });
-            if (!foundAgent) return;
+            const agentId = document.getElementById('editAgentId').value;
+            const newName = document.getElementById('editAgentName').value.trim();
 
-            document.getElementById('editAgentId').value = foundAgent.id; 
-            document.getElementById('editAgentName').value = foundAgent.name;
-            const boxContainer = document.getElementById('skillsCheckboxes'); 
-            boxContainer.innerHTML = '';
-            
-            const agentSkills = Array.isArray(foundAgent.skills) ? foundAgent.skills : [];
-            skillDefinitions.forEach(s => { 
-                const isChecked = agentSkills.includes(s.id) ? 'checked' : ''; 
-                boxContainer.innerHTML += `<label><input type="checkbox" value="${s.id}" ${isChecked}> ${s.name}</label>`; 
+            const selectedSkills = [];
+            document.querySelectorAll('#skillsCheckboxes input[type="checkbox"]:checked').forEach(cb => {
+                selectedSkills.push(cb.value);
             });
 
-            // Population du menu déroulant d'équipes
-            const teamSelect = document.getElementById('copyTeamSelect');
-            teamSelect.innerHTML = '';
             teams.forEach(t => {
-                const opt = document.createElement('option');
-                opt.value = t.id;
-                opt.innerText = t.name;
-                teamSelect.appendChild(opt);
+                const a = t.agents.find(ag => ag.id === agentId);
+                if (a) {
+                    a.name = newName;
+                    a.skills = selectedSkills;
+                }
             });
 
-            // Population du menu déroulant des agents existants
-            const agentSelect = document.getElementById('copyAgentSelect');
-            agentSelect.innerHTML = '';
-            teams.forEach(t => {
-                t.agents.forEach(a => {
-                    if (a.id !== agentId) { // Exclure l'agent cible
-                        const opt = document.createElement('option');
-                        opt.value = a.id;
-                        opt.setAttribute('data-team-id', t.id);
-                        opt.innerText = `${a.name} (${t.name})`;
-                        agentSelect.appendChild(opt);
-                    }
-                });
-            });
-
-            const todayStr = formatDate(startDate);
-            document.getElementById('copyTeamStartDate').value = todayStr;
-            document.getElementById('copyAgentStartDate').value = todayStr;
-            
-            const defaultEndDate = new Date(startDate);
-            defaultEndDate.setFullYear(defaultEndDate.getFullYear() + 1);
-            document.getElementById('copyTeamEndDate').value = formatDate(defaultEndDate);
-            document.getElementById('copyAgentEndDate').value = formatDate(defaultEndDate);
-
-            document.getElementById('copyAgentComment').value = '';
-
-            const bulkSelect = document.getElementById('bulkAgentTask'); 
-            bulkSelect.innerHTML = '';
-            Object.keys(TASKS).forEach(code => {
-                const opt = document.createElement('option'); 
-                opt.value = code; 
-                opt.innerText = `${code} - ${TASKS[code].label}`;
-                if (code === 'OFF') opt.selected = true; 
-                bulkSelect.appendChild(opt);
-            });
-
-            document.getElementById('bulkAgentDesc').value = '';
-            document.getElementById('bulkStartDate').value = todayStr;
-            document.getElementById('bulkEndDate').value = todayStr;
-            
-            document.getElementById('bulkAgentFreq').value = 'NONE';
-            document.getElementById('bulkAgentDuration').value = '1';
-            
-            toggleAgentRecurrenceUI();
-
-            document.getElementById('agentModal').style.display = 'flex';
+            closeAgentModal();
+            renderAll(true);
         }
 
         function applyCopyTeamSchedule() {
             if (isReadOnly) return;
             const agentId = document.getElementById('editAgentId').value;
-            const teamId = document.getElementById('copyTeamSelect').value;
+            const sourceTeamId = document.getElementById('copyTeamSelect').value;
             const startStr = document.getElementById('copyTeamStartDate').value;
             const endStr = document.getElementById('copyTeamEndDate').value;
 
-            if (!startStr || !endStr) {
-                alert("Veuillez sélectionner une date de début et une date de fin.");
-                return;
-            }
+            if (!startStr || !endStr) { alert("Veuillez sélectionner les dates de début et de fin."); return; }
 
             const startDateObj = parseDate(startStr);
             const endDateObj = parseDate(endStr);
 
-            if (startDateObj > endDateObj) {
-                alert("La date de début doit être antérieure à la date de fin.");
-                return;
-            }
+            if (startDateObj > endDateObj) { alert("La date de début doit être antérieure à la date de fin."); return; }
 
             if (!agentSchedules[agentId]) agentSchedules[agentId] = {};
+            if (!teamSchedules[sourceTeamId]) teamSchedules[sourceTeamId] = {};
 
-            let currDate = new Date(startDateObj);
-            while (currDate <= endDateObj) {
-                const dStr = formatDate(currDate);
-                const teamTaskCode = teamSchedules[teamId] ? (teamSchedules[teamId][dStr] || 'R') : 'R';
-                agentSchedules[agentId][dStr] = teamTaskCode;
-                ensureYearExists(currDate.getFullYear());
-                currDate.setDate(currDate.getDate() + 1);
-            }
+            let curr = new Date(startDateObj);
+            while (curr <= endDateObj) {
+                const dStr = formatDate(curr);
+                const teamTask = teamSchedules[sourceTeamId][dStr] || 'R';
+                agentSchedules[agentId][dStr] = teamTask;
 
-            alert("Le roulement de l'équipe a été copié avec succès sur l'agent pour la période sélectionnée.");
-            closeAgentModal();
-            renderAll(true);
-        }
-
-        // Action de copie du roulement d'un agent source vers l'agent cible
-        function applyCopyAgentSchedule() {
-            if (isReadOnly) return;
-            const agentId = document.getElementById('editAgentId').value;
-            const sourceAgentSelect = document.getElementById('copyAgentSelect');
-            const sourceAgentId = sourceAgentSelect.value;
-            const startStr = document.getElementById('copyAgentStartDate').value;
-            const endStr = document.getElementById('copyAgentEndDate').value;
-            const comment = document.getElementById('copyAgentComment').value.trim();
-
-            if (!sourceAgentId) {
-                alert("Veuillez sélectionner un agent source.");
-                return;
-            }
-
-            if (!startStr || !endStr) {
-                alert("Veuillez sélectionner une date de début et une date de fin.");
-                return;
-            }
-
-            const startDateObj = parseDate(startStr);
-            const endDateObj = parseDate(endStr);
-
-            if (startDateObj > endDateObj) {
-                alert("La date de début doit être antérieure à la date de fin.");
-                return;
-            }
-
-            // Récupérer l'équipe de l'agent source pour obtenir sa tâche effective (si aucune tâche explicite n'est enregistrée pour lui)
-            const selectedOpt = sourceAgentSelect.options[sourceAgentSelect.selectedIndex];
-            const sourceTeamId = selectedOpt ? selectedOpt.getAttribute('data-team-id') : null;
-
-            let sourceAgent = null;
-            teams.forEach(t => {
-                const a = t.agents.find(item => item.id === sourceAgentId);
-                if (a) sourceAgent = a;
-            });
-
-            if (!agentSchedules[agentId]) agentSchedules[agentId] = {};
-
-            let currDate = new Date(startDateObj);
-            while (currDate <= endDateObj) {
-                const dStr = formatDate(currDate);
-                const sourceTaskCode = getEffectiveAgentTask(sourceAgent, sourceTeamId, dStr);
-                
-                agentSchedules[agentId][dStr] = sourceTaskCode;
-                
-                const descKey = `${agentId}_${dStr}`;
-                if (comment) {
-                    taskDescriptions[descKey] = comment;
+                const descKeySource = `${sourceTeamId}_${dStr}`;
+                const descKeyTarget = `${agentId}_${dStr}`;
+                if (taskDescriptions[descKeySource]) {
+                    taskDescriptions[descKeyTarget] = taskDescriptions[descKeySource];
                 }
 
-                ensureYearExists(currDate.getFullYear());
-                currDate.setDate(currDate.getDate() + 1);
+                curr.setDate(curr.getDate() + 1);
             }
 
-            alert("Le roulement de l'agent a été copié avec succès sur la période sélectionnée.");
+            alert("✅ Roulement de l'équipe copié avec succès sur l'agent !");
             closeAgentModal();
             renderAll(true);
         }
-        
-        function closeAgentModal() { 
-            document.getElementById('agentModal').style.display = 'none'; 
+
+        function applyCopyAgentSchedule() {
+            if (isReadOnly) return;
+            const targetAgentId = document.getElementById('editAgentId').value;
+            const sourceAgentId = document.getElementById('copyAgentSelect').value;
+            const comment = document.getElementById('copyAgentComment').value.trim();
+            const startStr = document.getElementById('copyAgentStartDate').value;
+            const endStr = document.getElementById('copyAgentEndDate').value;
+
+            if (!startStr || !endStr) { alert("Veuillez sélectionner les dates de début et de fin."); return; }
+
+            const startDateObj = parseDate(startStr);
+            const endDateObj = parseDate(endStr);
+
+            if (startDateObj > endDateObj) { alert("La date de début doit être antérieure à la date de fin."); return; }
+
+            let sourceTeamId = null;
+            teams.forEach(t => {
+                if (t.agents.some(a => a.id === sourceAgentId)) sourceTeamId = t.id;
+            });
+
+            if (!agentSchedules[targetAgentId]) agentSchedules[targetAgentId] = {};
+            if (!agentSchedules[sourceAgentId]) agentSchedules[sourceAgentId] = {};
+
+            let curr = new Date(startDateObj);
+            while (curr <= endDateObj) {
+                const dStr = formatDate(curr);
+                const sourceTask = getEffectiveAgentTask({ id: sourceAgentId }, sourceTeamId, dStr);
+                agentSchedules[targetAgentId][dStr] = sourceTask;
+
+                const descKeyTarget = `${targetAgentId}_${dStr}`;
+                if (comment) {
+                    taskDescriptions[descKeyTarget] = comment;
+                } else {
+                    const descKeySource = `${sourceAgentId}_${dStr}`;
+                    if (taskDescriptions[descKeySource]) {
+                        taskDescriptions[descKeyTarget] = taskDescriptions[descKeySource];
+                    }
+                }
+
+                curr.setDate(curr.getDate() + 1);
+            }
+
+            alert("✅ Roulement de l'agent source copié avec succès !");
+            closeAgentModal();
+            renderAll(true);
         }
 
         function applyBulkAgentTask() {
             if (isReadOnly) return;
-            const agentId = document.getElementById('editAgentId').value; 
+            const agentId = document.getElementById('editAgentId').value;
             const taskCode = document.getElementById('bulkAgentTask').value;
-            const taskDesc = document.getElementById('bulkAgentDesc').value.trim();
-            const startStr = document.getElementById('bulkStartDate').value; 
-            const freqVal = document.getElementById('bulkAgentFreq').value;
+            const desc = document.getElementById('bulkAgentDesc').value.trim();
+            const startStr = document.getElementById('bulkStartDate').value;
+            const freq = document.getElementById('bulkAgentFreq').value;
 
-            if (!startStr) { 
-                alert("Veuillez sélectionner une date de début."); 
-                return; 
-            }
+            if (!startStr) { alert("Veuillez sélectionner au moins la date de début."); return; }
 
-            const startDateObj = parseDate(startStr);
             if (!agentSchedules[agentId]) agentSchedules[agentId] = {};
+            const baseDate = parseDate(startStr);
 
-            const applyToDate = (dStr) => {
-                agentSchedules[agentId][dStr] = taskCode;
-                const descKey = `${agentId}_${dStr}`;
-                if (taskDesc) {
-                    taskDescriptions[descKey] = taskDesc;
-                } else {
-                    delete taskDescriptions[descKey];
-                }
-            };
-
-            if (freqVal === 'NONE') {
+            if (freq === 'NONE') {
                 const endStr = document.getElementById('bulkEndDate').value;
-                if (!endStr) {
-                    alert("Veuillez sélectionner une date de fin.");
-                    return;
-                }
-                const endDateObj = parseDate(endStr);
-                if (startDateObj > endDateObj) {
-                    alert("La date de début doit être antérieure à la date de fin.");
-                    return;
-                }
+                if (!endStr) { alert("Veuillez sélectionner une date de fin."); return; }
+                const endDate = parseDate(endStr);
 
-                let currDate = new Date(startDateObj);
-                while (currDate <= endDateObj) {
-                    const dStr = formatDate(currDate);
-                    applyToDate(dStr);
-                    ensureYearExists(currDate.getFullYear());
-                    currDate.setDate(currDate.getDate() + 1);
+                if (baseDate > endDate) { alert("La date de début doit être antérieure à la date de fin."); return; }
+
+                let curr = new Date(baseDate);
+                while (curr <= endDate) {
+                    const dStr = formatDate(curr);
+                    agentSchedules[agentId][dStr] = taskCode;
+
+                    const descKey = `${agentId}_${dStr}`;
+                    if (desc) taskDescriptions[descKey] = desc;
+                    else delete taskDescriptions[descKey];
+
+                    curr.setDate(curr.getDate() + 1);
                 }
             } else {
-                const yearsDuration = parseInt(document.getElementById('bulkAgentDuration').value, 10);
-                let currDate = new Date(startDateObj);
-                const endDateObj = new Date(startDateObj);
-                endDateObj.setFullYear(endDateObj.getFullYear() + yearsDuration);
+                const durationYears = parseInt(document.getElementById('bulkAgentDuration').value, 10);
+                let intervalDays = 1;
+                let totalSteps = durationYears * 365;
 
-                if (freqVal === '1_DAY') {
-                    while (currDate < endDateObj) {
-                        const dStr = formatDate(currDate);
-                        applyToDate(dStr);
-                        ensureYearExists(currDate.getFullYear());
-                        currDate.setDate(currDate.getDate() + 1);
-                    }
+                if (freq === '1_DAY') {
+                    intervalDays = 1;
                 } else {
-                    const stepWeeks = parseInt(freqVal, 10);
-                    while (currDate < endDateObj) {
-                        const dStr = formatDate(currDate);
-                        applyToDate(dStr);
-                        ensureYearExists(currDate.getFullYear());
-                        currDate.setDate(currDate.getDate() + (stepWeeks * 7));
-                    }
+                    intervalDays = parseInt(freq, 10) * 7;
+                    totalSteps = Math.floor((durationYears * 365) / intervalDays);
+                }
+
+                let curr = new Date(baseDate);
+                for (let i = 0; i < totalSteps; i++) {
+                    const dStr = formatDate(curr);
+                    agentSchedules[agentId][dStr] = taskCode;
+
+                    const descKey = `${agentId}_${dStr}`;
+                    if (desc) taskDescriptions[descKey] = desc;
+                    else delete taskDescriptions[descKey];
+
+                    curr.setDate(curr.getDate() + intervalDays);
                 }
             }
 
-            alert(`La tâche ${taskCode} a été appliquée avec succès.`); 
-            closeAgentModal(); 
-            renderAll(true);
-        }
-
-        function saveAgent() {
-            if (isReadOnly) return;
-            const agentId = document.getElementById('editAgentId').value; 
-            const newName = document.getElementById('editAgentName').value;
-            const checkedSkills = []; 
-            
-            document.querySelectorAll('#skillsCheckboxes input[type="checkbox"]:checked').forEach(cb => { 
-                checkedSkills.push(cb.value); 
-            });
-            
-            teams.forEach(t => { 
-                const a = t.agents.find(item => item.id === agentId); 
-                if (a) { 
-                    a.name = newName; 
-                    a.skills = checkedSkills; 
-                } 
-            });
-            
-            closeAgentModal(); 
+            alert("✅ Tâche appliquée avec succès sur la période / récurrence !");
+            closeAgentModal();
             renderAll(true);
         }
 
         function openSettings() {
-            if (!isAdmin) {
-                alert("Accès refusé : Seuls les administrateurs peuvent accéder au paramétrage général.");
-                return;
-            }
-            const skContainer = document.getElementById('skillsConfigContainer'); 
-            skContainer.innerHTML = '';
-            skillDefinitions.forEach((s, idx) => {
-                skContainer.innerHTML += `<div class="skill-config-row"><div><label style="font-size:0.75rem;">Intitulé (${s.id})</label><input type="text" id="sk_name_${idx}" value="${s.name}"></div><div><label style="font-size:0.75rem;">Min. requis / quart</label><input type="number" id="sk_min_${idx}" value="${s.min}"></div></div>`;
-            });
+            if (!isAdmin) return;
+            renderSkillsConfig();
+            renderTasksConfig();
 
-            renderTasksForm();
-            document.getElementById('th_M_orange').value = settings.thresholds.M.orange; 
+            document.getElementById('th_M_orange').value = settings.thresholds.M.orange;
             document.getElementById('th_M_green').value = settings.thresholds.M.green;
-            document.getElementById('th_A_orange').value = settings.thresholds.A.orange; 
+            document.getElementById('th_A_orange').value = settings.thresholds.A.orange;
             document.getElementById('th_A_green').value = settings.thresholds.A.green;
-            document.getElementById('th_N_orange').value = settings.thresholds.N.orange; 
+            document.getElementById('th_N_orange').value = settings.thresholds.N.orange;
             document.getElementById('th_N_green').value = settings.thresholds.N.green;
+
             document.getElementById('settingsModal').style.display = 'flex';
         }
 
-        function renderTasksForm() {
-            const container = document.getElementById('tasksContainer'); 
+        function closeSettings() {
+            document.getElementById('settingsModal').style.display = 'none';
+        }
+
+        function renderSkillsConfig() {
+            const container = document.getElementById('skillsConfigContainer');
             container.innerHTML = '';
-            Object.keys(TASKS).forEach(code => { 
-                const t = TASKS[code]; 
-                container.appendChild(createTaskRow(code, t.label, t.shift, t.start, t.end, t.isRest, t.color, t.text)); 
+            skillDefinitions.forEach((sk, idx) => {
+                const row = document.createElement('div');
+                row.className = 'skill-config-row';
+                row.innerHTML = `
+                    <input type="text" value="${sk.id}" class="sk-id" style="font-weight:bold; text-align:center;">
+                    <input type="text" value="${sk.name}" class="sk-name" placeholder="Nom de la compétence">
+                    <input type="color" value="${sk.color}" class="sk-color">
+                    <input type="number" value="${sk.min !== undefined ? sk.min : 1}" class="sk-min" min="0" title="Seuil minimal requis">
+                    <button class="btn btn-danger" style="padding:2px 6px;" onclick="removeSkillRow(${idx})">✕</button>
+                `;
+                container.appendChild(row);
             });
         }
 
-        function createTaskRow(code = '', label = '', shift = 'none', start = '08:00', end = '16:00', isRest = false, color = '#3498db', textColor = '#ffffff') {
-            const div = document.createElement('div'); 
-            div.className = 'task-row';
-            div.innerHTML = `
-                <input type="text" value="${code}" class="task-code" placeholder="Code">
-                <input type="text" value="${label}" class="task-label" placeholder="Libellé">
-                <select class="task-shift">
-                    <option value="none" ${shift==='none'?'selected':''}>Hors-Quart</option>
-                    <option value="M" ${shift==='M'?'selected':''}>Matin</option>
-                    <option value="A" ${shift==='A'?'selected':''}>Après-midi</option>
-                    <option value="N" ${shift==='N'?'selected':''}>Nuit</option>
-                    <option value="J" ${shift==='J'?'selected':''}>Journée</option>
-                </select>
-                <input type="time" value="${start}" class="task-start">
-                <input type="time" value="${end}" class="task-end">
-                <input type="checkbox" class="task-rest" ${isRest ? 'checked' : ''} style="margin:auto;">
-                <input type="color" value="${color}" class="task-bg" title="Couleur de Fond">
-                <input type="color" value="${textColor}" class="task-txt" title="Couleur du Texte">
-                <button class="btn btn-danger" style="padding:2px 4px;" onclick="this.parentElement.remove()">X</button>
-            `;
-            return div;
+        function addSkillRow() {
+            const nextIdNum = skillDefinitions.length + 1;
+            skillDefinitions.push({ id: `C${nextIdNum}`, name: `Compétence ${nextIdNum}`, color: '#3498db', min: 1 });
+            renderSkillsConfig();
         }
 
-        function addTaskRow() { 
-            if (!isAdmin) return;
-            document.getElementById('tasksContainer').appendChild(createTaskRow('T1', 'Nouvelle Tâche', 'M', '08:00', '16:00', false, '#9b59b6', '#ffffff')); 
+        function removeSkillRow(idx) {
+            if (confirm("Supprimer cette compétence ?")) {
+                skillDefinitions.splice(idx, 1);
+                renderSkillsConfig();
+            }
         }
-        
-        function closeSettings() { 
-            document.getElementById('settingsModal').style.display = 'none'; 
+
+        function renderTasksConfig() {
+            const container = document.getElementById('tasksContainer');
+            container.innerHTML = '';
+            Object.keys(TASKS).forEach(code => {
+                const t = TASKS[code];
+                const row = document.createElement('div');
+                row.className = 'task-row';
+                row.innerHTML = `
+                    <input type="text" value="${code}" class="t-code" style="font-weight:bold;">
+                    <input type="text" value="${t.label}" class="t-label">
+                    <select class="t-shift">
+                        <option value="none" ${t.shift === 'none' ? 'selected' : ''}>Aucun</option>
+                        <option value="M" ${t.shift === 'M' ? 'selected' : ''}>Matin</option>
+                        <option value="A" ${t.shift === 'A' ? 'selected' : ''}>Après-Midi</option>
+                        <option value="N" ${t.shift === 'N' ? 'selected' : ''}>Nuit</option>
+                        <option value="J" ${t.shift === 'J' ? 'selected' : ''}>Journée</option>
+                    </select>
+                    <input type="time" value="${t.start}" class="t-start">
+                    <input type="time" value="${t.end}" class="t-end">
+                    <input type="checkbox" ${t.isRest ? 'checked' : ''} class="t-rest">
+                    <input type="color" value="${t.color}" class="t-color">
+                    <input type="color" value="${t.text}" class="t-textColor">
+                    <button class="btn btn-danger" style="padding:2px 5px;" onclick="removeTaskRow(this)">✕</button>
+                `;
+                container.appendChild(row);
+            });
+        }
+
+        function addTaskRow() {
+            const container = document.getElementById('tasksContainer');
+            const row = document.createElement('div');
+            row.className = 'task-row';
+            row.innerHTML = `
+                <input type="text" value="NEW" class="t-code" style="font-weight:bold;">
+                <input type="text" value="Nouvelle Tâche" class="t-label">
+                <select class="t-shift">
+                    <option value="none" selected>Aucun</option>
+                    <option value="M">Matin</option>
+                    <option value="A">Après-Midi</option>
+                    <option value="N">Nuit</option>
+                    <option value="J">Journée</option>
+                </select>
+                <input type="time" value="08:00" class="t-start">
+                <input type="time" value="16:00" class="t-end">
+                <input type="checkbox" class="t-rest">
+                <input type="color" value="#3498db" class="t-color">
+                <input type="color" value="#ffffff" class="t-textColor">
+                <button class="btn btn-danger" style="padding:2px 5px;" onclick="removeTaskRow(this)">✕</button>
+            `;
+            container.appendChild(row);
+        }
+
+        function removeTaskRow(btn) {
+            btn.parentElement.remove();
         }
 
         function saveSettings() {
             if (!isAdmin) return;
-            skillDefinitions.forEach((s, idx) => { 
-                const nameInput = document.getElementById(`sk_name_${idx}`); 
-                const minInput = document.getElementById(`sk_min_${idx}`); 
-                if (nameInput) s.name = nameInput.value; 
-                if (minInput) s.min = parseInt(minInput.value, 10) || 0; 
-            });
-            
-            const newTasks = {};
-            document.querySelectorAll('#tasksContainer .task-row').forEach(row => {
-                const code = row.querySelector('.task-code').value.trim().toUpperCase();
-                const label = row.querySelector('.task-label').value.trim();
-                const shift = row.querySelector('.task-shift').value;
-                const start = row.querySelector('.task-start').value;
-                const end = row.querySelector('.task-end').value;
-                const isRest = row.querySelector('.task-rest').checked;
-                const color = row.querySelector('.task-bg').value;
-                const textColor = row.querySelector('.task-txt').value;
-                if (code) {
-                    newTasks[code] = { label, shift, start, end, isRest, color, text: textColor };
+
+            const newSkills = [];
+            const skillRows = document.querySelectorAll('#skillsConfigContainer .skill-config-row');
+            skillRows.forEach(row => {
+                const id = row.querySelector('.sk-id').value.trim();
+                const name = row.querySelector('.sk-name').value.trim();
+                const color = row.querySelector('.sk-color').value;
+                const min = parseInt(row.querySelector('.sk-min').value, 10) || 0;
+
+                if (id && name) {
+                    newSkills.push({ id, name, color, min });
                 }
             });
 
+            if (newSkills.length === 0) {
+                alert("Veuillez conserver au moins une compétence.");
+                return;
+            }
+            skillDefinitions = newSkills;
+
+            const newTasks = {};
+            const taskRows = document.querySelectorAll('#tasksContainer .task-row');
+            taskRows.forEach(row => {
+                const code = row.querySelector('.t-code').value.trim().toUpperCase();
+                const label = row.querySelector('.t-label').value.trim();
+                const shift = row.querySelector('.t-shift').value;
+                const start = row.querySelector('.t-start').value;
+                const end = row.querySelector('.t-end').value;
+                const isRest = row.querySelector('.t-rest').checked;
+                const color = row.querySelector('.t-color').value;
+                const text = row.querySelector('.t-textColor').value;
+
+                if (code) {
+                    newTasks[code] = { label, color, text, shift, start, end, isRest };
+                }
+            });
+
+            if (Object.keys(newTasks).length === 0) {
+                alert("Veuillez définir au moins une tâche.");
+                return;
+            }
+
             TASKS = newTasks;
-            settings.thresholds.M.orange = parseInt(document.getElementById('th_M_orange').value, 10) || 0;
-            settings.thresholds.M.green = parseInt(document.getElementById('th_M_green').value, 10) || 0;
-            settings.thresholds.A.orange = parseInt(document.getElementById('th_A_orange').value, 10) || 0;
-            settings.thresholds.A.green = parseInt(document.getElementById('th_A_green').value, 10) || 0;
-            settings.thresholds.N.orange = parseInt(document.getElementById('th_N_orange').value, 10) || 0;
-            settings.thresholds.N.green = parseInt(document.getElementById('th_N_green').value, 10) || 0;
+
+            settings.thresholds.M.orange = parseInt(document.getElementById('th_M_orange').value, 10);
+            settings.thresholds.M.green = parseInt(document.getElementById('th_M_green').value, 10);
+            settings.thresholds.A.orange = parseInt(document.getElementById('th_A_orange').value, 10);
+            settings.thresholds.A.green = parseInt(document.getElementById('th_A_green').value, 10);
+            settings.thresholds.N.orange = parseInt(document.getElementById('th_N_orange').value, 10);
+            settings.thresholds.N.green = parseInt(document.getElementById('th_N_green').value, 10);
 
             closeSettings();
             renderAll(true);
         }
 
         function openPrintModal() {
-            const printYearSelect = document.getElementById('printYear');
-            printYearSelect.innerHTML = '';
+            const selectYear = document.getElementById('printYear');
+            selectYear.innerHTML = '';
             for (let y = minYearAvailable; y <= maxYearAvailable; y++) {
                 const opt = document.createElement('option');
                 opt.value = y;
                 opt.innerText = y;
                 if (y === currentYear) opt.selected = true;
-                printYearSelect.appendChild(opt);
+                selectYear.appendChild(opt);
             }
+            document.getElementById('printMonth').value = new Date().getMonth();
             document.getElementById('printModal').style.display = 'flex';
         }
 
@@ -2169,73 +2179,60 @@
             const month = parseInt(document.getElementById('printMonth').value, 10);
             const year = parseInt(document.getElementById('printYear').value, 10);
 
-            const firstDay = new Date(year, month, 1);
-            const lastDay = new Date(year, month + 1, 0);
-            const totalDays = lastDay.getDate();
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+            const printDates = [];
+            for (let d = 1; d <= daysInMonth; d++) {
+                printDates.push(new Date(year, month, d));
+            }
 
-            const monthName = firstDay.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
-
-            let printHtml = `
-                <div style="text-align: center; margin-bottom: 10px;">
-                    <h2>Planning Opérationnel — ${monthName.toUpperCase()}</h2>
+            const monthNames = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
+            let html = `
+                <div style="text-align: center; margin-bottom: 15px;">
+                    <h2>Planning Général - ${monthNames[month]} ${year}</h2>
                 </div>
                 <table>
                     <thead>
                         <tr>
-                            <th style="width: 140px;">Équipe / Agent</th>
+                            <th style="width: 150px;">Équipe / Agent</th>
                             <th style="width: 120px;">Compétences</th>
             `;
 
-            for (let d = 1; d <= totalDays; d++) {
-                const dateObj = new Date(year, month, d);
-                const dayName = dateObj.toLocaleDateString('fr-FR', { weekday: 'narrow' });
-                printHtml += `<th>${dayName}<br>${d}</th>`;
-            }
-            printHtml += `</tr></thead><tbody>`;
+            printDates.forEach(d => {
+                const dayName = d.toLocaleDateString('fr-FR', { weekday: 'short' }).slice(0, 3);
+                const dayNum = String(d.getDate()).padStart(2, '0');
+                html += `<th>${dayName}<br>${dayNum}</th>`;
+            });
+
+            html += `</tr></thead><tbody>`;
 
             teams.forEach(team => {
-                printHtml += `
-                    <tr style="background-color: #eee; font-weight: bold;">
-                        <td style="text-align: left; padding-left: 5px;">${team.name}</td>
-                        <td style="font-size: 6pt; font-style: italic;">Roulement d'équipe</td>
-                `;
-
-                for (let d = 1; d <= totalDays; d++) {
-                    const dateObj = new Date(year, month, d);
-                    const dStr = formatDate(dateObj);
-                    const taskCode = teamSchedules[team.id] ? (teamSchedules[team.id][dStr] || 'R') : 'R';
+                html += `<tr style="background-color: #eaeded; font-weight: bold;"><td style="text-align: left; padding-left: 5px;">${team.name}</td><td>Roulement</td>`;
+                printDates.forEach(d => {
+                    const dateStr = formatDate(d);
+                    const taskCode = teamSchedules[team.id] ? (teamSchedules[team.id][dateStr] || 'R') : 'R';
                     const taskDef = TASKS[taskCode] || TASKS['R'];
-                    printHtml += `<td style="background-color: ${taskDef.color}; color: ${taskDef.text}; font-weight: bold;">${taskCode}</td>`;
-                }
-                printHtml += `</tr>`;
+                    html += `<td style="background-color: ${taskDef.color}; color: ${taskDef.text}; font-weight: bold;">${taskCode}</td>`;
+                });
+                html += `</tr>`;
 
                 team.agents.forEach(agent => {
                     let skillsStr = (agent.skills || []).join(', ');
-                    printHtml += `
-                        <tr>
-                            <td style="text-align: left; padding-left: 10px;">${agent.name}</td>
-                            <td style="font-size: 6pt;">${skillsStr}</td>
-                    `;
-
-                    for (let d = 1; d <= totalDays; d++) {
-                        const dateObj = new Date(year, month, d);
-                        const dStr = formatDate(dateObj);
-                        const effectiveTask = getEffectiveAgentTask(agent, team.id, dStr);
-                        const taskDef = TASKS[effectiveTask] || TASKS['R'];
-                        printHtml += `<td style="background-color: ${taskDef.color}; color: ${taskDef.text}; font-weight: bold;">${effectiveTask}</td>`;
-                    }
-                    printHtml += `</tr>`;
+                    html += `<tr><td style="text-align: left; padding-left: 15px;">${agent.name}</td><td style="font-size: 6pt;">${skillsStr}</td>`;
+                    printDates.forEach(d => {
+                        const dateStr = formatDate(d);
+                        const taskCode = getEffectiveAgentTask(agent, team.id, dateStr);
+                        const taskDef = TASKS[taskCode] || TASKS['R'];
+                        html += `<td style="background-color: ${taskDef.color}; color: ${taskDef.text}; font-weight: bold;">${taskCode}</td>`;
+                    });
+                    html += `</tr>`;
                 });
             });
 
-            printHtml += `</tbody></table>`;
+            html += `</tbody></table>`;
 
-            document.getElementById('printSection').innerHTML = printHtml;
+            document.getElementById('printSection').innerHTML = html;
             closePrintModal();
-
-            setTimeout(() => {
-                window.print();
-            }, 300);
+            window.print();
         }
 
         window.onload = init;
