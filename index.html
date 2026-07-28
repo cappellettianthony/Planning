@@ -142,7 +142,7 @@
 
         .table-container { background: var(--card-bg); border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); overflow: auto; max-height: 60vh; }
         table { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 0.85rem; }
-        th, td { border-right: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color); padding: 4px; text-align: center; white-space: nowrap; }
+        th, td { border-right: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color); padding: 4px; text-align: center; white-space: nowrap; position: relative; }
         th { background-color: var(--primary); color: white; position: sticky; top: 0; z-index: 10; }
         
         .sticky-col-1 { position: sticky; left: 0; background-color: white; z-index: 5; width: 180px; text-align: left; font-weight: bold; }
@@ -167,93 +167,18 @@
             font-weight: bold;
         }
 
-        .task-cell {
-            cursor: pointer;
-            font-weight: bold;
-            border-radius: 4px;
-            padding: 4px;
-            user-select: none;
-            position: relative;
-            transition: transform 0.1s, box-shadow 0.1s;
-        }
-        .task-cell:hover {
-            transform: scale(1.03);
-            box-shadow: 0 0 4px rgba(0,0,0,0.3);
-            z-index: 2;
-        }
-        .task-cell-disabled {
-            cursor: default;
-        }
-        .task-cell-disabled:hover {
-            transform: none;
-            box-shadow: none;
-        }
+        select.shift-select { border: 1px solid transparent; background: transparent; font-weight: bold; cursor: pointer; width: 100%; text-align: center; border-radius: 4px; padding: 2px; }
+        select.team-select { border: 1px dashed #7f8c8d; font-weight: bold; }
 
-        .has-desc-indicator {
-            position: relative;
-        }
-        .has-desc-indicator::after {
-            content: '';
+        /* Icone de commentaire sur les cellules du planning */
+        .comment-indicator {
             position: absolute;
-            top: 2px;
+            top: 1px;
             right: 2px;
-            width: 0;
-            height: 0;
-            border-style: solid;
-            border-width: 0 6px 6px 0;
-            border-color: transparent #e67e22 transparent transparent;
-        }
-
-        .custom-tooltip {
-            position: fixed;
-            background: #2c3e50;
-            color: #ffffff;
-            padding: 6px 10px;
-            border-radius: 5px;
-            font-size: 0.75rem;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.25);
-            z-index: 2000;
+            font-size: 0.65rem;
             pointer-events: none;
-            max-width: 220px;
-            word-wrap: break-word;
-            display: none;
-            border: 1px solid #34495e;
+            line-height: 1;
         }
-
-        .task-picker-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
-            gap: 10px;
-            margin-bottom: 15px;
-            max-height: 250px;
-            overflow-y: auto;
-            padding: 5px;
-        }
-        .task-picker-btn {
-            padding: 10px 8px;
-            border-radius: 6px;
-            border: 2px solid transparent;
-            cursor: pointer;
-            text-align: center;
-            font-weight: bold;
-            font-size: 0.85rem;
-            transition: all 0.15s;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            gap: 4px;
-        }
-        .task-picker-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 3px 6px rgba(0,0,0,0.2);
-        }
-        .task-picker-btn.selected {
-            border-color: #2c3e50;
-            box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.5);
-        }
-        .task-picker-btn .task-code-badge { font-size: 1rem; }
-        .task-picker-btn .task-label-sub { font-size: 0.7rem; opacity: 0.9; font-weight: normal; }
 
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.75); z-index: 1000; justify-content: center; align-items: center; }
         .modal-content { background: white; padding: 20px; border-radius: 8px; width: 750px; max-width: 95%; max-height: 90vh; overflow-y: auto; }
@@ -280,6 +205,11 @@
 
         .bulk-box { background-color: #f8f9fa; border: 1px solid #ddd; border-radius: 6px; padding: 10px; margin-top: 10px; }
 
+        /* Radio selection styling */
+        .copy-source-type { display: flex; gap: 15px; margin-bottom: 10px; }
+        .copy-source-type label { font-size: 0.85rem; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 4px; }
+
+        /* --- STYLES AUTHENTIFICATION --- */
         #authModal .modal-content {
             background: #1e1e38;
             color: #e0e0ff;
@@ -290,20 +220,64 @@
             box-shadow: 0 0 30px rgba(100,120,255,0.3);
             text-align: center;
         }
-        #authModal h2 { color: #88f; border-bottom: none; margin-bottom: 10px; }
-        #authModal label { display: block; text-align: left; margin: 15px 0 6px; font-weight: bold; color: #aaccff; font-size: 0.95rem; }
-        #authModal input[type="email"], #authModal input[type="password"] {
-            background: #2a2a4a; color: white; padding: 12px; margin: 10px 0; font-size: 1.1rem; border-radius: 6px; border: none; width: 100%; box-sizing: border-box;
+        #authModal h2 {
+            color: #88f;
+            border-bottom: none;
+            margin-bottom: 10px;
+        }
+        #authModal label {
+            display: block;
+            text-align: left;
+            margin: 15px 0 6px;
+            font-weight: bold;
+            color: #aaccff;
+            font-size: 0.95rem;
+        }
+        #authModal input[type="email"],
+        #authModal input[type="password"] {
+            background: #2a2a4a;
+            color: white;
+            padding: 12px;
+            margin: 10px 0;
+            font-size: 1.1rem;
+            border-radius: 6px;
+            border: none;
+            width: 100%;
+            box-sizing: border-box;
         }
         #authModal .btn-login-submit {
-            width: 100%; margin-top: 15px; background: #2ecc71; color: white; padding: 12px; font-size: 1.1rem; border-radius: 6px; border: none; cursor: pointer; font-weight: bold;
+            width: 100%;
+            margin-top: 15px;
+            background: #2ecc71;
+            color: white;
+            padding: 12px;
+            font-size: 1.1rem;
+            border-radius: 6px;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
         }
-        #authModal .btn-login-submit:hover { background: #27ae60; }
-        .forgot-pwd-link { color: #88aaff; font-size: 0.85rem; text-decoration: underline; cursor: pointer; display: inline-block; margin-top: 12px; }
+        #authModal .btn-login-submit:hover {
+            background: #27ae60;
+        }
+        .forgot-pwd-link {
+            color: #88aaff;
+            font-size: 0.85rem;
+            text-decoration: underline;
+            cursor: pointer;
+            display: inline-block;
+            margin-top: 12px;
+        }
         .forgot-pwd-link:hover { color: #aaccff; }
-        .auth-error { font-size: 0.9rem; margin-top: 10px; text-align: center; display: none; }
+        .auth-error {
+            font-size: 0.9rem;
+            margin-top: 10px;
+            text-align: center;
+            display: none;
+        }
         .user-info { font-size: 0.85rem; padding: 6px 12px; background: #ecf0f1; border-radius: 4px; display: flex; align-items: center; gap: 8px; }
 
+        /* Styles spécialisés pour l'impression du planning au mois */
         @media print {
             body * { visibility: hidden; }
             #printSection, #printSection * { visibility: visible; }
@@ -357,15 +331,16 @@
         </div>
     </header>
 
-    <div id="customTooltip" class="custom-tooltip"></div>
-
+    <!-- Section rétractable pour l'état des utilisateurs connectés -->
     <details class="presence-wrapper" id="presenceWrapper">
         <summary>
             <span>👥 Utilisateurs actuellement connectés</span>
             <span style="font-size: 0.75rem; color: #7f8c8d; font-weight: normal;">Cliquez pour afficher / masquer</span>
         </summary>
         <div class="presence-container">
-            <ul id="onlineUsersList" class="online-users-list"></ul>
+            <ul id="onlineUsersList" class="online-users-list">
+                <!-- Rempli dynamiquement -->
+            </ul>
         </div>
     </details>
 
@@ -374,6 +349,7 @@
         <ul id="alertList"></ul>
     </div>
 
+    <!-- Section rétractable pour masquer/afficher la surveillance des effectifs -->
     <details class="dashboard-wrapper" id="dashboardWrapper">
         <summary>
             <span>📊 Surveillance des effectifs & compétences</span>
@@ -394,29 +370,8 @@
         </table>
     </div>
 
+    <!-- Container temporaire d'impression -->
     <div id="printSection"></div>
-
-    <!-- Modale Sélection & Attribution de Tâche -->
-    <div class="modal" id="taskModal">
-        <div class="modal-content" style="width: 500px;">
-            <h2>Affecter une Tâche</h2>
-            <p style="font-size: 0.85rem; margin-bottom: 12px; color: var(--primary);" id="taskModalTargetInfo"></p>
-            
-            <label style="font-weight: bold; font-size: 0.85rem; margin-bottom: 6px; display: block;">Sélectionner la tâche :</label>
-            <div id="taskPickerGrid" class="task-picker-grid"></div>
-
-            <div class="form-group">
-                <label for="taskModalDescription">Description / Note explicative (Optionnelle) :</label>
-                <textarea id="taskModalDescription" rows="3" placeholder="Saisir un commentaire ou une précision sur cette tâche..."></textarea>
-            </div>
-
-            <div class="modal-actions">
-                <button class="btn btn-secondary" onclick="closeTaskModal()">Annuler</button>
-                <button class="btn btn-danger" onclick="clearTaskAndDesc()" id="clearTaskBtn">Supprimer / Réinitialiser</button>
-                <button class="btn btn-success" onclick="confirmTaskSelection()" id="saveTaskModalBtn">Valider</button>
-            </div>
-        </div>
-    </div>
 
     <!-- Login Modal -->
     <div class="modal" id="authModal" style="display: flex;">
@@ -477,7 +432,7 @@
         </div>
     </div>
 
-    <!-- Notifications & Alertes Modals -->
+    <!-- Modals -->
     <div class="modal" id="notificationModal">
         <div class="modal-content" style="width: 480px; border-left: 6px solid var(--status-red);">
             <h2 style="color: var(--status-red);">⚠️ Nouvelle Alerte Détectée !</h2>
@@ -544,7 +499,6 @@
         </div>
     </div>
 
-    <!-- Modale Agent -->
     <div class="modal" id="agentModal">
         <div class="modal-content" style="width: 550px;">
             <h2>Édition de l'Agent</h2>
@@ -558,13 +512,30 @@
                 <div class="checkbox-group" id="skillsCheckboxes"></div>
             </div>
 
-            <!-- Option A : Copier le roulement d'une équipe -->
+            <!-- Option A : Copier le roulement d'une équipe ou d'un agent -->
             <div class="bulk-box" style="background-color: #eef7fc; border-color: #3498db;">
-                <h3 style="color: #2980b9;">Copier le roulement d'une équipe sur l'agent</h3>
-                <div class="form-group">
+                <h3 style="color: #2980b9;">Copier un roulement sur l'agent</h3>
+                
+                <div class="copy-source-type">
+                    <label><input type="radio" name="copySourceType" value="team" checked onchange="toggleCopySourceType()"> Roulement d'une équipe</label>
+                    <label><input type="radio" name="copySourceType" value="agent" onchange="toggleCopySourceType()"> Roulement d'un agent</label>
+                </div>
+
+                <div class="form-group" id="copyTeamGroup">
                     <label>Équipe source :</label>
                     <select id="copyTeamSelect"></select>
                 </div>
+
+                <div class="form-group" id="copyAgentGroup" style="display: none;">
+                    <label>Agent source :</label>
+                    <select id="copyAgentSelect"></select>
+                </div>
+
+                <div class="form-group" id="copyCommentGroup" style="display: none;">
+                    <label>Commentaire à intégrer (optionnel) :</label>
+                    <input type="text" id="copyCommentInput" placeholder="Ex: Remplacement agent, Échange de roulement...">
+                </div>
+
                 <div style="display:flex; gap:10px;">
                     <div class="form-group" style="flex:1;">
                         <label>Du :</label>
@@ -575,38 +546,25 @@
                         <input type="date" id="copyTeamEndDate">
                     </div>
                 </div>
-                <button class="btn btn-purple" style="width:100%; font-weight:bold; padding: 8px;" onclick="applyCopyTeamSchedule()" id="copyTeamApplyBtn">📋 Copier le roulement de l'équipe</button>
+                <button class="btn btn-purple" style="width:100%; font-weight:bold; padding: 8px;" onclick="applyCopySchedule()" id="copyTeamApplyBtn">📋 Copier le roulement</button>
             </div>
 
-            <!-- Option B : Affecter une tâche (Période fixe ou récurrence) -->
+            <!-- Option B : Affecter une tâche avec récurrence -->
             <div class="bulk-box">
-                <h3>Affecter une tâche sur une période</h3>
+                <h3>Affecter une tâche unique avec récurrence</h3>
                 <div class="form-group">
                     <label>Tâche / Statut :</label>
                     <select id="bulkAgentTask"></select>
                 </div>
                 <div class="form-group">
-                    <label>Description / Note :</label>
-                    <input type="text" id="bulkAgentDesc" placeholder="Ex: Formation continue, Mission spéciale...">
+                    <label>Date de début :</label>
+                    <input type="date" id="bulkStartDate">
                 </div>
-                
-                <div style="display:flex; gap:10px;">
-                    <div class="form-group" style="flex:1;">
-                        <label>Date de début :</label>
-                        <input type="date" id="bulkStartDate">
-                    </div>
-                    <div class="form-group" style="flex:1;" id="bulkEndDateGroup">
-                        <label>Date de fin :</label>
-                        <input type="date" id="bulkEndDate">
-                    </div>
-                </div>
-
                 <div style="display:flex; gap:10px;">
                     <div class="form-group" style="flex:1;">
                         <label>Occurrence / Fréquence :</label>
-                        <select id="bulkAgentFreq" onchange="toggleAgentRecurrenceUI()">
-                            <option value="NONE" selected>Sans récurrence (Période fixe)</option>
-                            <option value="1_DAY">Tous les jours</option>
+                        <select id="bulkAgentFreq">
+                            <option value="1_DAY" selected>Tous les jours</option>
                             <option value="1">Toutes les semaines</option>
                             <option value="2">Toutes les 2 semaines</option>
                             <option value="6">Toutes les 6 semaines</option>
@@ -614,7 +572,7 @@
                             <option value="12">Toutes les 12 semaines</option>
                         </select>
                     </div>
-                    <div class="form-group" style="flex:1; display: none;" id="bulkDurationGroup">
+                    <div class="form-group" style="flex:1;">
                         <label>Durée de récurrence :</label>
                         <select id="bulkAgentDuration">
                             <option value="1" selected>Sur 1 an</option>
@@ -625,7 +583,7 @@
                         </select>
                     </div>
                 </div>
-                <button class="btn btn-secondary" style="width:100%; font-weight:bold; padding: 8px;" onclick="applyBulkAgentTask()" id="bulkApplyBtn">Appliquer la période / récurrence</button>
+                <button class="btn btn-secondary" style="width:100%; font-weight:bold; padding: 8px;" onclick="applyBulkAgentTask()" id="bulkApplyBtn">Appliquer la récurrence</button>
             </div>
             <div class="modal-actions">
                 <button class="btn btn-secondary" onclick="closeAgentModal()">Annuler</button>
@@ -634,7 +592,6 @@
         </div>
     </div>
 
-    <!-- Modale Paramètres -->
     <div class="modal" id="settingsModal">
         <div class="modal-content">
             <h2>Paramétrage Général (Accès Administrateur)</h2>
@@ -672,11 +629,13 @@
         const presenceRef = database.ref('onlineUsers');
         const auth = firebase.auth();
 
+        // Liste des administrateurs (Accès exclusif à la modale Paramètres)
         const ADMIN_EMAILS = [
             "cappellettianthony@gmail.com",
             "anthony.cappelletti@edf.fr"
         ];
 
+        // Liste des adresses autorisées pour la modification du planning (RE + Admins)
         const RE_EMAILS = [
             ...ADMIN_EMAILS,
             "mustapha.iberrakene@edf.fr",
@@ -703,11 +662,7 @@
         let pendingAckAlert = null;
         let acknowledgedAlerts = [];
         let knownAlertKeys = new Set(); 
-        let dailyAlertColors = {};
-
-        let activeTaskCellSelection = null;
-        let selectedTaskCodeInModal = null;
-        let cellHoverTimer = null;
+        let dailyAlertColors = {}; // Stocke la couleur d'alerte calculée par jour
 
         let skillDefinitions = [
             { id: 'C1', name: 'Électricité', color: '#3498db', min: 2 },
@@ -750,8 +705,8 @@
         let teams = createDefaultTeams();
         let teamSchedules = {};
         let agentSchedules = {};
-        let taskDescriptions = {};
 
+        /* --- AUTHENTIFICATION ET PRÉSENCE EN LIGNE --- */
         function checkAuthState() {
             auth.onAuthStateChanged((user) => {
                 currentUser = user;
@@ -887,7 +842,7 @@
                 importBtn.style.opacity = isReadOnly ? '0.6' : '1';
             }
 
-            const modalBtns = ['saveAgentBtn', 'bulkApplyBtn', 'copyTeamApplyBtn', 'saveSettingsBtn', 'addTaskBtn', 'applyRotationBtn', 'ackConfirmBtn', 'saveTaskModalBtn', 'clearTaskBtn'];
+            const modalBtns = ['saveAgentBtn', 'bulkApplyBtn', 'copyTeamApplyBtn', 'saveSettingsBtn', 'addTaskBtn', 'applyRotationBtn', 'ackConfirmBtn'];
             modalBtns.forEach(id => {
                 const btn = document.getElementById(id);
                 if (btn) {
@@ -897,15 +852,15 @@
             });
         }
 
+        /* --- SAUVEGARDE ET SYNCHRONISATION FIREBASE --- */
         function getAppState() {
-            return { teamSchedules, agentSchedules, taskDescriptions, teams, acknowledgedAlerts, skillDefinitions, TASKS, settings };
+            return { teamSchedules, agentSchedules, teams, acknowledgedAlerts, skillDefinitions, TASKS, settings };
         }
 
         function loadAppState(data) {
             if (!data) return;
             teamSchedules = data.teamSchedules || {};
             agentSchedules = data.agentSchedules || {};
-            taskDescriptions = data.taskDescriptions || {};
             
             const defaultTeams = createDefaultTeams();
             if (Array.isArray(data.teams) && data.teams.length > 0) {
@@ -1113,10 +1068,27 @@
             });
         }
 
+        function getAgentCellData(agentId, dateStr) {
+            if (agentSchedules[agentId] && agentSchedules[agentId][dateStr] !== undefined) {
+                const val = agentSchedules[agentId][dateStr];
+                if (typeof val === 'object' && val !== null) {
+                    return { task: val.task || 'R', comment: val.comment || '' };
+                }
+                return { task: val, comment: '' };
+            }
+            return null;
+        }
+
         function getEffectiveAgentTask(agent, teamId, dateStr) {
-            if (agentSchedules[agent.id] && agentSchedules[agent.id][dateStr] !== undefined) return agentSchedules[agent.id][dateStr];
+            const cell = getAgentCellData(agent.id, dateStr);
+            if (cell) return cell.task;
             if (teamSchedules[teamId] && teamSchedules[teamId][dateStr] !== undefined) return teamSchedules[teamId][dateStr];
             return 'R';
+        }
+
+        function getEffectiveAgentComment(agentId, dateStr) {
+            const cell = getAgentCellData(agentId, dateStr);
+            return cell ? cell.comment : '';
         }
 
         function calculateExtraShiftsCount(agent, teamId) {
@@ -1143,35 +1115,6 @@
             return count;
         }
 
-        function attachCellHoverEvents(element, description) {
-            if (!description || !description.trim()) return;
-
-            element.addEventListener('mouseenter', (e) => {
-                clearTimeout(cellHoverTimer);
-                cellHoverTimer = setTimeout(() => {
-                    const tooltip = document.getElementById('customTooltip');
-                    tooltip.innerText = description;
-                    tooltip.style.display = 'block';
-                    tooltip.style.left = (e.clientX + 10) + 'px';
-                    tooltip.style.top = (e.clientY + 10) + 'px';
-                }, 2000);
-            });
-
-            element.addEventListener('mousemove', (e) => {
-                const tooltip = document.getElementById('customTooltip');
-                if (tooltip.style.display === 'block') {
-                    tooltip.style.left = (e.clientX + 10) + 'px';
-                    tooltip.style.top = (e.clientY + 10) + 'px';
-                }
-            });
-
-            element.addEventListener('mouseleave', () => {
-                clearTimeout(cellHoverTimer);
-                const tooltip = document.getElementById('customTooltip');
-                tooltip.style.display = 'none';
-            });
-        }
-
         function generateTable() {
             const tbody = document.getElementById('tableBody'); 
             tbody.innerHTML = '';
@@ -1196,24 +1139,27 @@
                     const dateStr = formatDate(d);
                     if (!teamSchedules[team.id]) teamSchedules[team.id] = {};
                     const td = document.createElement('td'); 
-                    
+                    const select = document.createElement('select'); 
+                    select.className = 'shift-select team-select';
+                    Object.keys(TASKS).forEach(code => { 
+                        const opt = document.createElement('option'); 
+                        opt.value = code; 
+                        opt.innerText = code; 
+                        select.appendChild(opt); 
+                    });
                     const currentVal = teamSchedules[team.id][dateStr] || 'R'; 
-                    const taskDef = TASKS[currentVal] || TASKS['R'];
-                    const descKey = `${team.id}_${dateStr}`;
-                    const desc = taskDescriptions[descKey] || '';
-
-                    const cellDiv = document.createElement('div');
-                    cellDiv.className = `task-cell ${isReadOnly ? 'task-cell-disabled' : ''} ${desc ? 'has-desc-indicator' : ''}`;
-                    cellDiv.style.backgroundColor = taskDef.color;
-                    cellDiv.style.color = taskDef.text;
-                    cellDiv.innerText = currentVal;
-
+                    select.value = currentVal; 
+                    applySelectStyle(select, currentVal);
+                    
                     if (!isReadOnly) {
-                        cellDiv.onclick = () => openTaskModal(true, team.id, team.name, dateStr, currentVal, desc);
+                        select.addEventListener('change', (e) => { 
+                            promptTeamRotation(team.id, dateStr, e.target.value); 
+                        });
+                    } else {
+                        select.disabled = true;
                     }
-                    attachCellHoverEvents(cellDiv, desc);
-
-                    td.appendChild(cellDiv); 
+                    
+                    td.appendChild(select); 
                     teamTr.appendChild(td);
                 });
                 tbody.appendChild(teamTr);
@@ -1243,112 +1189,61 @@
                         if (!agentSchedules[agent.id]) agentSchedules[agent.id] = {};
                         const td = document.createElement('td'); 
                         
+                        const select = document.createElement('select'); 
+                        select.className = 'shift-select';
+                        Object.keys(TASKS).forEach(code => { 
+                            const opt = document.createElement('option'); 
+                            opt.value = code; 
+                            opt.innerText = code; 
+                            select.appendChild(opt); 
+                        });
+                        
                         const effectiveTask = getEffectiveAgentTask(agent, team.id, dateStr); 
-                        const taskDef = TASKS[effectiveTask] || TASKS['R'];
-                        const descKey = `${agent.id}_${dateStr}`;
-                        const desc = taskDescriptions[descKey] || '';
+                        const comment = getEffectiveAgentComment(agent.id, dateStr);
 
-                        const cellDiv = document.createElement('div');
-                        cellDiv.className = `task-cell ${isReadOnly ? 'task-cell-disabled' : ''} ${desc ? 'has-desc-indicator' : ''}`;
-                        cellDiv.style.backgroundColor = taskDef.color;
-                        cellDiv.style.color = taskDef.text;
-                        cellDiv.innerText = effectiveTask;
+                        select.value = effectiveTask; 
+                        applySelectStyle(select, effectiveTask);
 
-                        if (!isReadOnly) {
-                            cellDiv.onclick = () => openTaskModal(false, agent.id, agent.name, dateStr, effectiveTask, desc);
+                        // Gestion du survol avec delai de 2 secondes si un commentaire est présent
+                        if (comment) {
+                            let hoverTimer = null;
+                            td.addEventListener('mouseenter', () => {
+                                hoverTimer = setTimeout(() => {
+                                    td.title = `💬 Commentaire : ${comment}`;
+                                }, 2000);
+                            });
+                            td.addEventListener('mouseleave', () => {
+                                clearTimeout(hoverTimer);
+                                td.removeAttribute('title');
+                            });
+
+                            const indicator = document.createElement('span');
+                            indicator.className = 'comment-indicator';
+                            indicator.innerText = '💬';
+                            td.appendChild(indicator);
                         }
-                        attachCellHoverEvents(cellDiv, desc);
-
-                        td.appendChild(cellDiv); 
+                        
+                        if (!isReadOnly) {
+                            select.addEventListener('change', (e) => {
+                                const currentComment = getEffectiveAgentComment(agent.id, dateStr);
+                                if (currentComment) {
+                                    agentSchedules[agent.id][dateStr] = { task: e.target.value, comment: currentComment };
+                                } else {
+                                    agentSchedules[agent.id][dateStr] = e.target.value;
+                                }
+                                applySelectStyle(select, e.target.value);
+                                renderAll(true);
+                            });
+                        } else {
+                            select.disabled = true;
+                        }
+                        
+                        td.appendChild(select); 
                         tr.appendChild(td);
                     });
                     tbody.appendChild(tr);
                 });
             });
-        }
-
-        function openTaskModal(isTeam, targetId, targetName, dateStr, currentTaskCode, currentDesc) {
-            if (isReadOnly) return;
-            activeTaskCellSelection = { isTeam, targetId, targetName, dateStr };
-            selectedTaskCodeInModal = currentTaskCode || 'R';
-
-            document.getElementById('taskModalTargetInfo').innerHTML = `
-                Target: <strong>${targetName}</strong> | Date: <strong>${dateStr}</strong>
-            `;
-            document.getElementById('taskModalDescription').value = currentDesc || '';
-
-            const grid = document.getElementById('taskPickerGrid');
-            grid.innerHTML = '';
-            Object.keys(TASKS).forEach(code => {
-                const task = TASKS[code];
-                const btn = document.createElement('div');
-                btn.className = `task-picker-btn ${code === selectedTaskCodeInModal ? 'selected' : ''}`;
-                btn.style.backgroundColor = task.color;
-                btn.style.color = task.text;
-                btn.innerHTML = `
-                    <span class="task-code-badge">${code}</span>
-                    <span class="task-label-sub">${task.label}</span>
-                `;
-                btn.onclick = () => {
-                    document.querySelectorAll('.task-picker-btn').forEach(b => b.classList.remove('selected'));
-                    btn.classList.add('selected');
-                    selectedTaskCodeInModal = code;
-                };
-                grid.appendChild(btn);
-            });
-
-            document.getElementById('taskModal').style.display = 'flex';
-        }
-
-        function closeTaskModal() {
-            document.getElementById('taskModal').style.display = 'none';
-            activeTaskCellSelection = null;
-            selectedTaskCodeInModal = null;
-        }
-
-        function confirmTaskSelection() {
-            if (isReadOnly || !activeTaskCellSelection) return;
-
-            const { isTeam, targetId, dateStr } = activeTaskCellSelection;
-            const descValue = document.getElementById('taskModalDescription').value.trim();
-            const descKey = `${targetId}_${dateStr}`;
-
-            if (isTeam) {
-                promptTeamRotation(targetId, dateStr, selectedTaskCodeInModal);
-                if (descValue) {
-                    taskDescriptions[descKey] = descValue;
-                } else {
-                    delete taskDescriptions[descKey];
-                }
-            } else {
-                if (!agentSchedules[targetId]) agentSchedules[targetId] = {};
-                agentSchedules[targetId][dateStr] = selectedTaskCodeInModal;
-
-                if (descValue) {
-                    taskDescriptions[descKey] = descValue;
-                } else {
-                    delete taskDescriptions[descKey];
-                }
-            }
-
-            closeTaskModal();
-            renderAll(true);
-        }
-
-        function clearTaskAndDesc() {
-            if (isReadOnly || !activeTaskCellSelection) return;
-            const { isTeam, targetId, dateStr } = activeTaskCellSelection;
-            const descKey = `${targetId}_${dateStr}`;
-
-            delete taskDescriptions[descKey];
-            if (isTeam) {
-                if (teamSchedules[targetId]) delete teamSchedules[targetId][dateStr];
-            } else {
-                if (agentSchedules[targetId]) delete agentSchedules[targetId][dateStr];
-            }
-
-            closeTaskModal();
-            renderAll(true);
         }
 
         function timeToDecimal(timeStr) {
@@ -1642,6 +1537,12 @@
                 }
             });
         }
+        
+        function applySelectStyle(select, taskCode) { 
+            const task = TASKS[taskCode] || TASKS['R']; 
+            select.style.backgroundColor = task.color; 
+            select.style.color = task.text; 
+        }
 
         function updateDashboard() {
             const dates = getVisibleDates(); 
@@ -1735,18 +1636,20 @@
             });
         }
 
-        /* --- FONCTIONS MODALE AGENT AVEC OPTION SANS RÉCURRENCE --- */
-        function toggleAgentRecurrenceUI() {
-            const freqVal = document.getElementById('bulkAgentFreq').value;
-            const endDateGroup = document.getElementById('bulkEndDateGroup');
-            const durationGroup = document.getElementById('bulkDurationGroup');
+        function toggleCopySourceType() {
+            const sourceType = document.querySelector('input[name="copySourceType"]:checked').value;
+            const copyTeamGroup = document.getElementById('copyTeamGroup');
+            const copyAgentGroup = document.getElementById('copyAgentGroup');
+            const copyCommentGroup = document.getElementById('copyCommentGroup');
 
-            if (freqVal === 'NONE') {
-                endDateGroup.style.display = 'block';
-                durationGroup.style.display = 'none';
+            if (sourceType === 'team') {
+                copyTeamGroup.style.display = 'block';
+                copyAgentGroup.style.display = 'none';
+                copyCommentGroup.style.display = 'none';
             } else {
-                endDateGroup.style.display = 'none';
-                durationGroup.style.display = 'block';
+                copyTeamGroup.style.display = 'none';
+                copyAgentGroup.style.display = 'block';
+                copyCommentGroup.style.display = 'block';
             }
         }
 
@@ -1770,6 +1673,7 @@
                 boxContainer.innerHTML += `<label><input type="checkbox" value="${s.id}" ${isChecked}> ${s.name}</label>`; 
             });
 
+            // Remplir le selecteur des équipes
             const teamSelect = document.getElementById('copyTeamSelect');
             teamSelect.innerHTML = '';
             teams.forEach(t => {
@@ -1779,9 +1683,30 @@
                 teamSelect.appendChild(opt);
             });
 
+            // Remplir le selecteur des agents
+            const agentSelect = document.getElementById('copyAgentSelect');
+            agentSelect.innerHTML = '';
+            teams.forEach(t => {
+                t.agents.forEach(a => {
+                    if (a.id !== agentId) { // Exclure l'agent en cours d'édition
+                        const opt = document.createElement('option');
+                        opt.value = a.id;
+                        opt.dataset.teamId = t.id;
+                        opt.innerText = `${a.name} (${t.name})`;
+                        agentSelect.appendChild(opt);
+                    }
+                });
+            });
+
+            // Réinitialiser la sélection par défaut sur la copie d'équipe
+            document.querySelectorAll('input[name="copySourceType"]')[0].checked = true;
+            toggleCopySourceType();
+            document.getElementById('copyCommentInput').value = '';
+
             const todayStr = formatDate(startDate);
             document.getElementById('copyTeamStartDate').value = todayStr;
             
+            // Par défaut, date de fin = 1 an plus tard
             const defaultEndDate = new Date(startDate);
             defaultEndDate.setFullYear(defaultEndDate.getFullYear() + 1);
             document.getElementById('copyTeamEndDate').value = formatDate(defaultEndDate);
@@ -1796,22 +1721,17 @@
                 bulkSelect.appendChild(opt);
             });
 
-            document.getElementById('bulkAgentDesc').value = '';
             document.getElementById('bulkStartDate').value = todayStr;
-            document.getElementById('bulkEndDate').value = todayStr;
-            
-            document.getElementById('bulkAgentFreq').value = 'NONE';
+            document.getElementById('bulkAgentFreq').value = '1_DAY';
             document.getElementById('bulkAgentDuration').value = '1';
-            
-            toggleAgentRecurrenceUI();
 
             document.getElementById('agentModal').style.display = 'flex';
         }
 
-        function applyCopyTeamSchedule() {
+        function applyCopySchedule() {
             if (isReadOnly) return;
             const agentId = document.getElementById('editAgentId').value;
-            const teamId = document.getElementById('copyTeamSelect').value;
+            const sourceType = document.querySelector('input[name="copySourceType"]:checked').value;
             const startStr = document.getElementById('copyTeamStartDate').value;
             const endStr = document.getElementById('copyTeamEndDate').value;
 
@@ -1830,16 +1750,46 @@
 
             if (!agentSchedules[agentId]) agentSchedules[agentId] = {};
 
-            let currDate = new Date(startDateObj);
-            while (currDate <= endDateObj) {
-                const dStr = formatDate(currDate);
-                const teamTaskCode = teamSchedules[teamId] ? (teamSchedules[teamId][dStr] || 'R') : 'R';
-                agentSchedules[agentId][dStr] = teamTaskCode;
-                ensureYearExists(currDate.getFullYear());
-                currDate.setDate(currDate.getDate() + 1);
+            if (sourceType === 'team') {
+                const teamId = document.getElementById('copyTeamSelect').value;
+                let currDate = new Date(startDateObj);
+                while (currDate <= endDateObj) {
+                    const dStr = formatDate(currDate);
+                    const teamTaskCode = teamSchedules[teamId] ? (teamSchedules[teamId][dStr] || 'R') : 'R';
+                    agentSchedules[agentId][dStr] = teamTaskCode;
+                    ensureYearExists(currDate.getFullYear());
+                    currDate.setDate(currDate.getDate() + 1);
+                }
+                alert("Le roulement de l'équipe a été copié avec succès sur l'agent pour la période sélectionnée.");
+            } else {
+                const sourceAgentId = document.getElementById('copyAgentSelect').value;
+                const comment = document.getElementById('copyCommentInput').value.trim();
+                
+                // Retrouver l'équipe de l'agent source pour fallback
+                let sourceTeamId = null;
+                teams.forEach(t => {
+                    if (t.agents.some(a => a.id === sourceAgentId)) sourceTeamId = t.id;
+                });
+
+                const sourceAgent = { id: sourceAgentId };
+
+                let currDate = new Date(startDateObj);
+                while (currDate <= endDateObj) {
+                    const dStr = formatDate(currDate);
+                    const sourceTaskCode = getEffectiveAgentTask(sourceAgent, sourceTeamId, dStr);
+                    
+                    if (comment) {
+                        agentSchedules[agentId][dStr] = { task: sourceTaskCode, comment: comment };
+                    } else {
+                        agentSchedules[agentId][dStr] = sourceTaskCode;
+                    }
+
+                    ensureYearExists(currDate.getFullYear());
+                    currDate.setDate(currDate.getDate() + 1);
+                }
+                alert("Le roulement de l'agent a été copié avec succès pour la période sélectionnée.");
             }
 
-            alert("Le roulement de l'équipe a été copié avec succès sur l'agent pour la période sélectionnée.");
             closeAgentModal();
             renderAll(true);
         }
@@ -1852,9 +1802,9 @@
             if (isReadOnly) return;
             const agentId = document.getElementById('editAgentId').value; 
             const taskCode = document.getElementById('bulkAgentTask').value;
-            const taskDesc = document.getElementById('bulkAgentDesc').value.trim();
             const startStr = document.getElementById('bulkStartDate').value; 
             const freqVal = document.getElementById('bulkAgentFreq').value;
+            const yearsDuration = parseInt(document.getElementById('bulkAgentDuration').value, 10);
 
             if (!startStr) { 
                 alert("Veuillez sélectionner une date de début."); 
@@ -1862,62 +1812,31 @@
             }
 
             const startDateObj = parseDate(startStr);
+            let currDate = new Date(startDateObj);
+            
+            const endDateObj = new Date(startDateObj);
+            endDateObj.setFullYear(endDateObj.getFullYear() + yearsDuration);
+
             if (!agentSchedules[agentId]) agentSchedules[agentId] = {};
 
-            const applyToDate = (dStr) => {
-                agentSchedules[agentId][dStr] = taskCode;
-                const descKey = `${agentId}_${dStr}`;
-                if (taskDesc) {
-                    taskDescriptions[descKey] = taskDesc;
-                } else {
-                    delete taskDescriptions[descKey];
-                }
-            };
-
-            if (freqVal === 'NONE') {
-                const endStr = document.getElementById('bulkEndDate').value;
-                if (!endStr) {
-                    alert("Veuillez sélectionner une date de fin.");
-                    return;
-                }
-                const endDateObj = parseDate(endStr);
-                if (startDateObj > endDateObj) {
-                    alert("La date de début doit être antérieure à la date de fin.");
-                    return;
-                }
-
-                let currDate = new Date(startDateObj);
-                while (currDate <= endDateObj) {
+            if (freqVal === '1_DAY') {
+                while (currDate < endDateObj) {
                     const dStr = formatDate(currDate);
-                    applyToDate(dStr);
+                    agentSchedules[agentId][dStr] = taskCode;
                     ensureYearExists(currDate.getFullYear());
                     currDate.setDate(currDate.getDate() + 1);
                 }
             } else {
-                const yearsDuration = parseInt(document.getElementById('bulkAgentDuration').value, 10);
-                let currDate = new Date(startDateObj);
-                const endDateObj = new Date(startDateObj);
-                endDateObj.setFullYear(endDateObj.getFullYear() + yearsDuration);
-
-                if (freqVal === '1_DAY') {
-                    while (currDate < endDateObj) {
-                        const dStr = formatDate(currDate);
-                        applyToDate(dStr);
-                        ensureYearExists(currDate.getFullYear());
-                        currDate.setDate(currDate.getDate() + 1);
-                    }
-                } else {
-                    const stepWeeks = parseInt(freqVal, 10);
-                    while (currDate < endDateObj) {
-                        const dStr = formatDate(currDate);
-                        applyToDate(dStr);
-                        ensureYearExists(currDate.getFullYear());
-                        currDate.setDate(currDate.getDate() + (stepWeeks * 7));
-                    }
+                const stepWeeks = parseInt(freqVal, 10);
+                while (currDate < endDateObj) {
+                    const dStr = formatDate(currDate);
+                    agentSchedules[agentId][dStr] = taskCode;
+                    ensureYearExists(currDate.getFullYear());
+                    currDate.setDate(currDate.getDate() + (stepWeeks * 7));
                 }
             }
 
-            alert(`La tâche ${taskCode} a été appliquée avec succès.`); 
+            alert(`La tâche ${taskCode} a été appliquée récursivement avec succès.`); 
             closeAgentModal(); 
             renderAll(true);
         }
@@ -2028,17 +1947,18 @@
             });
             if (Object.keys(newTasks).length > 0) TASKS = newTasks;
 
-            settings.thresholds.M.orange = parseInt(document.getElementById('th_M_orange').value, 10) || 5; 
-            settings.thresholds.M.green = parseInt(document.getElementById('th_M_green').value, 10) || 7;
-            settings.thresholds.A.orange = parseInt(document.getElementById('th_A_orange').value, 10) || 5; 
-            settings.thresholds.A.green = parseInt(document.getElementById('th_A_green').value, 10) || 7;
-            settings.thresholds.N.orange = parseInt(document.getElementById('th_N_orange').value, 10) || 3; 
-            settings.thresholds.N.green = parseInt(document.getElementById('th_N_green').value, 10) || 5;
+            settings.thresholds.M.orange = parseInt(document.getElementById('th_M_orange').value, 10); 
+            settings.thresholds.M.green = parseInt(document.getElementById('th_M_green').value, 10);
+            settings.thresholds.A.orange = parseInt(document.getElementById('th_A_orange').value, 10); 
+            settings.thresholds.A.green = parseInt(document.getElementById('th_A_green').value, 10);
+            settings.thresholds.N.orange = parseInt(document.getElementById('th_N_orange').value, 10); 
+            settings.thresholds.N.green = parseInt(document.getElementById('th_N_green').value, 10);
             
             closeSettings(); 
             renderAll(true);
         }
 
+        /* --- FONCTIONS D'IMPRESSION DU PLANNING AU MOIS --- */
         function openPrintModal() {
             const printYearSelect = document.getElementById('printYear');
             printYearSelect.innerHTML = '';
