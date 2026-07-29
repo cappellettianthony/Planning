@@ -350,6 +350,51 @@
             #printSection th { background-color: #ddd !important; color: #000 !important; }
             @page { size: landscape; margin: 5mm; }
         }
+
+        /* Style pour le bouton d'action dans le haut de colonne */
+.toggle-col-btn {
+    background: transparent;
+    border: none;
+    color: white;
+    cursor: pointer;
+    font-size: 0.8rem;
+    margin-left: 5px;
+}
+
+/* Styles appliqués lorsque la colonne compétences est réduite */
+table.collapsed-skills .sticky-col-2 {
+    width: 35px !important;
+    min-width: 35px !important;
+    max-width: 35px !important;
+    padding: 2px !important;
+    text-align: center !important;
+    overflow: hidden;
+}
+
+/* Cache les badges détaillés lorsque la colonne est réduite */
+table.collapsed-skills .sticky-col-2 .badge,
+table.collapsed-skills .sticky-col-2 .badge-none {
+    display: none !important;
+}
+
+/* Affiche un indicateur court à la place lorsque la colonne est réduite */
+table.collapsed-skills .sticky-col-2::after {
+    content: '...';
+    font-size: 0.8rem;
+    color: #7f8c8d;
+    display: block;
+}
+
+/* Masque le texte d'en-tête et l'indicateur d'équipe quand c'est réduit */
+table.collapsed-skills th.sticky-col-2 span.col-title,
+table.collapsed-skills td.team-name-td.sticky-col-2 {
+    font-size: 0 !important;
+}
+table.collapsed-skills td.team-name-td.sticky-col-2::after {
+    content: '•';
+    font-size: 0.8rem;
+}
+
     </style>
 </head>
 <body>
@@ -408,7 +453,7 @@
     </details>
 
     <div class="table-container">
-        <table id="planningTable">
+    <table id="planningTable" class="collapsed-skills">
             <thead>
                 <tr id="headerDays">
                     <th class="sticky-col-1">Équipe / Agent</th>
@@ -1151,8 +1196,18 @@
         }
 
         function generateHeaders() {
-            const headerTr = document.getElementById('headerDays');
-            headerTr.innerHTML = `<th class="sticky-col-1">Équipe / Agent</th><th class="sticky-col-2">Compétences</th>`;
+    const headerTr = document.getElementById('headerDays');
+    const table = document.getElementById('planningTable');
+    const isCollapsed = table.classList.contains('collapsed-skills');
+    const btnText = isCollapsed ? '➕' : '➖';
+    
+    headerTr.innerHTML = `
+        <th class="sticky-col-1">Équipe / Agent</th>
+        <th class="sticky-col-2">
+            <span class="col-title">Compétences</span>
+            <button class="toggle-col-btn" onclick="toggleSkillsColumn()" title="Réduire/Agrandir la colonne">${btnText}</button>
+        </th>`;
+
             getVisibleDates().forEach(d => {
                 const th = document.createElement('th');
                 const dayName = d.toLocaleDateString('fr-FR', { weekday: 'short' });
@@ -1178,6 +1233,19 @@
                 headerTr.appendChild(th);
             });
         }
+
+        function toggleSkillsColumn() {
+    const table = document.getElementById('planningTable');
+    table.classList.toggle('collapsed-skills');
+    
+    // Met à jour le bouton de l'en-tête sans tout recharger
+    const btn = document.querySelector('.toggle-col-btn');
+    if (btn) {
+        const isCollapsed = table.classList.contains('collapsed-skills');
+        btn.innerText = isCollapsed ? '➕' : '➖';
+    }
+}
+
 
         function renderSkillBadges(container, agentSkills) {
             container.innerHTML = '';
