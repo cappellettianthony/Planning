@@ -291,10 +291,9 @@
         .monitored-skills-row {
             display: flex;
             align-items: center;
-            justify-content: space-between;
             gap: 10px;
             background: #f8f9fa;
-            padding: 8px 12px;
+            padding: 8px;
             border: 1px solid var(--border-color);
             border-radius: 5px;
             margin-bottom: 8px;
@@ -353,7 +352,7 @@
         }
     </style>
 </head>
-<body onload="init()">
+<body>
 
     <header>
         <div style="display: flex; align-items: center; gap: 15px;">
@@ -2100,8 +2099,11 @@
                 checkboxesHtml += '</div>';
 
                 row.innerHTML = `
-                    ${checkboxesHtml}
-                    <button class="btn btn-danger" style="padding: 2px 6px;" onclick="removeMonitoredSkillGroupRow(${idx})">X</button>
+                    <div style="flex:1;">
+                        <strong style="font-size:0.8rem; color:var(--primary);">Groupe #${idx + 1} à surveiller :</strong>
+                        ${checkboxesHtml}
+                    </div>
+                    <button class="btn btn-danger" style="padding:4px 8px;" onclick="removeMonitoredSkillGroupRow(${idx})">X</button>
                 `;
                 container.appendChild(row);
             });
@@ -2122,132 +2124,116 @@
             const container = document.getElementById('tasksContainer');
             container.innerHTML = '';
             Object.keys(TASKS).forEach(code => {
-                const t = TASKS[code];
+                const task = TASKS[code];
                 const row = document.createElement('div');
                 row.className = 'task-row';
                 row.innerHTML = `
-                    <input type="text" value="${code}" data-key="code" style="font-weight:bold;">
-                    <input type="text" value="${t.label}" data-key="label">
-                    <select data-key="shift">
-                        <option value="none" ${t.shift === 'none' ? 'selected' : ''}>Aucun</option>
-                        <option value="M" ${t.shift === 'M' ? 'selected' : ''}>Matin</option>
-                        <option value="A" ${t.shift === 'A' ? 'selected' : ''}>Après-midi</option>
-                        <option value="N" ${t.shift === 'N' ? 'selected' : ''}>Nuit</option>
-                        <option value="J" ${t.shift === 'J' ? 'selected' : ''}>Journée</option>
+                    <input type="text" value="${code}" disabled style="font-weight:bold;">
+                    <input type="text" value="${task.label}" id="tk_label_${code}">
+                    <select id="tk_shift_${code}">
+                        <option value="none" ${task.shift === 'none' ? 'selected' : ''}>Aucun</option>
+                        <option value="M" ${task.shift === 'M' ? 'selected' : ''}>Matin</option>
+                        <option value="A" ${task.shift === 'A' ? 'selected' : ''}>Après-Midi</option>
+                        <option value="N" ${task.shift === 'N' ? 'selected' : ''}>Nuit</option>
+                        <option value="J" ${task.shift === 'J' ? 'selected' : ''}>Journée</option>
                     </select>
-                    <input type="time" value="${t.start}" data-key="start">
-                    <input type="time" value="${t.end}" data-key="end">
-                    <input type="checkbox" ${t.isRest ? 'checked' : ''} data-key="isRest">
-                    <input type="color" value="${t.color}" data-key="color">
-                    <input type="color" value="${t.text}" data-key="text">
-                    <button class="btn btn-danger" onclick="this.parentElement.remove()">X</button>
+                    <input type="time" value="${task.start || '00:00'}" id="tk_start_${code}">
+                    <input type="time" value="${task.end || '00:00'}" id="tk_end_${code}">
+                    <select id="tk_rest_${code}">
+                        <option value="true" ${task.isRest ? 'selected' : ''}>Oui</option>
+                        <option value="false" ${!task.isRest ? 'selected' : ''}>Non</option>
+                    </select>
+                    <input type="color" value="${task.color}" id="tk_color_${code}">
+                    <input type="color" value="${task.text}" id="tk_text_${code}">
+                    <button class="btn btn-danger" onclick="removeTaskRow('${code}')">X</button>
                 `;
                 container.appendChild(row);
             });
         }
 
         function addTaskRow() {
-            const container = document.getElementById('tasksContainer');
-            const row = document.createElement('div');
-            row.className = 'task-row';
-            row.innerHTML = `
-                <input type="text" value="NEW" data-key="code" style="font-weight:bold;">
-                <input type="text" value="Nouvelle tâche" data-key="label">
-                <select data-key="shift">
-                    <option value="none" selected>Aucun</option>
-                    <option value="M">Matin</option>
-                    <option value="A">Après-midi</option>
-                    <option value="N">Nuit</option>
-                    <option value="J">Journée</option>
-                </select>
-                <input type="time" value="08:00" data-key="start">
-                <input type="time" value="16:00" data-key="end">
-                <input type="checkbox" data-key="isRest">
-                <input type="color" value="#3498db" data-key="color">
-                <input type="color" value="#ffffff" data-key="text">
-                <button class="btn btn-danger" onclick="this.parentElement.remove()">X</button>
-            `;
-            container.appendChild(row);
+            const code = prompt("Saisir le code de la nouvelle tâche (ex: CA, RTT, CP) :")?.toUpperCase();
+            if (!code) return;
+            if (TASKS[code]) {
+                alert("Ce code de tâche existe déjà.");
+                return;
+            }
+            TASKS[code] = { label: 'Nouvelle Tâche', color: '#95a5a6', text: '#ffffff', shift: 'none', start: '00:00', end: '00:00', isRest: true };
+            renderTasksConfig();
+        }
+
+        function removeTaskRow(code) {
+            if (['R', 'M', 'A', 'N'].includes(code)) {
+                alert("Impossible de supprimer une tâche système de base.");
+                return;
+            }
+            delete TASKS[code];
+            renderTasksConfig();
         }
 
         function saveSettings() {
             if (!isAdmin) return;
 
-            // 1. Sauvegarde des définitions de compétences
-            const newSkillDefs = [];
+            const newSkills = [];
             const skillRows = document.querySelectorAll('.skill-config-row');
             skillRows.forEach((row, idx) => {
                 const id = document.getElementById(`sk_id_${idx}`).value.trim();
                 const name = document.getElementById(`sk_name_${idx}`).value.trim();
                 const color = document.getElementById(`sk_color_${idx}`).value;
-                const min = parseInt(document.getElementById(`sk_min_${idx}`).value, 10) || 0;
-                if (id) {
-                    newSkillDefs.push({ id, name, color, min });
-                }
+                const min = parseInt(document.getElementById(`sk_min_${idx}`).value, 10) || 1;
+                if (id) newSkills.push({ id, name, color, min });
             });
-            skillDefinitions = newSkillDefs;
+            skillDefinitions = newSkills;
 
-            // 1.1 Sauvegarde des groupes de compétences exclusives surveillés
             const newMonitoredGroups = [];
             (exclusiveSkillMonitoredGroups || []).forEach((_, idx) => {
                 const checkedBoxes = document.querySelectorAll(`.monitored-group-cb-${idx}:checked`);
-                const group = Array.from(checkedBoxes).map(cb => cb.value);
+                const group = [];
+                checkedBoxes.forEach(cb => group.push(cb.value));
                 if (group.length > 0) {
                     newMonitoredGroups.push(group);
                 }
             });
             exclusiveSkillMonitoredGroups = newMonitoredGroups;
 
-            // 2. Sauvegarde des Tâches
-            const newTasks = {};
-            const taskRows = document.querySelectorAll('.task-row');
-            taskRows.forEach(row => {
-                const code = row.querySelector('[data-key="code"]').value.trim();
-                if (code) {
-                    newTasks[code] = {
-                        label: row.querySelector('[data-key="label"]').value.trim(),
-                        shift: row.querySelector('[data-key="shift"]').value,
-                        start: row.querySelector('[data-key="start"]').value,
-                        end: row.querySelector('[data-key="end"]').value,
-                        isRest: row.querySelector('[data-key="isRest"]').checked,
-                        color: row.querySelector('[data-key="color"]').value,
-                        text: row.querySelector('[data-key="text"]').value
-                    };
+            Object.keys(TASKS).forEach(code => {
+                const labelEl = document.getElementById(`tk_label_${code}`);
+                if (labelEl) {
+                    TASKS[code].label = labelEl.value.trim();
+                    TASKS[code].shift = document.getElementById(`tk_shift_${code}`).value;
+                    TASKS[code].start = document.getElementById(`tk_start_${code}`).value;
+                    TASKS[code].end = document.getElementById(`tk_end_${code}`).value;
+                    TASKS[code].isRest = document.getElementById(`tk_rest_${code}`).value === 'true';
+                    TASKS[code].color = document.getElementById(`tk_color_${code}`).value;
+                    TASKS[code].text = document.getElementById(`tk_text_${code}`).value;
                 }
             });
-            TASKS = newTasks;
 
-            // 3. Sauvegarde des Seuils
-            settings.thresholds = {
-                M: {
-                    orange: parseInt(document.getElementById('th_M_orange').value, 10) || 0,
-                    green: parseInt(document.getElementById('th_M_green').value, 10) || 0
-                },
-                A: {
-                    orange: parseInt(document.getElementById('th_A_orange').value, 10) || 0,
-                    green: parseInt(document.getElementById('th_A_green').value, 10) || 0
-                },
-                N: {
-                    orange: parseInt(document.getElementById('th_N_orange').value, 10) || 0,
-                    green: parseInt(document.getElementById('th_N_green').value, 10) || 0
-                }
-            };
+            settings.thresholds.M.orange = parseInt(document.getElementById('th_M_orange').value, 10);
+            settings.thresholds.M.green = parseInt(document.getElementById('th_M_green').value, 10);
+            settings.thresholds.A.orange = parseInt(document.getElementById('th_A_orange').value, 10);
+            settings.thresholds.A.green = parseInt(document.getElementById('th_A_green').value, 10);
+            settings.thresholds.N.orange = parseInt(document.getElementById('th_N_orange').value, 10);
+            settings.thresholds.N.green = parseInt(document.getElementById('th_N_green').value, 10);
 
             closeSettings();
             renderAll(true);
         }
 
         function openPrintModal() {
-            const printYearSel = document.getElementById('printYear');
-            printYearSel.innerHTML = '';
+            const monthSel = document.getElementById('printMonth');
+            monthSel.value = new Date().getMonth();
+
+            const yearSel = document.getElementById('printYear');
+            yearSel.innerHTML = '';
             for (let y = minYearAvailable; y <= maxYearAvailable; y++) {
                 const opt = document.createElement('option');
                 opt.value = y;
                 opt.innerText = y;
                 if (y === currentYear) opt.selected = true;
-                printYearSel.appendChild(opt);
+                yearSel.appendChild(opt);
             }
-            document.getElementById('printMonth').value = new Date().getMonth();
+
             document.getElementById('printModal').style.display = 'flex';
         }
 
@@ -2256,60 +2242,65 @@
         }
 
         function generateAndPrintMonth() {
-            const monthIndex = parseInt(document.getElementById('printMonth').value, 10);
-            const printYear = parseInt(document.getElementById('printYear').value, 10);
+            const month = parseInt(document.getElementById('printMonth').value, 10);
+            const year = parseInt(document.getElementById('printYear').value, 10);
 
-            const daysInMonth = new Date(printYear, monthIndex + 1, 0).getDate();
-            const monthName = new Date(printYear, monthIndex, 1).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+            const firstDay = new Date(year, month, 1);
+            const lastDay = new Date(year, month + 1, 0);
+            const daysInMonth = lastDay.getDate();
 
-            let html = `
-                <div style="text-align: center; margin-bottom: 10px;">
-                    <h2>Planning Opérationnel - ${monthName.toUpperCase()}</h2>
-                </div>
+            const printSection = document.getElementById('printSection');
+            printSection.innerHTML = '';
+
+            const monthNames = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
+            
+            let tableHtml = `
+                <h2 style="text-align:center; margin-bottom:10px;">Planning - ${monthNames[month]} ${year}</h2>
                 <table>
                     <thead>
                         <tr>
-                            <th style="width: 150px;">Équipe / Agent</th>
+                            <th style="width:150px;">Équipe / Agent</th>
+                            <th style="width:120px;">Compétences</th>
             `;
 
             for (let day = 1; day <= daysInMonth; day++) {
-                const d = new Date(printYear, monthIndex, day);
+                const d = new Date(year, month, day);
                 const dayName = d.toLocaleDateString('fr-FR', { weekday: 'short' }).slice(0, 2);
-                html += `<th>${dayName}<br>${day}</th>`;
+                tableHtml += `<th>${dayName}<br>${day}</th>`;
             }
-            html += `</tr></thead><tbody>`;
+            tableHtml += `</tr></thead><tbody>`;
 
             teams.forEach(team => {
-                html += `<tr style="background-color: #f2f2f2; font-weight: bold;"><td style="text-align: left; padding-left: 5px;">${team.name}</td>`;
+                tableHtml += `<tr style="background-color:#eee; font-weight:bold;"><td>${team.name}</td><td>Roulement</td>`;
                 for (let day = 1; day <= daysInMonth; day++) {
-                    const dStr = formatDate(new Date(printYear, monthIndex, day));
-                    const taskCode = teamSchedules[team.id] ? (teamSchedules[team.id][dStr] || 'R') : 'R';
-                    const taskDef = TASKS[taskCode] || TASKS['R'];
-                    html += `<td style="background-color: ${taskDef.color}; color: ${taskDef.text};">${taskCode}</td>`;
+                    const dStr = formatDate(new Date(year, month, day));
+                    const task = teamSchedules[team.id] ? (teamSchedules[team.id][dStr] || 'R') : 'R';
+                    const tDef = TASKS[task] || TASKS['R'];
+                    tableHtml += `<td style="background-color:${tDef.color}; color:${tDef.text};">${task}</td>`;
                 }
-                html += `</tr>`;
+                tableHtml += `</tr>`;
 
                 team.agents.forEach(agent => {
-                    html += `<tr><td style="text-align: left; padding-left: 15px;">${agent.name}</td>`;
+                    const skillsStr = (agent.skills || []).join(', ');
+                    tableHtml += `<tr><td style="padding-left:10px;">${agent.name}</td><td>${skillsStr}</td>`;
                     for (let day = 1; day <= daysInMonth; day++) {
-                        const dStr = formatDate(new Date(printYear, monthIndex, day));
-                        const taskCode = getEffectiveAgentTask(agent, team.id, dStr);
-                        const taskDef = TASKS[taskCode] || TASKS['R'];
-                        html += `<td style="background-color: ${taskDef.color}; color: ${taskDef.text};">${taskCode}</td>`;
+                        const dStr = formatDate(new Date(year, month, day));
+                        const task = getEffectiveAgentTask(agent, team.id, dStr);
+                        const tDef = TASKS[task] || TASKS['R'];
+                        tableHtml += `<td style="background-color:${tDef.color}; color:${tDef.text};">${task}</td>`;
                     }
-                    html += `</tr>`;
+                    tableHtml += `</tr>`;
                 });
             });
 
-            html += `</tbody></table>`;
+            tableHtml += `</tbody></table>`;
+            printSection.innerHTML = tableHtml;
 
-            document.getElementById('printSection').innerHTML = html;
             closePrintModal();
-
-            setTimeout(() => {
-                window.print();
-            }, 300);
+            window.print();
         }
+
+        window.onload = init;
     </script>
 </body>
 </html>
