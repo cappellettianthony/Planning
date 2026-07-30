@@ -1641,268 +1641,251 @@ table.collapsed-skills td.team-name-td.sticky-col-2::after {
             return date;
         }
 
-                function checkRestRulesAndAlert() {
-            const alertList = document.getElementById('alertList');
-            alertList.innerHTML = '';
-            let alertCount = 0;
-            const currentAlertKeys = new Set();
+                function checkRestAlerts() {
+    let generatedAlerts = [];
+    const startYearDate = new Date(currentYear, 0, 1);
+    const endYearDate = new Date(currentYear, 11, 31);
 
-            // Helper interne : Calcul des heures d'un quart
-            function getShiftTimes(d, taskCode) {
-                const task = TASKS[taskCode] || TASKS['R'];
-                if (task.isRest || task.shift === 'none') return null;
+    teams.forEach(team => {
+        team.agents.forEach(agent => {
 
-                const [sH, sM] = task.start.split(':').map(Number);
-                const [eH, eM] = task.end.split(':').map(Number);
+            // -------------------------------------------------------------
+            // 1. RÈGLE DES 11H DE REPOS ENTRE DEUX JOURS TRAVAILLÉS
+            // -------------------------------------------------------------
+            let currentDate = new Date(startYearDate);
+            while (currentDate <= endYearDate) {
+                const dateStr = formatDate(currentDate);
+                const currentTaskCode = getEffectiveAgentTask(agent, team.id, dateStr);
+                const currentTask = TASKS[currentTaskCode] || TASKS['R'];
 
-                let start = new Date(d);
-                start.setHours(sH, sM, 0, 0);
+                const nextDate = new Date(currentDate);
+                nextDate.setDate(nextDate.getDate() + 1);
+                const nextDateStr = formatDate(nextDate);
+                const nextTaskCode = getEffectiveAgentTask(agent, team.id, nextDateStr);
+                const nextTask = TASKS[nextTaskCode] || TASKS['R'];
 
-                let end = new Date(d);
-                end.setHours(eH, eM, 0, 0);
+                if (!currentTask.isRest && !nextTask.isRest) {
+                    let finishCurrent = timeToDecimal(currentTask.end);
+                    let startNext = timeToDecimal(nextTask.start);
 
-                // Si le quart fini le lendemain (ex: Nuit 22h-06h)
-                if (end <= start) {
-                    end.setDate(end.getDate() + 1);
-                }
-                return { start, end };
-            }
-
-            // Parcours de chaque agent de chaque équipe
-            teams.forEach(team => {
-                team.agents.forEach(agent => {
-
-                    // -------------------------------------------------------------
-                    // 1. RÈGLE DES 11H DE REPOS QUOTIDIEN CONSECUTIFS
-                    // -------------------------------------------------------------
-                    const startYearDate = new Date(currentYear, 0, 1);
-                    const endYearDate = new Date(currentYear, 11, 31);
-                    let curr = new Date(startYearDate);
-
-                    while (curr < endYearDate) {
-                        const currStr = formatDate(curr);
-                        const nextDate = new Date(curr);
-                        nextDate.setDate(nextDate.getDate() + 1);
-                        const nextStr = formatDate(nextDate);
-
-                        const task1 = getEffectiveAgentTask(agent, team.id, currStr);
-                        const task2 = getEffectiveAgentTask(agent, team.id, nextStr);
-
-                        const shift1 = getShiftTimes(curr, task1);
-                        const shift2 = getShiftTimes(nextDate, task2);
-
-                        if (shift1 && shift2) {
-                            const diffHours = (shift2.start - shift1.end) / (1000 * 3600);
-                            if (diffHours < 11) {
-                                const alertKey = `REST11_${agent.id}_${currStr}`;
-                                currentAlertKeys.add(alertKey);
-
-                                if (!acknowledgedAlerts.some(a => a.key === alertKey)) {
-                                    alertCount++;
-                                    const li = document.createElement('li');
-                                    li.innerHTML = `
-                                        <span>⚠️ <strong>${agent.name}</strong> (${team.name}) : Moins de 11h de repos (${diffHours.toFixed(1)}h) entre le ${currStr} et le ${nextStr}.</span>
-                                        <button class="btn btn-ack" onclick="openAckModal('${alertKey}', '${agent.name}', '${currStr} au ${nextStr}', 'Repos quotidien < 11h (${diffHours.toFixed(1)}h)')">Acquitter</button>
-                                    `;
-                                    alertList.appendChild(li);
-                                }
-                            }
+                    if (currentTask.shift === 'N' && finishCurrent < timeToDecimal(currentTask.start)) {
+                        let restHours = startNext - finishCurrent;
+                        if (restHours < 0) restHours += 24;
+                        if (restHours < 11) {
+                            generatedAlerts.push({
+                                id: `REST11_${agent.id}_${dateStr}`,
+                                agentId: agent.id,
+                                agentName: agent.name,
+                                date: dateStr,
+                                type: 'REPOS_11H',
+                                description: `Repos quotidien insuffisant (${restHours.toFixed(1)}h < 11h) entre le ${dateStr} (${currentTaskCode}) et le ${nextDateStr} (${nextTaskCode})`
+                            });
                         }
-                        curr.setDate(curr.getDate() + 1);
-                    }
-
-                    // -------------------------------------------------------------
-                    // 2. RÈGLE DES 35H DE REPOS (Dimanche 00h00 -> Samedi 23h59)
-                    // -------------------------------------------------------------
-                    // Recherche du premier dimanche de l'année
-                    let weekSun = new Date(currentYear, 0, 1);
-                    while (weekSun.getDay() !== 0) { // 0 = Dimanche
-                        weekSun.setDate(weekSun.getDate() + 1);
-                    }
-
-                    while (weekSun <= endYearDate) {
-                        // Semaine civile définie du Dimanche 00h00 au Samedi 23h59
-                        const sunDate = new Date(weekSun);
-                        const satDate = new Date(weekSun);
-                        satDate.setDate(satDate.getDate() + 6);
-
-                        if (satDate > endYearDate) break;
-
-                        let maxRestDuration = 0;
-                        let currentRestStart = null;
-                        let currentRestEnd = null;
-                        let hasFullCivilDayRest = false;
-
-                        // Inspection de la plage temporelle heure par heure du dimanche au samedi
-                        const windowStart = new Date(sunDate); windowStart.setHours(0, 0, 0, 0);
-                        const windowEnd = new Date(satDate); windowEnd.setHours(23, 59, 59, 999);
-
-                        let cursor = new Date(windowStart);
-                        let inRest = false;
-                        let restStart = null;
-
-                        while (cursor <= windowEnd) {
-                            const dStr = formatDate(cursor);
-                            const taskCode = getEffectiveAgentTask(agent, team.id, dStr);
-                            const shift = getShiftTimes(cursor, taskCode);
-
-                            let isWorkingNow = false;
-                            if (shift && cursor >= shift.start && cursor < shift.end) {
-                                isWorkingNow = true;
-                            }
-
-                            if (!isWorkingNow) {
-                                if (!inRest) {
-                                    inRest = true;
-                                    restStart = new Date(cursor);
-                                }
-                            } else {
-                                if (inRest) {
-                                    inRest = false;
-                                    const duration = (cursor - restStart) / (1000 * 3600);
-                                    if (duration > maxRestDuration) {
-                                        maxRestDuration = duration;
-                                        currentRestStart = restStart;
-                                        currentRestEnd = new Date(cursor);
-                                    }
-                                }
-                            }
-                            cursor.setHours(cursor.getHours() + 1);
-                        }
-
-                        if (inRest) {
-                            const duration = (windowEnd - restStart) / (1000 * 3600);
-                            if (duration > maxRestDuration) {
-                                maxRestDuration = duration;
-                                currentRestStart = restStart;
-                                currentRestEnd = new Date(windowEnd);
-                            }
-                        }
-
-                        // Contrôle si le repos contient un jour plein civil complet (24h de 00h00 à 23h59)
-                        if (currentRestStart && currentRestEnd) {
-                            let chk = new Date(sunDate);
-                            while (chk <= satDate) {
-                                const dayStart = new Date(chk); dayStart.setHours(0, 0, 0, 0);
-                                const dayEnd = new Date(chk); dayEnd.setHours(23, 59, 59, 999);
-                                if (currentRestStart <= dayStart && currentRestEnd >= dayEnd) {
-                                    hasFullCivilDayRest = true;
-                                    break;
-                                }
-                                chk.setDate(chk.getDate() + 1);
-                            }
-                        }
-
-                        // Verification du respect standard (>= 35h CONTINUES ET AU MOINS 1 JOUR PLEIN)
-                        let is35hValid = (maxRestDuration >= 35 && hasFullCivilDayRest);
-
-                        // --- EXCEPTION SEMAINE DE QUART (Lundi Matin -> Dimanche Nuit) ---
-                        if (!is35hValid) {
-                            // Verification si l'agent commence un quart de matin le lundi de cette semaine
-                            const monStr = formatDate(new Date(sunDate.getFullYear(), sunDate.getMonth(), sunDate.getDate() + 1));
-                            const monTask = getEffectiveAgentTask(agent, team.id, monStr);
-
-                            // Et s'il termine la semaine sur un quart de nuit le dimanche
-                            const sunShiftEndStr = formatDate(sunDate);
-                            const sunShiftEndTask = getEffectiveAgentTask(agent, team.id, sunShiftEndStr);
-
-                            if (TASKS[monTask]?.shift === 'M' && TASKS[sunShiftEndTask]?.shift === 'N') {
-                                // Contrôle du repos combiné : 11h le samedi précédent + 24h le dimanche plein pré-quart
-                                const prevSatStr = formatDate(new Date(sunDate.getFullYear(), sunDate.getMonth(), sunDate.getDate() - 1));
-                                const prevSatTask = getEffectiveAgentTask(agent, team.id, prevSatStr);
-                                const sunTask = getEffectiveAgentTask(agent, team.id, formatDate(sunDate));
-
-                                const isPrevSatRest = TASKS[prevSatTask]?.isRest;
-                                const isSunRest = TASKS[sunTask]?.isRest;
-
-                                if (isPrevSatRest && isSunRest) {
-                                    is35hValid = true; // Exception validée !
-                                }
-                            }
-                        }
-
-                        if (!is35hValid) {
-                            const weekStr = `${formatDate(sunDate)} au ${formatDate(satDate)}`;
-                            const alertKey = `REST35_${agent.id}_${formatDate(sunDate)}`;
-                            currentAlertKeys.add(alertKey);
-
-                            if (!acknowledgedAlerts.some(a => a.key === alertKey)) {
-                                alertCount++;
-                                const li = document.createElement('li');
-                                li.innerHTML = `
-                                    <span>⚠️ <strong>${agent.name}</strong> (${team.name}) : Repos hebdomadaire de 35h non conforme (Dim-Sam : ${weekStr}).</span>
-                                    <button class="btn btn-ack" onclick="openAckModal('${alertKey}', '${agent.name}', '${weekStr}', 'Repos de 35h (24h jour plein + 11h) non respecté')">Acquitter</button>
-                                `;
-                                alertList.appendChild(li);
-                            }
-                        }
-
-                        // Semaine suivante (Dimanche suivant)
-                        weekSun.setDate(weekSun.getDate() + 7);
-                    }
-
-                    // -------------------------------------------------------------
-                    // 3. LIMITATION A 11 JOURS CONSECUTIFS DE TRAVAIL MAXIMUM
-                    // -------------------------------------------------------------
-                    let consecutiveWorkDays = 0;
-                    let workStreakStart = null;
-                    let checkDate = new Date(startYearDate);
-
-                    while (checkDate <= endYearDate) {
-                        const dStr = formatDate(checkDate);
-                        const taskCode = getEffectiveAgentTask(agent, team.id, dStr);
-                        const task = TASKS[taskCode] || TASKS['R'];
-
-                        if (!task.isRest && task.shift !== 'none') {
-                            if (consecutiveWorkDays === 0) {
-                                workStreakStart = new Date(checkDate);
-                            }
-                            consecutiveWorkDays++;
-
-                            if (consecutiveWorkDays > 11) {
-                                const streakStartStr = formatDate(workStreakStart);
-                                const streakEndStr = dStr;
-                                const alertKey = `MAX11DAYS_${agent.id}_${streakStartStr}`;
-                                currentAlertKeys.add(alertKey);
-
-                                if (!acknowledgedAlerts.some(a => a.key === alertKey)) {
-                                    alertCount++;
-                                    const li = document.createElement('li');
-                                    li.innerHTML = `
-                                        <span>⚠️ <strong>${agent.name}</strong> (${team.name}) : Plus de 11 jours consécutifs travaillés (${consecutiveWorkDays}j) du ${streakStartStr} au ${streakEndStr}.</span>
-                                        <button class="btn btn-ack" onclick="openAckModal('${alertKey}', '${agent.name}', '${streakStartStr} au ${streakEndStr}', 'Dépassement du plafond de 11 jours consécutifs de travail')">Acquitter</button>
-                                    `;
-                                    alertList.appendChild(li);
-                                }
-                            }
+                    } else {
+                        let restHours = 0;
+                        if (finishCurrent <= startNext) {
+                            restHours = (24 - finishCurrent) + startNext;
                         } else {
-                            consecutiveWorkDays = 0;
-                            workStreakStart = null;
+                            restHours = (24 - finishCurrent) + startNext;
                         }
-                        checkDate.setDate(checkDate.getDate() + 1);
-                    }
-
-                });
-            });
-
-            // Affichage du bandeau de notification d'alertes
-            const alertBanner = document.getElementById('alertBanner');
-            if (alertCount > 0) {
-                alertBanner.style.display = 'block';
-            } else {
-                alertBanner.style.display = 'none';
-            }
-
-            // Gestion de l'émergence de nouvelles alertes non acquittées
-            currentAlertKeys.forEach(key => {
-                if (!knownAlertKeys.has(key) && !acknowledgedAlerts.some(a => a.key === key)) {
-                    if (knownAlertKeys.size > 0) { // Évite d'ouvrir la modale au tout premier chargement
-                        openNotificationModal("De nouvelles infractions aux règles de repos ont été détectées sur le planning.");
+                        if (restHours < 11) {
+                            generatedAlerts.push({
+                                id: `REST11_${agent.id}_${dateStr}`,
+                                agentId: agent.id,
+                                agentName: agent.name,
+                                date: dateStr,
+                                type: 'REPOS_11H',
+                                description: `Repos quotidien insuffisant (${restHours.toFixed(1)}h < 11h) entre le ${dateStr} (${currentTaskCode}) et le ${nextDateStr} (${nextTaskCode})`
+                            });
+                        }
                     }
                 }
-            });
-            knownAlertKeys = currentAlertKeys;
+                currentDate.setDate(currentDate.getDate() + 1);
+            }
+
+            // -------------------------------------------------------------
+            // 2. RÈGLE DES 35H DE REPOS HEBDOMADAIRE (Dimanche 00h00 - Samedi 23h59)
+            // -------------------------------------------------------------
+            // Trouver le premier dimanche de l'année
+            let sundayIter = new Date(startYearDate);
+            while (sundayIter.getDay() !== 0) {
+                sundayIter.setDate(sundayIter.getDate() - 1);
+            }
+
+            while (sundayIter <= endYearDate) {
+                const sundayStr = formatDate(sundayIter);
+
+                // Récupération des 7 jours de la semaine civile (Dimanche au Samedi)
+                let weekDays = [];
+                for (let i = 0; i < 7; i++) {
+                    let d = new Date(sundayIter);
+                    d.setDate(d.getDate() + i);
+                    let dStr = formatDate(d);
+                    let tCode = getEffectiveAgentTask(agent, team.id, dStr);
+                    let tDef = TASKS[tCode] || TASKS['R'];
+                    weekDays.push({ date: d, dateStr: dStr, code: tCode, def: tDef });
+                }
+
+                // Vérification de l'exception : Semaine Lundi Matin à Dimanche Nuit
+                let monTask = weekDays[1].def; // Lundi (index 1)
+                
+                // On regarde aussi le dimanche qui clôture la semaine (index 0 de la semaine suivante)
+                let endSunDate = new Date(sundayIter);
+                endSunDate.setDate(endSunDate.getDate() + 7);
+                let endSunStr = formatDate(endSunDate);
+                let endSunCode = getEffectiveAgentTask(agent, team.id, endSunStr);
+                let endSunTask = TASKS[endSunCode] || TASKS['R'];
+
+                let isSpecialShiftWeek = (monTask.shift === 'M' && endSunTask.shift === 'N');
+
+                let valid35h = false;
+
+                if (isSpecialShiftWeek) {
+                    // Exception : 24h sur le Dimanche de début de semaine + 11h consécutifs sur le Samedi précédent
+                    let prevSatDate = new Date(sundayIter);
+                    prevSatDate.setDate(prevSatDate.getDate() - 1);
+                    let prevSatStr = formatDate(prevSatDate);
+                    let prevSatCode = getEffectiveAgentTask(agent, team.id, prevSatStr);
+                    let prevSatTask = TASKS[prevSatCode] || TASKS['R'];
+
+                    let sunIsFullRest = weekDays[0].def.isRest; // Dimanche plein repos
+                    let satFinishTime = prevSatTask.isRest ? 0 : timeToDecimal(prevSatTask.end);
+
+                    // Pour avoir 11h de repos le samedi avant 00h00 le dimanche, le poste doit finir au plus tard à 13h00
+                    let satHas11hRest = prevSatTask.isRest || (satFinishTime <= 13);
+
+                    if (sunIsFullRest && satHas11hRest) {
+                        valid35h = true;
+                    }
+                }
+
+                // Si l'exception ne s'applique pas ou n'est pas remplie, contrôle standard du Dimanche au Samedi
+                if (!valid35h) {
+                    for (let i = 0; i < 7; i++) {
+                        if (weekDays[i].def.isRest) {
+                            // Journée pleine de 24h trouvée (index i)
+                            // Vérification des 11h le jour précédent (i-1) ou suivant (i+1)
+                            let prevHas11h = false;
+                            let nextHas11h = false;
+
+                            if (i > 0) {
+                                let prevT = weekDays[i - 1].def;
+                                let finish = prevT.isRest ? 0 : timeToDecimal(prevT.end);
+                                if (prevT.isRest || finish <= 13) prevHas11h = true;
+                            } else {
+                                // Jour précédent = Samedi de la semaine d'avant
+                                let pSatDate = new Date(sundayIter);
+                                pSatDate.setDate(pSatDate.getDate() - 1);
+                                let pSatCode = getEffectiveAgentTask(agent, team.id, formatDate(pSatDate));
+                                let pSatT = TASKS[pSatCode] || TASKS['R'];
+                                let finish = pSatT.isRest ? 0 : timeToDecimal(pSatT.end);
+                                if (pSatT.isRest || finish <= 13) prevHas11h = true;
+                            }
+
+                            if (i < 6) {
+                                let nextT = weekDays[i + 1].def;
+                                let start = nextT.isRest ? 24 : timeToDecimal(nextT.start);
+                                if (nextT.isRest || start >= 11) nextHas11h = true;
+                            } else {
+                                // Jour suivant = Dimanche de la semaine d'après
+                                let nSunDate = new Date(sundayIter);
+                                nSunDate.setDate(nSunDate.getDate() + 7);
+                                let nSunCode = getEffectiveAgentTask(agent, team.id, formatDate(nSunDate));
+                                let nSunT = TASKS[nSunCode] || TASKS['R'];
+                                let start = nSunT.isRest ? 24 : timeToDecimal(nSunT.start);
+                                if (nSunT.isRest || start >= 11) nextHas11h = true;
+                            }
+
+                            if (prevHas11h || nextHas11h) {
+                                valid35h = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (!valid35h) {
+                    generatedAlerts.push({
+                        id: `REST35_${agent.id}_${sundayStr}`,
+                        agentId: agent.id,
+                        agentName: agent.name,
+                        date: sundayStr,
+                        type: 'REPOS_35H',
+                        description: `Repos hebdomadaire de 35h (24h + 11h) non respecté sur la semaine du dimanche ${sundayStr}`
+                    });
+                }
+
+                // Avancer d'une semaine (7 jours)
+                sundayIter.setDate(sundayIter.getDate() + 7);
+            }
+
+            // -------------------------------------------------------------
+            // 3. LIMITATION À 11 JOURS CONSÉCUTIFS DE TRAVAIL MAX
+            // -------------------------------------------------------------
+            let consecutiveWorkDays = 0;
+            let workStartDate = null;
+            let checkMaxDate = new Date(startYearDate);
+
+            while (checkMaxDate <= endYearDate) {
+                const dStr = formatDate(checkMaxDate);
+                const tCode = getEffectiveAgentTask(agent, team.id, dStr);
+                const tDef = TASKS[tCode] || TASKS['R'];
+
+                if (!tDef.isRest) {
+                    if (consecutiveWorkDays === 0) workStartDate = dStr;
+                    consecutiveWorkDays++;
+
+                    if (consecutiveWorkDays > 11) {
+                        generatedAlerts.push({
+                            id: `MAX11DAYS_${agent.id}_${dStr}`,
+                            agentId: agent.id,
+                            agentName: agent.name,
+                            date: dStr,
+                            type: 'MAX_11_JOURS',
+                            description: `Dépassement de la limite de 11 jours de travail consécutifs (${consecutiveWorkDays} jours d'affilée depuis le ${workStartDate})`
+                        });
+                    }
+                } else {
+                    consecutiveWorkDays = 0;
+                    workStartDate = null;
+                }
+                checkMaxDate.setDate(checkMaxDate.getDate() + 1);
+            }
+
+        });
+    });
+
+    // -------------------------------------------------------------
+    // AFFICHAGE ET GESTION DES ALERTES
+    // -------------------------------------------------------------
+    const activeAlerts = generatedAlerts.filter(a => !acknowledgedAlerts.some(ack => ack.id === a.id));
+    const alertBanner = document.getElementById('alertBanner');
+    const alertList = document.getElementById('alertList');
+    alertList.innerHTML = '';
+
+    if (activeAlerts.length > 0) {
+        alertBanner.style.display = 'block';
+        activeAlerts.forEach(al => {
+            const li = document.createElement('li');
+            li.innerHTML = `
+                <span><strong>${al.agentName}</strong> (${al.date}) : ${al.description}</span>
+                ${!isReadOnly ? `<button class="btn btn-ack" onclick="openAckModal('${al.id}', '${al.agentName}', '${al.date}', '${al.description}')">Acquitter</button>` : ''}
+            `;
+            alertList.appendChild(li);
+        });
+    } else {
+        alertBanner.style.display = 'none';
+    }
+
+    // Déclenchement de la modale pop-up si de nouvelles alertes apparaissent
+    activeAlerts.forEach(al => {
+        if (!knownAlertKeys.has(al.id)) {
+            knownAlertKeys.add(al.id);
+            showNotificationModal(`Attention pour ${al.agentName} le ${al.date} : ${al.description}`);
         }
+    });
+}
+
 
 
         function showNotificationModal(alert) {
