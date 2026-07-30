@@ -1757,7 +1757,7 @@
                 }
 
                 // Exemple d'alerte si le temps de travail dépasse le seuil légal sur la fenêtre (ex: > 48h)
-                if (workedHoursInWindow > 48) {
+                if (workedHoursInWindow > 90) {
                     hasAlerts = true;
                     const weekStr = formatDate(sundayCurr);
                     const alertKey = `${agent.id}_7j_${weekStr}`;
