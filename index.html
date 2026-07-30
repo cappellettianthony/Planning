@@ -351,44 +351,50 @@
             @page { size: landscape; margin: 5mm; }
         }
 
-        .toggle-col-btn {
-            background: transparent;
-            border: none;
-            color: white;
-            cursor: pointer;
-            font-size: 0.8rem;
-            margin-left: 5px;
-        }
+        /* Style pour le bouton d'action dans le haut de colonne */
+.toggle-col-btn {
+    background: transparent;
+    border: none;
+    color: white;
+    cursor: pointer;
+    font-size: 0.8rem;
+    margin-left: 5px;
+}
 
-        table.collapsed-skills .sticky-col-2 {
-            width: 35px !important;
-            min-width: 35px !important;
-            max-width: 35px !important;
-            padding: 2px !important;
-            text-align: center !important;
-            overflow: hidden;
-        }
+/* Styles appliqués lorsque la colonne compétences est réduite */
+table.collapsed-skills .sticky-col-2 {
+    width: 35px !important;
+    min-width: 35px !important;
+    max-width: 35px !important;
+    padding: 2px !important;
+    text-align: center !important;
+    overflow: hidden;
+}
 
-        table.collapsed-skills .sticky-col-2 .badge,
-        table.collapsed-skills .sticky-col-2 .badge-none {
-            display: none !important;
-        }
+/* Cache les badges détaillés lorsque la colonne est réduite */
+table.collapsed-skills .sticky-col-2 .badge,
+table.collapsed-skills .sticky-col-2 .badge-none {
+    display: none !important;
+}
 
-        table.collapsed-skills .sticky-col-2::after {
-            content: '...';
-            font-size: 0.8rem;
-            color: #7f8c8d;
-            display: block;
-        }
+/* Affiche un indicateur court à la place lorsque la colonne est réduite */
+table.collapsed-skills .sticky-col-2::after {
+    content: '...';
+    font-size: 0.8rem;
+    color: #7f8c8d;
+    display: block;
+}
 
-        table.collapsed-skills th.sticky-col-2 span.col-title,
-        table.collapsed-skills td.team-name-td.sticky-col-2 {
-            font-size: 0 !important;
-        }
-        table.collapsed-skills td.team-name-td.sticky-col-2::after {
-            content: '•';
-            font-size: 0.8rem;
-        }
+/* Masque le texte d'en-tête et l'indicateur d'équipe quand c'est réduit */
+table.collapsed-skills th.sticky-col-2 span.col-title,
+table.collapsed-skills td.team-name-td.sticky-col-2 {
+    font-size: 0 !important;
+}
+table.collapsed-skills td.team-name-td.sticky-col-2::after {
+    content: '•';
+    font-size: 0.8rem;
+}
+
     </style>
 </head>
 <body>
@@ -447,7 +453,7 @@
     </details>
 
     <div class="table-container">
-        <table id="planningTable" class="collapsed-skills">
+    <table id="planningTable" class="collapsed-skills">
             <thead>
                 <tr id="headerDays">
                     <th class="sticky-col-1">Équipe / Agent</th>
@@ -1158,7 +1164,7 @@
             updateDashboard();
             generateHeaders();
             generateTable();
-            checkRestAlerts();
+            checkRestRulesAndAlert();
             if (save && !isReadOnly) saveToFirebase();
             applyReadOnlyMode();
         }
@@ -1190,17 +1196,17 @@
         }
 
         function generateHeaders() {
-            const headerTr = document.getElementById('headerDays');
-            const table = document.getElementById('planningTable');
-            const isCollapsed = table.classList.contains('collapsed-skills');
-            const btnText = isCollapsed ? '➕' : '➖';
-            
-            headerTr.innerHTML = `
-                <th class="sticky-col-1">Équipe / Agent</th>
-                <th class="sticky-col-2">
-                    <span class="col-title">Compétences</span>
-                    <button class="toggle-col-btn" onclick="toggleSkillsColumn()" title="Réduire/Agrandir la colonne">${btnText}</button>
-                </th>`;
+    const headerTr = document.getElementById('headerDays');
+    const table = document.getElementById('planningTable');
+    const isCollapsed = table.classList.contains('collapsed-skills');
+    const btnText = isCollapsed ? '➕' : '➖';
+    
+    headerTr.innerHTML = `
+        <th class="sticky-col-1">Équipe / Agent</th>
+        <th class="sticky-col-2">
+            <span class="col-title">Compétences</span>
+            <button class="toggle-col-btn" onclick="toggleSkillsColumn()" title="Réduire/Agrandir la colonne">${btnText}</button>
+        </th>`;
 
             getVisibleDates().forEach(d => {
                 const th = document.createElement('th');
@@ -1229,15 +1235,17 @@
         }
 
         function toggleSkillsColumn() {
-            const table = document.getElementById('planningTable');
-            table.classList.toggle('collapsed-skills');
-            
-            const btn = document.querySelector('.toggle-col-btn');
-            if (btn) {
-                const isCollapsed = table.classList.contains('collapsed-skills');
-                btn.innerText = isCollapsed ? '➕' : '➖';
-            }
-        }
+    const table = document.getElementById('planningTable');
+    table.classList.toggle('collapsed-skills');
+    
+    // Met à jour le bouton de l'en-tête sans tout recharger
+    const btn = document.querySelector('.toggle-col-btn');
+    if (btn) {
+        const isCollapsed = table.classList.contains('collapsed-skills');
+        btn.innerText = isCollapsed ? '➕' : '➖';
+    }
+}
+
 
         function renderSkillBadges(container, agentSkills) {
             container.innerHTML = '';
@@ -1357,6 +1365,7 @@
                         });
                     });
 
+                    // Vérification des cumuls de compétences exclusives
                     let exclusiveAlerts = [];
                     (exclusiveSkillMonitoredGroups || []).forEach(group => {
                         if (!group || group.length < 2) return;
@@ -1539,7 +1548,7 @@
             selectedTaskCodeInModal = currentTaskCode || 'R';
 
             document.getElementById('taskModalTargetInfo').innerHTML = `
-                Cible: <strong>${targetName}</strong> | Date: <strong>${dateStr}</strong>
+                Target: <strong>${targetName}</strong> | Date: <strong>${dateStr}</strong>
             `;
             document.getElementById('taskModalDescription').value = currentDesc || '';
 
@@ -1623,199 +1632,283 @@
             return parseInt(parts[0], 10) + (parseInt(parts[1], 10) / 60);
         }
 
-        function checkRestRulesAndAlert {
-    const alertList = document.getElementById('alertList');
-    const alertBanner = document.getElementById('alertBanner');
-    alertList.innerHTML = '';
-    let hasAlerts = false;
-
-    // Utilitaires de conversion Date <-> Timestamp en minutes
-    const getShiftTimes = (dateStr, shiftCode) => {
-        const task = TASKS[shiftCode];
-        if (!task || task.isRest || task.shift === 'none') return null;
-
-        const [startH, startM] = (task.start || '00:00').split(':').map(Number);
-        const [endH, endM] = (task.end || '00:00').split(':').map(Number);
-
-        const dStart = parseDate(dateStr);
-        dStart.setHours(startH, startM, 0, 0);
-
-        const dEnd = parseDate(dateStr);
-        if (shiftCode === 'N' || endH < startH) {
-            dEnd.setDate(dEnd.getDate() + 1);
+        function getPreviousOrCurrentSaturday(d) {
+            const date = new Date(d); 
+            const day = date.getDay(); 
+            const diff = (day === 6) ? 0 : (day + 1);
+            date.setDate(date.getDate() - diff); 
+            date.setHours(0, 0, 0, 0); 
+            return date;
         }
-        dEnd.setHours(endH, endM, 0, 0);
 
-        return { start: dStart.getTime(), end: dEnd.getTime() };
-    };
+                function checkRestRulesAndAlert() {
+            const alertList = document.getElementById('alertList');
+            alertList.innerHTML = '';
+            let alertCount = 0;
+            const currentAlertKeys = new Set();
 
-    teams.forEach(team => {
-        team.agents.forEach(agent => {
-            const startYearDate = new Date(currentYear, 0, 1);
-            const endYearDate = new Date(currentYear, 11, 31);
-
-            // -------------------------------------------------------------
-            // 1. CONTRÔLE DES 11H DE REPOS ENTRE DEUX SHIFTS CONSÉCUTIFS
-            // -------------------------------------------------------------
-            let prevShiftEnd = null;
-            let curr = new Date(startYearDate);
-
-            while (curr <= endYearDate) {
-                const dateStr = formatDate(curr);
-                const taskCode = getEffectiveAgentTask(agent, team.id, dateStr);
-                const shiftTimes = getShiftTimes(dateStr, taskCode);
-
-                if (shiftTimes) {
-                    if (prevShiftEnd !== null) {
-                        const restDurationHours = (shiftTimes.start - prevShiftEnd) / (1000 * 60 * 60);
-                        if (restDurationHours < 11) {
-                            hasAlerts = true;
-                            const alertKey = `${agent.id}_11h_${dateStr}`;
-                            addAlertItem(
-                                alertList, 
-                                alertKey, 
-                                `<strong>${agent.name}</strong> : Repos insuffisant (${restDurationHours.toFixed(1)}h < 11h) avant le service du ${dateStr}.`
-                            );
-                        }
-                    }
-                    prevShiftEnd = shiftTimes.end;
-                }
-                curr.setDate(curr.getDate() + 1);
-            }
-
-            // -------------------------------------------------------------
-            // 2. CONTRÔLE SUR 7 JOURS (Dimanche 00h00 -> Samedi 23h59)
-            // -------------------------------------------------------------
-            // Recherche de tous les dimanches de l'année
-            let sundayCurr = new Date(startYearDate);
-            while (sundayCurr.getDay() !== 0) { // 0 = Dimanche
-                sundayCurr.setDate(sundayCurr.getDate() - 1);
-            }
-
-            while (sundayCurr <= endYearDate) {
-                let windowStart = new Date(sundayCurr);
-                windowStart.setHours(0, 0, 0, 0);
-
-                let windowEnd = new Date(sundayCurr);
-                windowEnd.setDate(windowEnd.getDate() + 6); // Samedi
-                windowEnd.setHours(23, 59, 59, 999);
-
-                // Vérifier si la semaine commence le lundi par un 'M' et finit le dimanche par un 'N'
-                const monDateStr = formatDate(new Date(sundayCurr.getFullYear(), sundayCurr.getMonth(), sundayCurr.getDate() + 1));
-                const sunDateStr = formatDate(new Date(sundayCurr.getFullYear(), sundayCurr.getMonth(), sundayCurr.getDate() + 7));
-
-                const monTask = getEffectiveAgentTask(agent, team.id, monDateStr);
-                const sunTask = getEffectiveAgentTask(agent, team.id, sunDateStr);
-
-                // Exception : Semaine Lundi Matin (M) -> Dimanche Nuit (N)
-                if (monTask === 'M' && sunTask === 'N') {
-                    // Élargissement de la plage au Samedi précédent à 13h00 (-11h sur le samedi)
-                    windowStart.setDate(windowStart.getDate() - 1); // Samedi précédent
-                    windowStart.setHours(13, 0, 0, 0);
-                }
-
-                // Récupération du dernier jour travaillé dans la semaine pour vérifier si c'est une nuit
-                let lastWorkedShift = null;
-                let lastWorkedDateStr = null;
-
-                for (let dayOffset = 0; dayOffset < 7; dayOffset++) {
-                    const checkD = new Date(sundayCurr);
-                    checkD.setDate(checkD.getDate() + dayOffset);
-                    const dStr = formatDate(checkD);
-                    const taskCode = getEffectiveAgentTask(agent, team.id, dStr);
-                    const task = TASKS[taskCode];
-
-                    if (task && !task.isRest && task.shift !== 'none') {
-                        lastWorkedShift = taskCode;
-                        lastWorkedDateStr = dStr;
-                    }
-                }
-
-                // Si le dernier jour travaillé de la semaine est une nuit (N), la fin est portée jusqu'à 05h45 le lendemain
-                if (lastWorkedShift === 'N') {
-                    windowEnd.setDate(windowEnd.getDate() + 1); // Dimanche matin
-                    windowEnd.setHours(5, 45, 0, 0);
-                }
-
-                // Vérification du temps de repos total ou cumul d'heures de travail sur cette fenêtre élargie
-                let workedHoursInWindow = 0;
-                let scanD = new Date(windowStart);
-
-                while (scanD <= windowEnd) {
-                    const dStr = formatDate(scanD);
-                    const taskCode = getEffectiveAgentTask(agent, team.id, dStr);
-                    const st = getShiftTimes(dStr, taskCode);
-
-                    if (st) {
-                        const overlapStart = Math.max(st.start, windowStart.getTime());
-                        const overlapEnd = Math.min(st.end, windowEnd.getTime());
-                        if (overlapEnd > overlapStart) {
-                            workedHoursInWindow += (overlapEnd - overlapStart) / (1000 * 60 * 60);
-                        }
-                    }
-                    scanD.setDate(scanD.getDate() + 1);
-                }
-
-                // Exemple d'alerte si le temps de travail dépasse le seuil légal sur la fenêtre (ex: > 48h)
-                if (workedHoursInWindow > 90) {
-                    hasAlerts = true;
-                    const weekStr = formatDate(sundayCurr);
-                    const alertKey = `${agent.id}_7j_${weekStr}`;
-                    addAlertItem(
-                        alertList, 
-                        alertKey, 
-                        `<strong>${agent.name}</strong> : Dépassement d'heures (${workedHoursInWindow.toFixed(1)}h) sur le contrôle 7 jours démarrant le ${weekStr}.`
-                    );
-                }
-
-                sundayCurr.setDate(sundayCurr.getDate() + 7);
-            }
-
-            // -------------------------------------------------------------
-            // 3. CONTRÔLE DES 11 JOURS TRAVAILLÉS CONSÉCUTIFS
-            // -------------------------------------------------------------
-            let consecutiveWorkedDays = 0;
-            let cDate = new Date(startYearDate);
-
-            while (cDate <= endYearDate) {
-                const dateStr = formatDate(cDate);
-                const taskCode = getEffectiveAgentTask(agent, team.id, dateStr);
+            // Helper interne : Calcul des heures d'un quart
+            function getShiftTimes(d, taskCode) {
                 const task = TASKS[taskCode] || TASKS['R'];
+                if (task.isRest || task.shift === 'none') return null;
 
-                if (!task.isRest && task.shift !== 'none') {
-                    consecutiveWorkedDays++;
-                    if (consecutiveWorkedDays > 11) {
-                        hasAlerts = true;
-                        const alertKey = `${agent.id}_11j_${dateStr}`;
-                        addAlertItem(
-                            alertList, 
-                            alertKey, 
-                            `<strong>${agent.name}</strong> : Plus de 11 jours travaillés consécutifs (${consecutiveWorkedDays}j) au ${dateStr}.`
-                        );
-                    }
-                } else {
-                    consecutiveWorkedDays = 0;
+                const [sH, sM] = task.start.split(':').map(Number);
+                const [eH, eM] = task.end.split(':').map(Number);
+
+                let start = new Date(d);
+                start.setHours(sH, sM, 0, 0);
+
+                let end = new Date(d);
+                end.setHours(eH, eM, 0, 0);
+
+                // Si le quart fini le lendemain (ex: Nuit 22h-06h)
+                if (end <= start) {
+                    end.setDate(end.getDate() + 1);
                 }
-                cDate.setDate(cDate.getDate() + 1);
+                return { start, end };
             }
-        });
-    });
 
-    alertBanner.style.display = hasAlerts ? 'block' : 'none';
-}
+            // Parcours de chaque agent de chaque équipe
+            teams.forEach(team => {
+                team.agents.forEach(agent => {
 
-function addAlertItem(container, key, htmlContent) {
-    if (acknowledgedAlerts.includes(key)) return;
-    const li = document.createElement('li');
-    li.innerHTML = `<span>${htmlContent}</span> <button class="btn btn-ack" onclick="openAckModal('${key}', '${htmlContent.replace(/'/g, "\\'")}')">Acquitter</button>`;
-    container.appendChild(li);
-}
+                    // -------------------------------------------------------------
+                    // 1. RÈGLE DES 11H DE REPOS QUOTIDIEN CONSECUTIFS
+                    // -------------------------------------------------------------
+                    const startYearDate = new Date(currentYear, 0, 1);
+                    const endYearDate = new Date(currentYear, 11, 31);
+                    let curr = new Date(startYearDate);
+
+                    while (curr < endYearDate) {
+                        const currStr = formatDate(curr);
+                        const nextDate = new Date(curr);
+                        nextDate.setDate(nextDate.getDate() + 1);
+                        const nextStr = formatDate(nextDate);
+
+                        const task1 = getEffectiveAgentTask(agent, team.id, currStr);
+                        const task2 = getEffectiveAgentTask(agent, team.id, nextStr);
+
+                        const shift1 = getShiftTimes(curr, task1);
+                        const shift2 = getShiftTimes(nextDate, task2);
+
+                        if (shift1 && shift2) {
+                            const diffHours = (shift2.start - shift1.end) / (1000 * 3600);
+                            if (diffHours < 11) {
+                                const alertKey = `REST11_${agent.id}_${currStr}`;
+                                currentAlertKeys.add(alertKey);
+
+                                if (!acknowledgedAlerts.some(a => a.key === alertKey)) {
+                                    alertCount++;
+                                    const li = document.createElement('li');
+                                    li.innerHTML = `
+                                        <span>⚠️ <strong>${agent.name}</strong> (${team.name}) : Moins de 11h de repos (${diffHours.toFixed(1)}h) entre le ${currStr} et le ${nextStr}.</span>
+                                        <button class="btn btn-ack" onclick="openAckModal('${alertKey}', '${agent.name}', '${currStr} au ${nextStr}', 'Repos quotidien < 11h (${diffHours.toFixed(1)}h)')">Acquitter</button>
+                                    `;
+                                    alertList.appendChild(li);
+                                }
+                            }
+                        }
+                        curr.setDate(curr.getDate() + 1);
+                    }
+
+                    // -------------------------------------------------------------
+                    // 2. RÈGLE DES 35H DE REPOS (Dimanche 00h00 -> Samedi 23h59)
+                    // -------------------------------------------------------------
+                    // Recherche du premier dimanche de l'année
+                    let weekSun = new Date(currentYear, 0, 1);
+                    while (weekSun.getDay() !== 0) { // 0 = Dimanche
+                        weekSun.setDate(weekSun.getDate() + 1);
+                    }
+
+                    while (weekSun <= endYearDate) {
+                        // Semaine civile définie du Dimanche 00h00 au Samedi 23h59
+                        const sunDate = new Date(weekSun);
+                        const satDate = new Date(weekSun);
+                        satDate.setDate(satDate.getDate() + 6);
+
+                        if (satDate > endYearDate) break;
+
+                        let maxRestDuration = 0;
+                        let currentRestStart = null;
+                        let currentRestEnd = null;
+                        let hasFullCivilDayRest = false;
+
+                        // Inspection de la plage temporelle heure par heure du dimanche au samedi
+                        const windowStart = new Date(sunDate); windowStart.setHours(0, 0, 0, 0);
+                        const windowEnd = new Date(satDate); windowEnd.setHours(23, 59, 59, 999);
+
+                        let cursor = new Date(windowStart);
+                        let inRest = false;
+                        let restStart = null;
+
+                        while (cursor <= windowEnd) {
+                            const dStr = formatDate(cursor);
+                            const taskCode = getEffectiveAgentTask(agent, team.id, dStr);
+                            const shift = getShiftTimes(cursor, taskCode);
+
+                            let isWorkingNow = false;
+                            if (shift && cursor >= shift.start && cursor < shift.end) {
+                                isWorkingNow = true;
+                            }
+
+                            if (!isWorkingNow) {
+                                if (!inRest) {
+                                    inRest = true;
+                                    restStart = new Date(cursor);
+                                }
+                            } else {
+                                if (inRest) {
+                                    inRest = false;
+                                    const duration = (cursor - restStart) / (1000 * 3600);
+                                    if (duration > maxRestDuration) {
+                                        maxRestDuration = duration;
+                                        currentRestStart = restStart;
+                                        currentRestEnd = new Date(cursor);
+                                    }
+                                }
+                            }
+                            cursor.setHours(cursor.getHours() + 1);
+                        }
+
+                        if (inRest) {
+                            const duration = (windowEnd - restStart) / (1000 * 3600);
+                            if (duration > maxRestDuration) {
+                                maxRestDuration = duration;
+                                currentRestStart = restStart;
+                                currentRestEnd = new Date(windowEnd);
+                            }
+                        }
+
+                        // Contrôle si le repos contient un jour plein civil complet (24h de 00h00 à 23h59)
+                        if (currentRestStart && currentRestEnd) {
+                            let chk = new Date(sunDate);
+                            while (chk <= satDate) {
+                                const dayStart = new Date(chk); dayStart.setHours(0, 0, 0, 0);
+                                const dayEnd = new Date(chk); dayEnd.setHours(23, 59, 59, 999);
+                                if (currentRestStart <= dayStart && currentRestEnd >= dayEnd) {
+                                    hasFullCivilDayRest = true;
+                                    break;
+                                }
+                                chk.setDate(chk.getDate() + 1);
+                            }
+                        }
+
+                        // Verification du respect standard (>= 35h CONTINUES ET AU MOINS 1 JOUR PLEIN)
+                        let is35hValid = (maxRestDuration >= 35 && hasFullCivilDayRest);
+
+                        // --- EXCEPTION SEMAINE DE QUART (Lundi Matin -> Dimanche Nuit) ---
+                        if (!is35hValid) {
+                            // Verification si l'agent commence un quart de matin le lundi de cette semaine
+                            const monStr = formatDate(new Date(sunDate.getFullYear(), sunDate.getMonth(), sunDate.getDate() + 1));
+                            const monTask = getEffectiveAgentTask(agent, team.id, monStr);
+
+                            // Et s'il termine la semaine sur un quart de nuit le dimanche
+                            const sunShiftEndStr = formatDate(sunDate);
+                            const sunShiftEndTask = getEffectiveAgentTask(agent, team.id, sunShiftEndStr);
+
+                            if (TASKS[monTask]?.shift === 'M' && TASKS[sunShiftEndTask]?.shift === 'N') {
+                                // Contrôle du repos combiné : 11h le samedi précédent + 24h le dimanche plein pré-quart
+                                const prevSatStr = formatDate(new Date(sunDate.getFullYear(), sunDate.getMonth(), sunDate.getDate() - 1));
+                                const prevSatTask = getEffectiveAgentTask(agent, team.id, prevSatStr);
+                                const sunTask = getEffectiveAgentTask(agent, team.id, formatDate(sunDate));
+
+                                const isPrevSatRest = TASKS[prevSatTask]?.isRest;
+                                const isSunRest = TASKS[sunTask]?.isRest;
+
+                                if (isPrevSatRest && isSunRest) {
+                                    is35hValid = true; // Exception validée !
+                                }
+                            }
+                        }
+
+                        if (!is35hValid) {
+                            const weekStr = `${formatDate(sunDate)} au ${formatDate(satDate)}`;
+                            const alertKey = `REST35_${agent.id}_${formatDate(sunDate)}`;
+                            currentAlertKeys.add(alertKey);
+
+                            if (!acknowledgedAlerts.some(a => a.key === alertKey)) {
+                                alertCount++;
+                                const li = document.createElement('li');
+                                li.innerHTML = `
+                                    <span>⚠️ <strong>${agent.name}</strong> (${team.name}) : Repos hebdomadaire de 35h non conforme (Dim-Sam : ${weekStr}).</span>
+                                    <button class="btn btn-ack" onclick="openAckModal('${alertKey}', '${agent.name}', '${weekStr}', 'Repos de 35h (24h jour plein + 11h) non respecté')">Acquitter</button>
+                                `;
+                                alertList.appendChild(li);
+                            }
+                        }
+
+                        // Semaine suivante (Dimanche suivant)
+                        weekSun.setDate(weekSun.getDate() + 7);
+                    }
+
+                    // -------------------------------------------------------------
+                    // 3. LIMITATION A 11 JOURS CONSECUTIFS DE TRAVAIL MAXIMUM
+                    // -------------------------------------------------------------
+                    let consecutiveWorkDays = 0;
+                    let workStreakStart = null;
+                    let checkDate = new Date(startYearDate);
+
+                    while (checkDate <= endYearDate) {
+                        const dStr = formatDate(checkDate);
+                        const taskCode = getEffectiveAgentTask(agent, team.id, dStr);
+                        const task = TASKS[taskCode] || TASKS['R'];
+
+                        if (!task.isRest && task.shift !== 'none') {
+                            if (consecutiveWorkDays === 0) {
+                                workStreakStart = new Date(checkDate);
+                            }
+                            consecutiveWorkDays++;
+
+                            if (consecutiveWorkDays > 11) {
+                                const streakStartStr = formatDate(workStreakStart);
+                                const streakEndStr = dStr;
+                                const alertKey = `MAX11DAYS_${agent.id}_${streakStartStr}`;
+                                currentAlertKeys.add(alertKey);
+
+                                if (!acknowledgedAlerts.some(a => a.key === alertKey)) {
+                                    alertCount++;
+                                    const li = document.createElement('li');
+                                    li.innerHTML = `
+                                        <span>⚠️ <strong>${agent.name}</strong> (${team.name}) : Plus de 11 jours consécutifs travaillés (${consecutiveWorkDays}j) du ${streakStartStr} au ${streakEndStr}.</span>
+                                        <button class="btn btn-ack" onclick="openAckModal('${alertKey}', '${agent.name}', '${streakStartStr} au ${streakEndStr}', 'Dépassement du plafond de 11 jours consécutifs de travail')">Acquitter</button>
+                                    `;
+                                    alertList.appendChild(li);
+                                }
+                            }
+                        } else {
+                            consecutiveWorkDays = 0;
+                            workStreakStart = null;
+                        }
+                        checkDate.setDate(checkDate.getDate() + 1);
+                    }
+
+                });
+            });
+
+            // Affichage du bandeau de notification d'alertes
+            const alertBanner = document.getElementById('alertBanner');
+            if (alertCount > 0) {
+                alertBanner.style.display = 'block';
+            } else {
+                alertBanner.style.display = 'none';
+            }
+
+            // Gestion de l'émergence de nouvelles alertes non acquittées
+            currentAlertKeys.forEach(key => {
+                if (!knownAlertKeys.has(key) && !acknowledgedAlerts.some(a => a.key === key)) {
+                    if (knownAlertKeys.size > 0) { // Évite d'ouvrir la modale au tout premier chargement
+                        openNotificationModal("De nouvelles infractions aux règles de repos ont été détectées sur le planning.");
+                    }
+                }
+            });
+            knownAlertKeys = currentAlertKeys;
+        }
 
 
-        function showNotificationModal(al) {
+        function showNotificationModal(alert) {
             const modal = document.getElementById('notificationModal');
             const msg = document.getElementById('notificationMessage');
-            msg.innerHTML = `Attention pour <strong>${al.agentName}</strong> le ${al.date} : ${al.description}`;
+            msg.innerHTML = `Alerte sur <strong>${alert.agentName}</strong> : ${alert.description}`;
             modal.style.display = 'flex';
         }
 
@@ -1823,10 +1916,10 @@ function addAlertItem(container, key, htmlContent) {
             document.getElementById('notificationModal').style.display = 'none';
         }
 
-        function openAckModal(alertId, agentName, date, description) {
+        function openAckModal(alertId, agentName, description) {
             if (isReadOnly) return;
-            pendingAckAlert = { alertId, agentName, date, description };
-            document.getElementById('ackAlertDetails').innerHTML = `Acquittement pour <strong>${agentName}</strong> (${date}) :<br><em>${description}</em>`;
+            pendingAckAlert = { alertId, agentName, description };
+            document.getElementById('ackAlertDetails').innerHTML = `Acquittement pour <strong>${agentName}</strong> :<br><em>${description}</em>`;
             document.getElementById('ackComment').value = '';
             document.getElementById('ackModal').style.display = 'flex';
         }
@@ -1902,14 +1995,14 @@ function addAlertItem(container, key, htmlContent) {
 
             if (!teamSchedules[teamId]) teamSchedules[teamId] = {};
 
-            const start = parseDate(dateStr);
+            const startDate = parseDate(dateStr);
             let stepDays = 7;
             if (freq === '1_DAY') stepDays = 1;
             else stepDays = parseInt(freq, 10) * 7;
 
             const totalDays = durationWeeks * 7;
-            let current = new Date(start);
-            const endDate = new Date(start);
+            let current = new Date(startDate);
+            const endDate = new Date(startDate);
             endDate.setDate(endDate.getDate() + totalDays);
 
             while (current <= endDate) {
@@ -1975,17 +2068,18 @@ function addAlertItem(container, key, htmlContent) {
             });
 
             const todayStr = formatDate(new Date());
+            const endYearStr = `${currentYear}-12-31`;
             document.getElementById('copyTeamStartDate').value = todayStr;
-            document.getElementById('copyTeamEndDate').value = todayStr;
+            document.getElementById('copyTeamEndDate').value = endYearStr;
             document.getElementById('copyAgentStartDate').value = todayStr;
-            document.getElementById('copyAgentEndDate').value = todayStr;
-            document.getElementById('copyAgentComment').value = '';
+            document.getElementById('copyAgentEndDate').value = endYearStr;
             document.getElementById('bulkStartDate').value = todayStr;
             document.getElementById('bulkEndDate').value = todayStr;
+            document.getElementById('copyAgentComment').value = '';
             document.getElementById('bulkAgentDesc').value = '';
             document.getElementById('bulkAgentFreq').value = 'NONE';
-
             toggleAgentRecurrenceUI();
+
             document.getElementById('agentModal').style.display = 'flex';
         }
 
@@ -1995,33 +2089,32 @@ function addAlertItem(container, key, htmlContent) {
 
         function toggleAgentRecurrenceUI() {
             const freq = document.getElementById('bulkAgentFreq').value;
-            const endDateGroup = document.getElementById('bulkEndDateGroup');
-            const durationGroup = document.getElementById('bulkDurationGroup');
+            const endGroup = document.getElementById('bulkEndDateGroup');
+            const durGroup = document.getElementById('bulkDurationGroup');
 
             if (freq === 'NONE') {
-                endDateGroup.style.display = 'block';
-                durationGroup.style.display = 'none';
+                endGroup.style.display = 'block';
+                durGroup.style.display = 'none';
             } else {
-                endDateGroup.style.display = 'none';
-                durationGroup.style.display = 'block';
+                endGroup.style.display = 'none';
+                durGroup.style.display = 'block';
             }
         }
 
         function saveAgent() {
             if (isReadOnly) return;
-            const id = document.getElementById('editAgentId').value;
+            const agentId = document.getElementById('editAgentId').value;
             const name = document.getElementById('editAgentName').value.trim();
 
-            const checkedSkills = [];
-            document.querySelectorAll('#skillsCheckboxes input[type="checkbox"]:checked').forEach(cb => {
-                checkedSkills.push(cb.value);
-            });
+            const selectedSkills = [];
+            const checkboxes = document.querySelectorAll('#skillsCheckboxes input[type="checkbox"]:checked');
+            checkboxes.forEach(cb => selectedSkills.push(cb.value));
 
             teams.forEach(t => {
-                const a = t.agents.find(ag => ag.id === id);
+                const a = t.agents.find(ag => ag.id === agentId);
                 if (a) {
                     a.name = name;
-                    a.skills = checkedSkills;
+                    a.skills = selectedSkills;
                 }
             });
 
@@ -2032,7 +2125,7 @@ function addAlertItem(container, key, htmlContent) {
         function applyCopyTeamSchedule() {
             if (isReadOnly) return;
             const agentId = document.getElementById('editAgentId').value;
-            const teamId = document.getElementById('copyTeamSelect').value;
+            const sourceTeamId = document.getElementById('copyTeamSelect').value;
             const startStr = document.getElementById('copyTeamStartDate').value;
             const endStr = document.getElementById('copyTeamEndDate').value;
 
@@ -2041,32 +2134,26 @@ function addAlertItem(container, key, htmlContent) {
                 return;
             }
 
-            const dStart = parseDate(startStr);
-            const dEnd = parseDate(endStr);
-
-            if (dStart > dEnd) {
-                alert("La date de début doit être antérieure à la date de fin.");
-                return;
-            }
+            const startDate = parseDate(startStr);
+            const endDate = parseDate(endStr);
 
             if (!agentSchedules[agentId]) agentSchedules[agentId] = {};
 
-            let curr = new Date(dStart);
-            while (curr <= dEnd) {
+            let curr = new Date(startDate);
+            while (curr <= endDate) {
                 const dStr = formatDate(curr);
-                const teamTask = teamSchedules[teamId] ? (teamSchedules[teamId][dStr] || 'R') : 'R';
+                const teamTask = teamSchedules[sourceTeamId] ? (teamSchedules[sourceTeamId][dStr] || 'R') : 'R';
                 agentSchedules[agentId][dStr] = teamTask;
                 curr.setDate(curr.getDate() + 1);
             }
 
-            alert("✅ Roulement d'équipe copié avec succès !");
             closeAgentModal();
             renderAll(true);
         }
 
         function applyCopyAgentSchedule() {
             if (isReadOnly) return;
-            const targetAgentId = document.getElementById('editAgentId').value;
+            const agentId = document.getElementById('editAgentId').value;
             const sourceAgentId = document.getElementById('copyAgentSelect').value;
             const comment = document.getElementById('copyAgentComment').value.trim();
             const startStr = document.getElementById('copyAgentStartDate').value;
@@ -2077,34 +2164,28 @@ function addAlertItem(container, key, htmlContent) {
                 return;
             }
 
-            const dStart = parseDate(startStr);
-            const dEnd = parseDate(endStr);
-
-            if (dStart > dEnd) {
-                alert("La date de début doit être antérieure à la date de fin.");
-                return;
-            }
-
             let sourceTeamId = null;
             teams.forEach(t => {
                 if (t.agents.some(a => a.id === sourceAgentId)) sourceTeamId = t.id;
             });
 
-            if (!agentSchedules[targetAgentId]) agentSchedules[targetAgentId] = {};
+            const startDate = parseDate(startStr);
+            const endDate = parseDate(endStr);
 
-            let curr = new Date(dStart);
-            while (curr <= dEnd) {
+            if (!agentSchedules[agentId]) agentSchedules[agentId] = {};
+
+            let curr = new Date(startDate);
+            while (curr <= endDate) {
                 const dStr = formatDate(curr);
                 const task = getEffectiveAgentTask({ id: sourceAgentId }, sourceTeamId, dStr);
-                agentSchedules[targetAgentId][dStr] = task;
+                agentSchedules[agentId][dStr] = task;
 
                 if (comment) {
-                    taskDescriptions[`${targetAgentId}_${dStr}`] = comment;
+                    taskDescriptions[`${agentId}_${dStr}`] = comment;
                 }
                 curr.setDate(curr.getDate() + 1);
             }
 
-            alert("✅ Roulement d'agent copié avec succès !");
             closeAgentModal();
             renderAll(true);
         }
@@ -2118,26 +2199,20 @@ function addAlertItem(container, key, htmlContent) {
             const freq = document.getElementById('bulkAgentFreq').value;
 
             if (!startStr) {
-                alert("Veuillez sélectionner une date de début.");
+                alert("Veuillez renseigner une date de début.");
                 return;
             }
 
             if (!agentSchedules[agentId]) agentSchedules[agentId] = {};
-
             const startDate = parseDate(startStr);
 
             if (freq === 'NONE') {
                 const endStr = document.getElementById('bulkEndDate').value;
                 if (!endStr) {
-                    alert("Veuillez sélectionner une date de fin.");
+                    alert("Veuillez renseigner une date de fin.");
                     return;
                 }
                 const endDate = parseDate(endStr);
-                if (startDate > endDate) {
-                    alert("La date de début doit être antérieure à la date de fin.");
-                    return;
-                }
-
                 let curr = new Date(startDate);
                 while (curr <= endDate) {
                     const dStr = formatDate(curr);
@@ -2146,14 +2221,14 @@ function addAlertItem(container, key, htmlContent) {
                     curr.setDate(curr.getDate() + 1);
                 }
             } else {
-                const durationYears = parseInt(document.getElementById('bulkAgentDuration').value, 10);
+                const years = parseInt(document.getElementById('bulkAgentDuration').value, 10);
                 let stepDays = 1;
                 if (freq !== '1_DAY') stepDays = parseInt(freq, 10) * 7;
 
-                const endDate = new Date(startDate);
-                endDate.setFullYear(endDate.getFullYear() + durationYears);
-
                 let curr = new Date(startDate);
+                const endDate = new Date(startDate);
+                endDate.setFullYear(endDate.getFullYear() + years);
+
                 while (curr <= endDate) {
                     const dStr = formatDate(curr);
                     agentSchedules[agentId][dStr] = taskCode;
@@ -2162,7 +2237,6 @@ function addAlertItem(container, key, htmlContent) {
                 }
             }
 
-            alert("✅ Affectation effectuée !");
             closeAgentModal();
             renderAll(true);
         }
@@ -2190,7 +2264,6 @@ function addAlertItem(container, key, htmlContent) {
         function renderSkillsConfig() {
             const container = document.getElementById('skillsConfigContainer');
             container.innerHTML = '';
-
             skillDefinitions.forEach((sk, idx) => {
                 const row = document.createElement('div');
                 row.className = 'skill-config-row';
@@ -2198,26 +2271,24 @@ function addAlertItem(container, key, htmlContent) {
                     <input type="text" value="${sk.id}" id="sk_id_${idx}" style="font-weight:bold;">
                     <input type="text" value="${sk.name}" id="sk_name_${idx}">
                     <input type="color" value="${sk.color}" id="sk_color_${idx}">
-                    <input type="number" value="${sk.min !== undefined ? sk.min : 1}" min="0" id="sk_min_${idx}">
-                    <button class="btn btn-danger" onclick="removeSkillRow(${idx})">✕</button>
+                    <input type="number" value="${sk.min || 1}" id="sk_min_${idx}" min="0">
+                    <button class="btn btn-danger" onclick="removeSkillRow(${idx})">X</button>
                 `;
                 container.appendChild(row);
             });
         }
 
         function addSkillRow() {
-            skillDefinitions.push({
-                id: `C${skillDefinitions.length + 1}`,
-                name: 'Nouvelle Compétence',
-                color: '#34495e',
-                min: 1
-            });
+            const nextId = `C${skillDefinitions.length + 1}`;
+            skillDefinitions.push({ id: nextId, name: 'Nouvelle Compétence', color: '#34495e', min: 1 });
             renderSkillsConfig();
+            renderMonitoredSkillsConfig();
         }
 
         function removeSkillRow(idx) {
             skillDefinitions.splice(idx, 1);
             renderSkillsConfig();
+            renderMonitoredSkillsConfig();
         }
 
         function renderMonitoredSkillsConfig() {
@@ -2228,16 +2299,24 @@ function addAlertItem(container, key, htmlContent) {
                 const row = document.createElement('div');
                 row.className = 'monitored-skills-row';
 
-                let checkboxesHtml = '';
+                let checkboxesHtml = '<div style="display:flex; gap:10px; flex-wrap:wrap;">';
                 skillDefinitions.forEach(sk => {
-                    const checked = group.includes(sk.id) ? 'checked' : '';
-                    checkboxesHtml += `<label style="font-size:0.75rem; display:inline-flex; align-items:center; gap:3px;"><input type="checkbox" class="monitored-cb-${idx}" value="${sk.id}" ${checked}> ${sk.id}</label> `;
+                    const isChecked = group.includes(sk.id) ? 'checked' : '';
+                    checkboxesHtml += `
+                        <label style="font-size:0.8rem; font-weight:normal; cursor:pointer;">
+                            <input type="checkbox" class="monitored-group-cb-${idx}" value="${sk.id}" ${isChecked}>
+                            <strong>${sk.id}</strong> (${sk.name})
+                        </label>
+                    `;
                 });
+                checkboxesHtml += '</div>';
 
                 row.innerHTML = `
-                    <span style="font-weight:bold; font-size:0.8rem;">Groupe ${idx + 1} :</span>
-                    <div style="display:flex; flex-wrap:wrap; gap:8px;">${checkboxesHtml}</div>
-                    <button class="btn btn-danger" style="margin-left:auto;" onclick="removeMonitoredSkillGroupRow(${idx})">✕</button>
+                    <div style="flex:1;">
+                        <strong style="font-size:0.8rem; color:var(--primary);">Groupe #${idx + 1} à surveiller :</strong>
+                        ${checkboxesHtml}
+                    </div>
+                    <button class="btn btn-danger" style="padding:4px 8px;" onclick="removeMonitoredSkillGroupRow(${idx})">X</button>
                 `;
                 container.appendChild(row);
             });
@@ -2257,39 +2336,50 @@ function addAlertItem(container, key, htmlContent) {
         function renderTasksConfig() {
             const container = document.getElementById('tasksContainer');
             container.innerHTML = '';
-
-            Object.keys(TASKS).forEach((code, idx) => {
-                const t = TASKS[code];
+            Object.keys(TASKS).forEach(code => {
+                const task = TASKS[code];
                 const row = document.createElement('div');
                 row.className = 'task-row';
                 row.innerHTML = `
-                    <input type="text" value="${code}" id="task_code_${idx}" style="font-weight:bold;">
-                    <input type="text" value="${t.label}" id="task_label_${idx}">
-                    <select id="task_shift_${idx}">
-                        <option value="none" ${t.shift === 'none' ? 'selected' : ''}>Aucun</option>
-                        <option value="M" ${t.shift === 'M' ? 'selected' : ''}>Matin</option>
-                        <option value="A" ${t.shift === 'A' ? 'selected' : ''}>Après-Midi</option>
-                        <option value="N" ${t.shift === 'N' ? 'selected' : ''}>Nuit</option>
-                        <option value="J" ${t.shift === 'J' ? 'selected' : ''}>Journée</option>
+                    <input type="text" value="${code}" disabled style="font-weight:bold;">
+                    <input type="text" value="${task.label}" id="tk_label_${code}">
+                    <select id="tk_shift_${code}">
+                        <option value="none" ${task.shift === 'none' ? 'selected' : ''}>Aucun</option>
+                        <option value="M" ${task.shift === 'M' ? 'selected' : ''}>Matin</option>
+                        <option value="A" ${task.shift === 'A' ? 'selected' : ''}>Après-Midi</option>
+                        <option value="N" ${task.shift === 'N' ? 'selected' : ''}>Nuit</option>
+                        <option value="J" ${task.shift === 'J' ? 'selected' : ''}>Journée</option>
                     </select>
-                    <input type="time" value="${t.start || '00:00'}" id="task_start_${idx}">
-                    <input type="time" value="${t.end || '00:00'}" id="task_end_${idx}">
-                    <input type="checkbox" ${t.isRest ? 'checked' : ''} id="task_rest_${idx}">
-                    <input type="color" value="${t.color}" id="task_color_${idx}">
-                    <input type="color" value="${t.text}" id="task_text_${idx}">
-                    <button class="btn btn-danger" onclick="removeTaskRow('${code}')">✕</button>
+                    <input type="time" value="${task.start || '00:00'}" id="tk_start_${code}">
+                    <input type="time" value="${task.end || '00:00'}" id="tk_end_${code}">
+                    <select id="tk_rest_${code}">
+                        <option value="true" ${task.isRest ? 'selected' : ''}>Oui</option>
+                        <option value="false" ${!task.isRest ? 'selected' : ''}>Non</option>
+                    </select>
+                    <input type="color" value="${task.color}" id="tk_color_${code}">
+                    <input type="color" value="${task.text}" id="tk_text_${code}">
+                    <button class="btn btn-danger" onclick="removeTaskRow('${code}')">X</button>
                 `;
                 container.appendChild(row);
             });
         }
 
         function addTaskRow() {
-            const newCode = `T${Object.keys(TASKS).length + 1}`;
-            TASKS[newCode] = { label: 'Nouvelle Tâche', color: '#95a5a6', text: '#ffffff', shift: 'none', start: '08:00', end: '16:00', isRest: false };
+            const code = prompt("Saisir le code de la nouvelle tâche (ex: CA, RTT, CP) :")?.toUpperCase();
+            if (!code) return;
+            if (TASKS[code]) {
+                alert("Ce code de tâche existe déjà.");
+                return;
+            }
+            TASKS[code] = { label: 'Nouvelle Tâche', color: '#95a5a6', text: '#ffffff', shift: 'none', start: '00:00', end: '00:00', isRest: true };
             renderTasksConfig();
         }
 
         function removeTaskRow(code) {
+            if (['R', 'M', 'A', 'N'].includes(code)) {
+                alert("Impossible de supprimer une tâche système de base.");
+                return;
+            }
             delete TASKS[code];
             renderTasksConfig();
         }
@@ -2298,42 +2388,39 @@ function addAlertItem(container, key, htmlContent) {
             if (!isAdmin) return;
 
             const newSkills = [];
-            document.querySelectorAll('.skill-config-row').forEach((row, idx) => {
-                newSkills.push({
-                    id: document.getElementById(`sk_id_${idx}`).value.trim(),
-                    name: document.getElementById(`sk_name_${idx}`).value.trim(),
-                    color: document.getElementById(`sk_color_${idx}`).value,
-                    min: parseInt(document.getElementById(`sk_min_${idx}`).value, 10) || 0
-                });
+            const skillRows = document.querySelectorAll('.skill-config-row');
+            skillRows.forEach((row, idx) => {
+                const id = document.getElementById(`sk_id_${idx}`).value.trim();
+                const name = document.getElementById(`sk_name_${idx}`).value.trim();
+                const color = document.getElementById(`sk_color_${idx}`).value;
+                const min = parseInt(document.getElementById(`sk_min_${idx}`).value, 10) || 1;
+                if (id) newSkills.push({ id, name, color, min });
             });
             skillDefinitions = newSkills;
 
             const newMonitoredGroups = [];
             (exclusiveSkillMonitoredGroups || []).forEach((_, idx) => {
-                const selected = [];
-                document.querySelectorAll(`.monitored-cb-${idx}:checked`).forEach(cb => {
-                    selected.push(cb.value);
-                });
-                if (selected.length > 0) newMonitoredGroups.push(selected);
+                const checkedBoxes = document.querySelectorAll(`.monitored-group-cb-${idx}:checked`);
+                const group = [];
+                checkedBoxes.forEach(cb => group.push(cb.value));
+                if (group.length > 0) {
+                    newMonitoredGroups.push(group);
+                }
             });
             exclusiveSkillMonitoredGroups = newMonitoredGroups;
 
-            const newTasks = {};
-            document.querySelectorAll('.task-row').forEach((row, idx) => {
-                const code = document.getElementById(`task_code_${idx}`).value.trim();
-                if (code) {
-                    newTasks[code] = {
-                        label: document.getElementById(`task_label_${idx}`).value.trim(),
-                        shift: document.getElementById(`task_shift_${idx}`).value,
-                        start: document.getElementById(`task_start_${idx}`).value,
-                        end: document.getElementById(`task_end_${idx}`).value,
-                        isRest: document.getElementById(`task_rest_${idx}`).checked,
-                        color: document.getElementById(`task_color_${idx}`).value,
-                        text: document.getElementById(`task_text_${idx}`).value
-                    };
+            Object.keys(TASKS).forEach(code => {
+                const labelEl = document.getElementById(`tk_label_${code}`);
+                if (labelEl) {
+                    TASKS[code].label = labelEl.value.trim();
+                    TASKS[code].shift = document.getElementById(`tk_shift_${code}`).value;
+                    TASKS[code].start = document.getElementById(`tk_start_${code}`).value;
+                    TASKS[code].end = document.getElementById(`tk_end_${code}`).value;
+                    TASKS[code].isRest = document.getElementById(`tk_rest_${code}`).value === 'true';
+                    TASKS[code].color = document.getElementById(`tk_color_${code}`).value;
+                    TASKS[code].text = document.getElementById(`tk_text_${code}`).value;
                 }
             });
-            TASKS = newTasks;
 
             settings.thresholds.M.orange = parseInt(document.getElementById('th_M_orange').value, 10);
             settings.thresholds.M.green = parseInt(document.getElementById('th_M_green').value, 10);
@@ -2347,16 +2434,19 @@ function addAlertItem(container, key, htmlContent) {
         }
 
         function openPrintModal() {
-            const printYear = document.getElementById('printYear');
-            printYear.innerHTML = '';
+            const monthSel = document.getElementById('printMonth');
+            monthSel.value = new Date().getMonth();
+
+            const yearSel = document.getElementById('printYear');
+            yearSel.innerHTML = '';
             for (let y = minYearAvailable; y <= maxYearAvailable; y++) {
                 const opt = document.createElement('option');
                 opt.value = y;
                 opt.innerText = y;
                 if (y === currentYear) opt.selected = true;
-                printYear.appendChild(opt);
+                yearSel.appendChild(opt);
             }
-            document.getElementById('printMonth').value = new Date().getMonth();
+
             document.getElementById('printModal').style.display = 'flex';
         }
 
@@ -2368,42 +2458,57 @@ function addAlertItem(container, key, htmlContent) {
             const month = parseInt(document.getElementById('printMonth').value, 10);
             const year = parseInt(document.getElementById('printYear').value, 10);
 
-            const daysInMonth = new Date(year, month + 1, 0).getDate();
-            const monthName = new Date(year, month, 1).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+            const firstDay = new Date(year, month, 1);
+            const lastDay = new Date(year, month + 1, 0);
+            const daysInMonth = lastDay.getDate();
 
-            let html = `<h2>Planning - ${monthName.toUpperCase()}</h2><table><thead><tr><th>Agent</th>`;
-            for (let d = 1; d <= daysInMonth; d++) {
-                const date = new Date(year, month, d);
-                const dayStr = date.toLocaleDateString('fr-FR', { weekday: 'narrow' });
-                html += `<th>${dayStr}<br>${d}</th>`;
+            const printSection = document.getElementById('printSection');
+            printSection.innerHTML = '';
+
+            const monthNames = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
+            
+            let tableHtml = `
+                <h2 style="text-align:center; margin-bottom:10px;">Planning - ${monthNames[month]} ${year}</h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width:150px;">Équipe / Agent</th>
+                            <th style="width:120px;">Compétences</th>
+            `;
+
+            for (let day = 1; day <= daysInMonth; day++) {
+                const d = new Date(year, month, day);
+                const dayName = d.toLocaleDateString('fr-FR', { weekday: 'short' }).slice(0, 2);
+                tableHtml += `<th>${dayName}<br>${day}</th>`;
             }
-            html += `</tr></thead><tbody>`;
+            tableHtml += `</tr></thead><tbody>`;
 
             teams.forEach(team => {
-                html += `<tr style="background:#eee; font-weight:bold;"><td style="text-align:left;">${team.name}</td>`;
-                for (let d = 1; d <= daysInMonth; d++) {
-                    const dStr = formatDate(new Date(year, month, d));
-                    const code = teamSchedules[team.id] ? (teamSchedules[team.id][dStr] || 'R') : 'R';
-                    const tDef = TASKS[code] || TASKS['R'];
-                    html += `<td style="background-color:${tDef.color}; color:${tDef.text}">${code}</td>`;
+                tableHtml += `<tr style="background-color:#eee; font-weight:bold;"><td>${team.name}</td><td>Roulement</td>`;
+                for (let day = 1; day <= daysInMonth; day++) {
+                    const dStr = formatDate(new Date(year, month, day));
+                    const task = teamSchedules[team.id] ? (teamSchedules[team.id][dStr] || 'R') : 'R';
+                    const tDef = TASKS[task] || TASKS['R'];
+                    tableHtml += `<td style="background-color:${tDef.color}; color:${tDef.text};">${task}</td>`;
                 }
-                html += `</tr>`;
+                tableHtml += `</tr>`;
 
                 team.agents.forEach(agent => {
-                    html += `<tr><td style="text-align:left; padding-left:10px;">${agent.name}</td>`;
-                    for (let d = 1; d <= daysInMonth; d++) {
-                        const dStr = formatDate(new Date(year, month, d));
-                        const code = getEffectiveAgentTask(agent, team.id, dStr);
-                        const tDef = TASKS[code] || TASKS['R'];
-                        html += `<td style="background-color:${tDef.color}; color:${tDef.text}">${code}</td>`;
+                    const skillsStr = (agent.skills || []).join(', ');
+                    tableHtml += `<tr><td style="padding-left:10px;">${agent.name}</td><td>${skillsStr}</td>`;
+                    for (let day = 1; day <= daysInMonth; day++) {
+                        const dStr = formatDate(new Date(year, month, day));
+                        const task = getEffectiveAgentTask(agent, team.id, dStr);
+                        const tDef = TASKS[task] || TASKS['R'];
+                        tableHtml += `<td style="background-color:${tDef.color}; color:${tDef.text};">${task}</td>`;
                     }
-                    html += `</tr>`;
+                    tableHtml += `</tr>`;
                 });
             });
 
-            html += `</tbody></table>`;
+            tableHtml += `</tbody></table>`;
+            printSection.innerHTML = tableHtml;
 
-            document.getElementById('printSection').innerHTML = html;
             closePrintModal();
             window.print();
         }
