@@ -1623,7 +1623,7 @@
             return parseInt(parts[0], 10) + (parseInt(parts[1], 10) / 60);
         }
 
-        function checkRestAlerts() {
+                function checkRestAlerts() {
             let generatedAlerts = [];
             const startYearDate = new Date(currentYear, 0, 1);
             const endYearDate = new Date(currentYear, 11, 31);
@@ -1683,7 +1683,7 @@
                         currentDate.setDate(currentDate.getDate() + 1);
                     }
 
-                    // 2. RÈGLE DES 35H DE REPOS HEBDOMADAIRE (Contrôle inchangé sur 7 jours)
+                    // 2. RÈGLE DES 35H DE REPOS HEBDOMADAIRE
                     let sundayIter = new Date(startYearDate);
                     while (sundayIter.getDay() !== 0) {
                         sundayIter.setDate(sundayIter.getDate() - 1);
@@ -1723,7 +1723,8 @@
                             let satFinishTime = prevSatTask.isRest ? 0 : timeToDecimal(prevSatTask.end);
                             let satHas11hRest = prevSatTask.isRest || (satFinishTime <= 13);
 
-                            if (sunIsFullRest && satHas11hRest) {
+                            // Si le samedi était de Nuit, le dimanche ne peut pas compter comme 24h plein
+                            if (prevSatTask.shift !== 'N' && sunIsFullRest && satHas11hRest) {
                                 valid35h = true;
                             }
                         }
@@ -1731,6 +1732,23 @@
                         if (!valid35h) {
                             for (let i = 0; i < 7; i++) {
                                 if (weekDays[i].def.isRest) {
+                                    // Vérification du quart du jour précédent
+                                    let prevShift = 'none';
+                                    if (i > 0) {
+                                        prevShift = weekDays[i - 1].def.shift;
+                                    } else {
+                                        let pSatDate = new Date(sundayIter);
+                                        pSatDate.setDate(pSatDate.getDate() - 1);
+                                        let pSatCode = getEffectiveAgentTask(agent, team.id, formatDate(pSatDate));
+                                        let pSatT = TASKS[pSatCode] || TASKS['R'];
+                                        prevShift = pSatT.shift;
+                                    }
+
+                                    // Si précédé d'une Nuit ('N'), la nuit empiète jusqu'au matin : ne peut PAS valoir 24h plein
+                                    if (prevShift === 'N') {
+                                        continue;
+                                    }
+
                                     let prevHas11h = false;
                                     let nextHas11h = false;
 
@@ -1842,6 +1860,7 @@
                 }
             });
         }
+
 
         function showNotificationModal(al) {
             const modal = document.getElementById('notificationModal');
