@@ -1642,67 +1642,76 @@ table.collapsed-skills td.team-name-td.sticky-col-2::after {
         }
 
                 function checkRestRulesAndAlert() {
-    
-    const alertList = document.getElementById('alertList');
-    const alertBanner = document.getElementById('alertBanner');
-    alertList.innerHTML = '';
-    let hasAlerts = false;
+            const alertList = document.getElementById('alertList');
+            alertList.innerHTML = '';
+            let alertCount = 0;
+            const currentAlertKeys = new Set();
 
-    // Utilitaires de conversion Date <-> Timestamp en minutes
-    const getShiftTimes = (dateStr, shiftCode) => {
-        const task = TASKS[shiftCode];
-        if (!task || task.isRest || task.shift === 'none') return null;
+            // Helper interne : Calcul des heures d'un quart
+            function getShiftTimes(d, taskCode) {
+                const task = TASKS[taskCode] || TASKS['R'];
+                if (task.isRest || task.shift === 'none') return null;
 
-        const [startH, startM] = (task.start || '00:00').split(':').map(Number);
-        const [endH, endM] = (task.end || '00:00').split(':').map(Number);
+                const [sH, sM] = task.start.split(':').map(Number);
+                const [eH, eM] = task.end.split(':').map(Number);
 
-        const dStart = parseDate(dateStr);
-        dStart.setHours(startH, startM, 0, 0);
+                let start = new Date(d);
+                start.setHours(sH, sM, 0, 0);
 
-        const dEnd = parseDate(dateStr);
-        if (shiftCode === 'N' || endH < startH) {
-            dEnd.setDate(dEnd.getDate() + 1);
-        }
-        dEnd.setHours(endH, endM, 0, 0);
+                let end = new Date(d);
+                end.setHours(eH, eM, 0, 0);
 
-        return { start: dStart.getTime(), end: dEnd.getTime() };
-    };
-
-    teams.forEach(team => {
-        team.agents.forEach(agent => {
-            const startYearDate = new Date(currentYear, 0, 1);
-            const endYearDate = new Date(currentYear, 11, 31);
-
-            // -------------------------------------------------------------
-            // 1. CONTRÔLE DES 11H DE REPOS ENTRE DEUX SHIFTS CONSÉCUTIFS
-            // -------------------------------------------------------------
-            let prevShiftEnd = null;
-            let curr = new Date(startYearDate);
-
-            while (curr <= endYearDate) {
-                const dateStr = formatDate(curr);
-                const taskCode = getEffectiveAgentTask(agent, team.id, dateStr);
-                const shiftTimes = getShiftTimes(dateStr, taskCode);
-
-                if (shiftTimes) {
-                    if (prevShiftEnd !== null) {
-                        const restDurationHours = (shiftTimes.start - prevShiftEnd) / (1000 * 60 * 60);
-                        if (restDurationHours < 11) {
-                            hasAlerts = true;
-                            const alertKey = `${agent.id}_11h_${dateStr}`;
-                            addAlertItem(
-                                alertList, 
-                                alertKey, 
-                                `<strong>${agent.name}</strong> : Repos insuffisant (${restDurationHours.toFixed(1)}h < 11h) avant le service du ${dateStr}.`
-                            );
-                        }
-                    }
-                    prevShiftEnd = shiftTimes.end;
+                // Si le quart fini le lendemain (ex: Nuit 22h-06h)
+                if (end <= start) {
+                    end.setDate(end.getDate() + 1);
                 }
-                curr.setDate(curr.getDate() + 1);
+                return { start, end };
             }
 
-            // -------------------------------------------------------------
+            // Parcours de chaque agent de chaque équipe
+            teams.forEach(team => {
+                team.agents.forEach(agent => {
+
+                    // -------------------------------------------------------------
+                    // 1. RÈGLE DES 11H DE REPOS QUOTIDIEN CONSECUTIFS
+                    // -------------------------------------------------------------
+                    const startYearDate = new Date(currentYear, 0, 1);
+                    const endYearDate = new Date(currentYear, 11, 31);
+                    let curr = new Date(startYearDate);
+
+                    while (curr < endYearDate) {
+                        const currStr = formatDate(curr);
+                        const nextDate = new Date(curr);
+                        nextDate.setDate(nextDate.getDate() + 1);
+                        const nextStr = formatDate(nextDate);
+
+                        const task1 = getEffectiveAgentTask(agent, team.id, currStr);
+                        const task2 = getEffectiveAgentTask(agent, team.id, nextStr);
+
+                        const shift1 = getShiftTimes(curr, task1);
+                        const shift2 = getShiftTimes(nextDate, task2);
+
+                        if (shift1 && shift2) {
+                            const diffHours = (shift2.start - shift1.end) / (1000 * 3600);
+                            if (diffHours < 11) {
+                                const alertKey = `REST11_${agent.id}_${currStr}`;
+                                currentAlertKeys.add(alertKey);
+
+                                if (!acknowledgedAlerts.some(a => a.key === alertKey)) {
+                                    alertCount++;
+                                    const li = document.createElement('li');
+                                    li.innerHTML = `
+                                        <span>⚠️ <strong>${agent.name}</strong> (${team.name}) : Moins de 11h de repos (${diffHours.toFixed(1)}h) entre le ${currStr} et le ${nextStr}.</span>
+                                        <button class="btn btn-ack" onclick="openAckModal('${alertKey}', '${agent.name}', '${currStr} au ${nextStr}', 'Repos quotidien < 11h (${diffHours.toFixed(1)}h)')">Acquitter</button>
+                                    `;
+                                    alertList.appendChild(li);
+                                }
+                            }
+                        }
+                        curr.setDate(curr.getDate() + 1);
+                    }
+
+                    // // -------------------------------------------------------------
             // 2. CONTRÔLE SUR 7 JOURS (Dimanche 00h00 -> Samedi 23h59)
             // -------------------------------------------------------------
             // Recherche de tous les dimanches de l'année
@@ -1775,61 +1784,68 @@ table.collapsed-skills td.team-name-td.sticky-col-2::after {
                     scanD.setDate(scanD.getDate() + 1);
                 }
 
-                // Exemple d'alerte si le temps de travail dépasse le seuil légal sur la fenêtre (ex: > 48h)
-                if (workedHoursInWindow > 90) {
-                    hasAlerts = true;
-                    const weekStr = formatDate(sundayCurr);
-                    const alertKey = `${agent.id}_7j_${weekStr}`;
-                    addAlertItem(
-                        alertList, 
-                        alertKey, 
-                        `<strong>${agent.name}</strong> : Dépassement d'heures (${workedHoursInWindow.toFixed(1)}h) sur le contrôle 7 jours démarrant le ${weekStr}.`
-                    );
-                }
+                    // -------------------------------------------------------------
+                    // 3. LIMITATION A 11 JOURS CONSECUTIFS DE TRAVAIL MAXIMUM
+                    // -------------------------------------------------------------
+                    let consecutiveWorkDays = 0;
+                    let workStreakStart = null;
+                    let checkDate = new Date(startYearDate);
 
-                sundayCurr.setDate(sundayCurr.getDate() + 7);
-            }
+                    while (checkDate <= endYearDate) {
+                        const dStr = formatDate(checkDate);
+                        const taskCode = getEffectiveAgentTask(agent, team.id, dStr);
+                        const task = TASKS[taskCode] || TASKS['R'];
 
-            // -------------------------------------------------------------
-            // 3. CONTRÔLE DES 11 JOURS TRAVAILLÉS CONSÉCUTIFS
-            // -------------------------------------------------------------
-            let consecutiveWorkedDays = 0;
-            let cDate = new Date(startYearDate);
+                        if (!task.isRest && task.shift !== 'none') {
+                            if (consecutiveWorkDays === 0) {
+                                workStreakStart = new Date(checkDate);
+                            }
+                            consecutiveWorkDays++;
 
-            while (cDate <= endYearDate) {
-                const dateStr = formatDate(cDate);
-                const taskCode = getEffectiveAgentTask(agent, team.id, dateStr);
-                const task = TASKS[taskCode] || TASKS['R'];
+                            if (consecutiveWorkDays > 11) {
+                                const streakStartStr = formatDate(workStreakStart);
+                                const streakEndStr = dStr;
+                                const alertKey = `MAX11DAYS_${agent.id}_${streakStartStr}`;
+                                currentAlertKeys.add(alertKey);
 
-                if (!task.isRest && task.shift !== 'none') {
-                    consecutiveWorkedDays++;
-                    if (consecutiveWorkedDays > 11) {
-                        hasAlerts = true;
-                        const alertKey = `${agent.id}_11j_${dateStr}`;
-                        addAlertItem(
-                            alertList, 
-                            alertKey, 
-                            `<strong>${agent.name}</strong> : Plus de 11 jours travaillés consécutifs (${consecutiveWorkedDays}j) au ${dateStr}.`
-                        );
+                                if (!acknowledgedAlerts.some(a => a.key === alertKey)) {
+                                    alertCount++;
+                                    const li = document.createElement('li');
+                                    li.innerHTML = `
+                                        <span>⚠️ <strong>${agent.name}</strong> (${team.name}) : Plus de 11 jours consécutifs travaillés (${consecutiveWorkDays}j) du ${streakStartStr} au ${streakEndStr}.</span>
+                                        <button class="btn btn-ack" onclick="openAckModal('${alertKey}', '${agent.name}', '${streakStartStr} au ${streakEndStr}', 'Dépassement du plafond de 11 jours consécutifs de travail')">Acquitter</button>
+                                    `;
+                                    alertList.appendChild(li);
+                                }
+                            }
+                        } else {
+                            consecutiveWorkDays = 0;
+                            workStreakStart = null;
+                        }
+                        checkDate.setDate(checkDate.getDate() + 1);
                     }
-                } else {
-                    consecutiveWorkedDays = 0;
-                }
-                cDate.setDate(cDate.getDate() + 1);
+
+                });
+            });
+
+            // Affichage du bandeau de notification d'alertes
+            const alertBanner = document.getElementById('alertBanner');
+            if (alertCount > 0) {
+                alertBanner.style.display = 'block';
+            } else {
+                alertBanner.style.display = 'none';
             }
-        });
-    });
 
-    alertBanner.style.display = hasAlerts ? 'block' : 'none';
-}
-
-function addAlertItem(container, key, htmlContent) {
-    if (acknowledgedAlerts.includes(key)) return;
-    const li = document.createElement('li');
-    li.innerHTML = `<span>${htmlContent}</span> <button class="btn btn-ack" onclick="openAckModal('${key}', '${htmlContent.replace(/'/g, "\\'")}')">Acquitter</button>`;
-    container.appendChild(li);
-}
-
+            // Gestion de l'émergence de nouvelles alertes non acquittées
+            currentAlertKeys.forEach(key => {
+                if (!knownAlertKeys.has(key) && !acknowledgedAlerts.some(a => a.key === key)) {
+                    if (knownAlertKeys.size > 0) { // Évite d'ouvrir la modale au tout premier chargement
+                        openNotificationModal("De nouvelles infractions aux règles de repos ont été détectées sur le planning.");
+                    }
+                }
+            });
+            knownAlertKeys = currentAlertKeys;
+        }
 
 
         function showNotificationModal(alert) {
