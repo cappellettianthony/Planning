@@ -1439,99 +1439,122 @@
         }
 
         function generateTable() {
-            const tbody = document.getElementById('tableBody'); 
-            tbody.innerHTML = '';
-            const dates = getVisibleDates();
+    const tbody = document.getElementById('tableBody'); 
+    tbody.innerHTML = '';
+    const dates = getVisibleDates();
 
-            teams.forEach(team => {
-                const teamTr = document.createElement('tr'); 
-                teamTr.className = 'team-row';
-                const tdTeamName = document.createElement('td'); 
-                tdTeamName.className = 'sticky-col-1 team-name-td'; 
-                tdTeamName.innerText = team.name; 
-                teamTr.appendChild(tdTeamName);
-                
-                const tdTeamDesc = document.createElement('td'); 
-                tdTeamDesc.className = 'sticky-col-2 team-name-td'; 
-                tdTeamDesc.style.fontSize = '0.7rem'; 
-                tdTeamDesc.style.fontStyle = 'italic'; 
-                tdTeamDesc.innerText = "Roulement d'équipe"; 
-                teamTr.appendChild(tdTeamDesc);
+    teams.forEach(team => {
+        const teamTr = document.createElement('tr'); 
+        teamTr.className = 'team-row';
+        const tdTeamName = document.createElement('td'); 
+        tdTeamName.className = 'sticky-col-1 team-name-td'; 
 
-                dates.forEach(d => {
-                    const dateStr = formatDate(d);
-                    if (!teamSchedules[team.id]) teamSchedules[team.id] = {};
-                    const td = document.createElement('td'); 
-                    
-                    const currentVal = teamSchedules[team.id][dateStr] || 'R'; 
-                    const taskDef = TASKS[currentVal] || TASKS['R'];
-                    const descKey = `${team.id}_${dateStr}`;
-                    const desc = taskDescriptions[descKey] || '';
-
-                    const cellDiv = document.createElement('div');
-                    cellDiv.className = `task-cell ${isReadOnly ? 'task-cell-disabled' : ''} ${desc ? 'has-desc-indicator' : ''}`;
-                    cellDiv.style.backgroundColor = taskDef.color;
-                    cellDiv.style.color = taskDef.text;
-                    cellDiv.innerText = currentVal;
-
-                    if (!isReadOnly) {
-                        cellDiv.onclick = () => openTaskModal(true, team.id, team.name, dateStr, currentVal, desc);
-                    }
-                    attachCellHoverEvents(cellDiv, desc);
-
-                    td.appendChild(cellDiv); 
-                    teamTr.appendChild(td);
-                });
-                tbody.appendChild(teamTr);
-
-                team.agents.forEach(agent => {
-                    const extraShifts = calculateExtraShiftsCount(agent, team.id);
-
-                    const tr = document.createElement('tr');
-                    const tdName = document.createElement('td'); 
-                    tdName.className = 'sticky-col-1'; 
-                    tdName.style.paddingLeft = '15px'; 
-                    
-                    tdName.innerHTML = `<span>${agent.name}</span> <span class="extra-shifts-badge" title="Quarts (M/A/N) hors roulement d'équipe dans l'année">${extraShifts} q.</span>`; 
-                    tdName.style.cursor = isReadOnly ? 'default' : 'pointer'; 
-                    if (!isReadOnly) tdName.onclick = () => openAgentModal(agent.id); 
-                    tr.appendChild(tdName);
-                    
-                    const tdSkills = document.createElement('td'); 
-                    tdSkills.className = 'sticky-col-2'; 
-                    tdSkills.style.cursor = isReadOnly ? 'default' : 'pointer'; 
-                    if (!isReadOnly) tdSkills.onclick = () => openAgentModal(agent.id); 
-                    renderSkillBadges(tdSkills, agent.skills); 
-                    tr.appendChild(tdSkills);
-
-                    dates.forEach(d => {
-                        const dateStr = formatDate(d);
-                        if (!agentSchedules[agent.id]) agentSchedules[agent.id] = {};
-                        const td = document.createElement('td'); 
-                        
-                        const effectiveTask = getEffectiveAgentTask(agent, team.id, dateStr); 
-                        const taskDef = TASKS[effectiveTask] || TASKS['R'];
-                        const descKey = `${agent.id}_${dateStr}`;
-                        const desc = taskDescriptions[descKey] || '';
-
-                        const cellDiv = document.createElement('div');
-                        cellDiv.className = `task-cell ${isReadOnly ? 'task-cell-disabled' : ''} ${desc ? 'has-desc-indicator' : ''}`;
-                        cellDiv.style.backgroundColor = taskDef.color;
-                        cellDiv.style.color = taskDef.text;
-                        cellDiv.innerText = effectiveTask;
-
-                        if (!isReadOnly) {
-                            cellDiv.onclick = () => openTaskModal(false, agent.id, agent.name, dateStr, effectiveTask, desc);
-                        }
-                        attachCellHoverEvents(cellDiv, desc);
-
-                        td.appendChild(cellDiv); 
-                        tr.appendChild(td);
-                    });
-                    tbody.appendChild(tr);
-                });
-            });
+        // Rendu du nom de l'équipe avec le bouton d'ajout d'agent (+ Agent)
+        if (!isReadOnly) {
+            tdTeamName.innerHTML = `
+                <div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
+                    <span>${team.name}</span>
+                    <button class="btn btn-success" style="padding:1px 5px; font-size:0.7rem;" title="Ajouter un agent à cette équipe" onclick="addNewAgentToTeam('${team.id}')">+ Agent</button>
+                </div>`;
+        } else {
+            tdTeamName.innerText = team.name; 
         }
+        
+        teamTr.appendChild(tdTeamName);
+        
+        const tdTeamDesc = document.createElement('td'); 
+        tdTeamDesc.className = 'sticky-col-2 team-name-td'; 
+        tdTeamDesc.style.fontSize = '0.7rem'; 
+        tdTeamDesc.style.fontStyle = 'italic'; 
+        tdTeamDesc.innerText = "Roulement d'équipe"; 
+        teamTr.appendChild(tdTeamDesc);
+
+        dates.forEach(d => {
+            const dateStr = formatDate(d);
+            if (!teamSchedules[team.id]) teamSchedules[team.id] = {};
+            const td = document.createElement('td'); 
+            
+            const currentVal = teamSchedules[team.id][dateStr] || 'R'; 
+            const taskDef = TASKS[currentVal] || TASKS['R'];
+            const descKey = `${team.id}_${dateStr}`;
+            const desc = taskDescriptions[descKey] || '';
+
+            const cellDiv = document.createElement('div');
+            cellDiv.className = `task-cell ${isReadOnly ? 'task-cell-disabled' : ''} ${desc ? 'has-desc-indicator' : ''}`;
+            cellDiv.style.backgroundColor = taskDef.color;
+            cellDiv.style.color = taskDef.text;
+            cellDiv.innerText = currentVal;
+
+            if (!isReadOnly) {
+                cellDiv.onclick = () => openTaskModal(true, team.id, team.name, dateStr, currentVal, desc);
+            }
+            attachCellHoverEvents(cellDiv, desc);
+
+            td.appendChild(cellDiv); 
+            teamTr.appendChild(td);
+        });
+        tbody.appendChild(teamTr);
+
+        // Affichage des agents de l'équipe
+        team.agents.forEach(agent => {
+            const extraShifts = calculateExtraShiftsCount(agent, team.id);
+
+            const tr = document.createElement('tr');
+            const tdName = document.createElement('td'); 
+            tdName.className = 'sticky-col-1'; 
+            tdName.style.paddingLeft = '10px'; 
+            
+            // Intégration du nom, du badge et du bouton de suppression
+            let deleteBtnHtml = !isReadOnly 
+                ? `<button class="btn btn-danger" style="padding:0 4px; font-size:0.65rem; margin-right:4px;" title="Supprimer cet agent" onclick="event.stopPropagation(); deleteAgentFromTeam('${team.id}', '${agent.id}');">🗑️</button>` 
+                : '';
+
+            tdName.innerHTML = `
+                <div style="display:flex; align-items:center; justify-content:space-between; width:100%;">
+                    <div style="display:flex; align-items:center; overflow:hidden; text-overflow:ellipsis;">
+                        ${deleteBtnHtml}
+                        <span style="cursor:${isReadOnly ? 'default' : 'pointer'};" onclick="${!isReadOnly ? `openAgentModal('${agent.id}')` : ''}">${agent.name}</span>
+                    </div>
+                    <span class="extra-shifts-badge" title="Quarts (M/A/N) hors roulement d'équipe dans l'année">${extraShifts} q.</span>
+                </div>`;
+            
+            tr.appendChild(tdName);
+            
+            const tdSkills = document.createElement('td'); 
+            tdSkills.className = 'sticky-col-2'; 
+            tdSkills.style.cursor = isReadOnly ? 'default' : 'pointer'; 
+            if (!isReadOnly) tdSkills.onclick = () => openAgentModal(agent.id); 
+            renderSkillBadges(tdSkills, agent.skills); 
+            tr.appendChild(tdSkills);
+
+            dates.forEach(d => {
+                const dateStr = formatDate(d);
+                const taskCode = getEffectiveAgentTask(agent, team.id, dateStr);
+                const taskDef = TASKS[taskCode] || TASKS['R'];
+                const descKey = `${agent.id}_${dateStr}`;
+                const desc = taskDescriptions[descKey] || '';
+
+                const td = document.createElement('td');
+                const cellDiv = document.createElement('div');
+                cellDiv.className = `task-cell ${isReadOnly ? 'task-cell-disabled' : ''} ${desc ? 'has-desc-indicator' : ''}`;
+                cellDiv.style.backgroundColor = taskDef.color;
+                cellDiv.style.color = taskDef.text;
+                cellDiv.innerText = taskCode;
+
+                if (!isReadOnly) {
+                    cellDiv.onclick = () => openTaskModal(false, agent.id, agent.name, dateStr, taskCode, desc);
+                }
+                attachCellHoverEvents(cellDiv, desc);
+
+                td.appendChild(cellDiv);
+                tr.appendChild(td);
+            });
+
+            tbody.appendChild(tr);
+        });
+    });
+}
+
 
         function openTaskModal(isTeam, targetId, targetName, dateStr, currentTaskCode, currentDesc) {
             if (isReadOnly) return;
@@ -2457,6 +2480,57 @@
             closePrintModal();
             window.print();
         }
+
+
+// Fonction pour ajouter un nouvel agent à une équipe
+function addNewAgentToTeam(teamId) {
+    if (isReadOnly) return;
+
+    const team = teams.find(t => t.id === teamId);
+    if (!team) return;
+
+    const newAgentNumber = team.agents.length + 1;
+    const teamNum = teamId.replace('team_', '');
+    const newAgentId = `e${teamNum}_a${Date.now()}`; // Identifiant unique
+    const newAgentName = prompt("Nom du nouvel agent :", `Agent ${teamNum}.${newAgentNumber}`);
+
+    if (!newAgentName || !newAgentName.trim()) return;
+
+    // Création de la structure de l'agent
+    const newAgent = {
+        id: newAgentId,
+        name: newAgentName.trim(),
+        skills: ['C1'] // Compétence attribuée par défaut
+    };
+
+    team.agents.push(newAgent);
+    renderAll(true); // Redessine et sauvegarde automatiquement dans Firebase
+}
+
+// Fonction pour supprimer un agent d'une équipe
+function deleteAgentFromTeam(teamId, agentId) {
+    if (isReadOnly) return;
+
+    const team = teams.find(t => t.id === teamId);
+    if (!team) return;
+
+    const agent = team.agents.find(a => a.id === agentId);
+    if (!agent) return;
+
+    if (confirm(`Êtes-vous sûr de vouloir supprimer l'agent "${agent.name}" de l'équipe "${team.name}" ?`)) {
+        // 1. Retrait de l'agent du tableau de l'équipe
+        team.agents = team.agents.filter(a => a.id !== agentId);
+
+        // 2. Nettoyage des plannings individuels rattachés à cet agent
+        if (agentSchedules[agentId]) {
+            delete agentSchedules[agentId];
+        }
+
+        renderAll(true); // Redessine et sauvegarde dans Firebase
+    }
+}
+
+
 
         window.onload = init;
     </script>
