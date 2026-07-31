@@ -161,23 +161,22 @@
         th.sticky-col-1, th.sticky-col-2 { z-index: 15; background-color: var(--primary); }
 
         /* Couleur plus foncée pour la ligne du roulement d'équipe et bordure de séparation */
-.team-row { 
-    background-color: #000000; 
-    font-weight: bold; 
-}
+        .team-row { 
+            background-color: #000000; 
+            font-weight: bold; 
+        }
 
-/* Accentuation de la séparation sous les cellules du roulement d'équipe */
-.team-row td { 
-    border-bottom: 7px double #2c3e50 !important; 
-}
+        /* Accentuation de la séparation sous les cellules du roulement d'équipe */
+        .team-row td { 
+            border-bottom: 7px double #2c3e50 !important; 
+        }
 
         .team-name-td { 
-    text-align: left; 
-    padding-left: 8px; 
-    color: #ffffff; 
-    background-color: #7f8c8d; 
-}
-
+            text-align: left; 
+            padding-left: 8px; 
+            color: #ffffff; 
+            background-color: #7f8c8d; 
+        }
 
         .badge { display: inline-block; padding: 2px 4px; font-size: 0.65rem; border-radius: 3px; color: white; margin-right: 2px; font-weight: bold; }
         .badge-none { display: inline-block; padding: 2px 4px; font-size: 0.65rem; border-radius: 3px; color: #7f8c8d; font-style: italic; font-weight: normal; }
@@ -1455,122 +1454,121 @@
         }
 
         function generateTable() {
-    const tbody = document.getElementById('tableBody'); 
-    tbody.innerHTML = '';
-    const dates = getVisibleDates();
+            const tbody = document.getElementById('tableBody'); 
+            tbody.innerHTML = '';
+            const dates = getVisibleDates();
 
-    teams.forEach(team => {
-        const teamTr = document.createElement('tr'); 
-        teamTr.className = 'team-row';
-        const tdTeamName = document.createElement('td'); 
-        tdTeamName.className = 'sticky-col-1 team-name-td'; 
+            teams.forEach(team => {
+                const teamTr = document.createElement('tr'); 
+                teamTr.className = 'team-row';
+                const tdTeamName = document.createElement('td'); 
+                tdTeamName.className = 'sticky-col-1 team-name-td'; 
 
-        // Rendu du nom de l'équipe avec le bouton d'ajout d'agent (+ Agent)
-        if (!isReadOnly) {
-            tdTeamName.innerHTML = `
-                <div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
-                    <span>${team.name}</span>
-                    <button class="btn btn-success" style="padding:1px 5px; font-size:0.7rem;" title="Ajouter un agent à cette équipe" onclick="addNewAgentToTeam('${team.id}')">+ Agent</button>
-                </div>`;
-        } else {
-            tdTeamName.innerText = team.name; 
-        }
-        
-        teamTr.appendChild(tdTeamName);
-        
-        const tdTeamDesc = document.createElement('td'); 
-        tdTeamDesc.className = 'sticky-col-2 team-name-td'; 
-        tdTeamDesc.style.fontSize = '0.7rem'; 
-        tdTeamDesc.style.fontStyle = 'italic'; 
-        tdTeamDesc.innerText = "Roulement d'équipe"; 
-        teamTr.appendChild(tdTeamDesc);
-
-        dates.forEach(d => {
-            const dateStr = formatDate(d);
-            if (!teamSchedules[team.id]) teamSchedules[team.id] = {};
-            const td = document.createElement('td'); 
-            
-            const currentVal = teamSchedules[team.id][dateStr] || 'R'; 
-            const taskDef = TASKS[currentVal] || TASKS['R'];
-            const descKey = `${team.id}_${dateStr}`;
-            const desc = taskDescriptions[descKey] || '';
-
-            const cellDiv = document.createElement('div');
-            cellDiv.className = `task-cell ${isReadOnly ? 'task-cell-disabled' : ''} ${desc ? 'has-desc-indicator' : ''}`;
-            cellDiv.style.backgroundColor = taskDef.color;
-            cellDiv.style.color = taskDef.text;
-            cellDiv.innerText = currentVal;
-
-            if (!isReadOnly) {
-                cellDiv.onclick = () => openTaskModal(true, team.id, team.name, dateStr, currentVal, desc);
-            }
-            attachCellHoverEvents(cellDiv, desc);
-
-            td.appendChild(cellDiv); 
-            teamTr.appendChild(td);
-        });
-        tbody.appendChild(teamTr);
-
-        // Affichage des agents de l'équipe
-        team.agents.forEach(agent => {
-            const extraShifts = calculateExtraShiftsCount(agent, team.id);
-
-            const tr = document.createElement('tr');
-            const tdName = document.createElement('td'); 
-            tdName.className = 'sticky-col-1'; 
-            tdName.style.paddingLeft = '10px'; 
-            
-            // Intégration du nom, du badge et du bouton de suppression
-            let deleteBtnHtml = !isReadOnly 
-                ? `<button class="btn btn-danger" style="padding:0 4px; font-size:0.65rem; margin-right:4px;" title="Supprimer cet agent" onclick="event.stopPropagation(); deleteAgentFromTeam('${team.id}', '${agent.id}');">🗑️</button>` 
-                : '';
-
-            tdName.innerHTML = `
-                <div style="display:flex; align-items:center; justify-content:space-between; width:100%;">
-                    <div style="display:flex; align-items:center; overflow:hidden; text-overflow:ellipsis;">
-                        ${deleteBtnHtml}
-                        <span style="cursor:${isReadOnly ? 'default' : 'pointer'};" onclick="${!isReadOnly ? `openAgentModal('${agent.id}')` : ''}">${agent.name}</span>
-                    </div>
-                    <span class="extra-shifts-badge" title="Quarts (M/A/N) hors roulement d'équipe dans l'année">${extraShifts} q.</span>
-                </div>`;
-            
-            tr.appendChild(tdName);
-            
-            const tdSkills = document.createElement('td'); 
-            tdSkills.className = 'sticky-col-2'; 
-            tdSkills.style.cursor = isReadOnly ? 'default' : 'pointer'; 
-            if (!isReadOnly) tdSkills.onclick = () => openAgentModal(agent.id); 
-            renderSkillBadges(tdSkills, agent.skills); 
-            tr.appendChild(tdSkills);
-
-            dates.forEach(d => {
-                const dateStr = formatDate(d);
-                const taskCode = getEffectiveAgentTask(agent, team.id, dateStr);
-                const taskDef = TASKS[taskCode] || TASKS['R'];
-                const descKey = `${agent.id}_${dateStr}`;
-                const desc = taskDescriptions[descKey] || '';
-
-                const td = document.createElement('td');
-                const cellDiv = document.createElement('div');
-                cellDiv.className = `task-cell ${isReadOnly ? 'task-cell-disabled' : ''} ${desc ? 'has-desc-indicator' : ''}`;
-                cellDiv.style.backgroundColor = taskDef.color;
-                cellDiv.style.color = taskDef.text;
-                cellDiv.innerText = taskCode;
-
+                // Rendu du nom de l'équipe avec le bouton d'ajout d'agent (+ Agent)
                 if (!isReadOnly) {
-                    cellDiv.onclick = () => openTaskModal(false, agent.id, agent.name, dateStr, taskCode, desc);
+                    tdTeamName.innerHTML = `
+                        <div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
+                            <span>${team.name}</span>
+                            <button class="btn btn-success" style="padding:1px 5px; font-size:0.7rem;" title="Ajouter un agent à cette équipe" onclick="addNewAgentToTeam('${team.id}')">+ Agent</button>
+                        </div>`;
+                } else {
+                    tdTeamName.innerText = team.name; 
                 }
-                attachCellHoverEvents(cellDiv, desc);
+                
+                teamTr.appendChild(tdTeamName);
+                
+                const tdTeamDesc = document.createElement('td'); 
+                tdTeamDesc.className = 'sticky-col-2 team-name-td'; 
+                tdTeamDesc.style.fontSize = '0.7rem'; 
+                tdTeamDesc.style.fontStyle = 'italic'; 
+                tdTeamDesc.innerText = "Roulement d'équipe"; 
+                teamTr.appendChild(tdTeamDesc);
 
-                td.appendChild(cellDiv);
-                tr.appendChild(td);
+                dates.forEach(d => {
+                    const dateStr = formatDate(d);
+                    if (!teamSchedules[team.id]) teamSchedules[team.id] = {};
+                    const td = document.createElement('td'); 
+                    
+                    const currentVal = teamSchedules[team.id][dateStr] || 'R'; 
+                    const taskDef = TASKS[currentVal] || TASKS['R'];
+                    const descKey = `${team.id}_${dateStr}`;
+                    const desc = taskDescriptions[descKey] || '';
+
+                    const cellDiv = document.createElement('div');
+                    cellDiv.className = `task-cell ${isReadOnly ? 'task-cell-disabled' : ''} ${desc ? 'has-desc-indicator' : ''}`;
+                    cellDiv.style.backgroundColor = taskDef.color;
+                    cellDiv.style.color = taskDef.text;
+                    cellDiv.innerText = currentVal;
+
+                    if (!isReadOnly) {
+                        cellDiv.onclick = () => openTaskModal(true, team.id, team.name, dateStr, currentVal, desc);
+                    }
+                    attachCellHoverEvents(cellDiv, desc);
+
+                    td.appendChild(cellDiv); 
+                    teamTr.appendChild(td);
+                });
+                tbody.appendChild(teamTr);
+
+                // Affichage des agents de l'équipe
+                team.agents.forEach(agent => {
+                    const extraShifts = calculateExtraShiftsCount(agent, team.id);
+
+                    const tr = document.createElement('tr');
+                    const tdName = document.createElement('td'); 
+                    tdName.className = 'sticky-col-1'; 
+                    tdName.style.paddingLeft = '10px'; 
+                    
+                    // Intégration du nom, du badge et du bouton de suppression
+                    let deleteBtnHtml = !isReadOnly 
+                        ? `<button class="btn btn-danger" style="padding:0 4px; font-size:0.65rem; margin-right:4px;" title="Supprimer cet agent" onclick="event.stopPropagation(); deleteAgentFromTeam('${team.id}', '${agent.id}');">🗑️</button>` 
+                        : '';
+
+                    tdName.innerHTML = `
+                        <div style="display:flex; align-items:center; justify-content:space-between; width:100%;">
+                            <div style="display:flex; align-items:center; overflow:hidden; text-overflow:ellipsis;">
+                                ${deleteBtnHtml}
+                                <span style="cursor:${isReadOnly ? 'default' : 'pointer'};" onclick="${!isReadOnly ? `openAgentModal('${agent.id}')` : ''}">${agent.name}</span>
+                            </div>
+                            <span class="extra-shifts-badge" title="Quarts (M/A/N) hors roulement d'équipe dans l'année">${extraShifts} q.</span>
+                        </div>`;
+                    
+                    tr.appendChild(tdName);
+                    
+                    const tdSkills = document.createElement('td'); 
+                    tdSkills.className = 'sticky-col-2'; 
+                    tdSkills.style.cursor = isReadOnly ? 'default' : 'pointer'; 
+                    if (!isReadOnly) tdSkills.onclick = () => openAgentModal(agent.id); 
+                    renderSkillBadges(tdSkills, agent.skills); 
+                    tr.appendChild(tdSkills);
+
+                    dates.forEach(d => {
+                        const dateStr = formatDate(d);
+                        const taskCode = getEffectiveAgentTask(agent, team.id, dateStr);
+                        const taskDef = TASKS[taskCode] || TASKS['R'];
+                        const descKey = `${agent.id}_${dateStr}`;
+                        const desc = taskDescriptions[descKey] || '';
+
+                        const td = document.createElement('td');
+                        const cellDiv = document.createElement('div');
+                        cellDiv.className = `task-cell ${isReadOnly ? 'task-cell-disabled' : ''} ${desc ? 'has-desc-indicator' : ''}`;
+                        cellDiv.style.backgroundColor = taskDef.color;
+                        cellDiv.style.color = taskDef.text;
+                        cellDiv.innerText = taskCode;
+
+                        if (!isReadOnly) {
+                            cellDiv.onclick = () => openTaskModal(false, agent.id, agent.name, dateStr, taskCode, desc);
+                        }
+                        attachCellHoverEvents(cellDiv, desc);
+
+                        td.appendChild(cellDiv);
+                        tr.appendChild(td);
+                    });
+
+                    tbody.appendChild(tr);
+                });
             });
-
-            tbody.appendChild(tr);
-        });
-    });
-}
-
+        }
 
         function openTaskModal(isTeam, targetId, targetName, dateStr, currentTaskCode, currentDesc) {
             if (isReadOnly) return;
@@ -1662,235 +1660,233 @@
             return parseInt(parts[0], 10) + (parseInt(parts[1], 10) / 60);
         }
 
-                function checkRestAlerts() {
-    let generatedAlerts = [];
-    const startYearDate = new Date(currentYear, 0, 1);
-    const endYearDate = new Date(currentYear, 11, 31);
+        function checkRestAlerts() {
+            let generatedAlerts = [];
+            const startYearDate = new Date(currentYear, 0, 1);
+            const endYearDate = new Date(currentYear, 11, 31);
 
-    teams.forEach(team => {
-        team.agents.forEach(agent => {
+            teams.forEach(team => {
+                team.agents.forEach(agent => {
 
-            // 1. RÈGLE DES 11H DE REPOS ENTRE DEUX JOURS TRAVAILLÉS
-            let currentDate = new Date(startYearDate);
-            while (currentDate <= endYearDate) {
-                const dateStr = formatDate(currentDate);
-                const currentTaskCode = getEffectiveAgentTask(agent, team.id, dateStr);
-                const currentTask = TASKS[currentTaskCode] || TASKS['R'];
+                    // 1. RÈGLE DES 11H DE REPOS ENTRE DEUX JOURS TRAVAILLÉS
+                    let currentDate = new Date(startYearDate);
+                    while (currentDate <= endYearDate) {
+                        const dateStr = formatDate(currentDate);
+                        const currentTaskCode = getEffectiveAgentTask(agent, team.id, dateStr);
+                        const currentTask = TASKS[currentTaskCode] || TASKS['R'];
 
-                const nextDate = new Date(currentDate);
-                nextDate.setDate(nextDate.getDate() + 1);
-                const nextDateStr = formatDate(nextDate);
-                const nextTaskCode = getEffectiveAgentTask(agent, team.id, nextDateStr);
-                const nextTask = TASKS[nextTaskCode] || TASKS['R'];
+                        const nextDate = new Date(currentDate);
+                        nextDate.setDate(nextDate.getDate() + 1);
+                        const nextDateStr = formatDate(nextDate);
+                        const nextTaskCode = getEffectiveAgentTask(agent, team.id, nextDateStr);
+                        const nextTask = TASKS[nextTaskCode] || TASKS['R'];
 
-                if (!currentTask.isRest && !nextTask.isRest) {
-                    let finishCurrent = timeToDecimal(currentTask.end);
-                    let startNext = timeToDecimal(nextTask.start);
-                    let restHours = 0;
+                        if (!currentTask.isRest && !nextTask.isRest) {
+                            let finishCurrent = timeToDecimal(currentTask.end);
+                            let startNext = timeToDecimal(nextTask.start);
+                            let restHours = 0;
 
-                    // Si le poste actuel est une Nuit (shift 'N' ou fin à cheval sur le lendemain)
-                    if (currentTask.shift === 'N' || finishCurrent < timeToDecimal(currentTask.start)) {
-                        // finishCurrent correspond à l'heure de fin le matin du jour nextDateStr
-                        // startNext correspond à l'heure de début du service le jour nextDateStr
-                        restHours = startNext - finishCurrent;
-                    } else {
-                        // Cas standard (ex: Matin suivi d'un Matin ou d'une Nuit le lendemain)
-                        restHours = (24 - finishCurrent) + startNext;
-                    }
-
-                    if (restHours < 11) {
-                        generatedAlerts.push({
-                            id: `REST11_${agent.id}_${dateStr}`,
-                            agentId: agent.id,
-                            agentName: agent.name,
-                            date: dateStr,
-                            type: 'REPOS_11H',
-                            description: `Repos quotidien insuffisant (${restHours < 0 ? 0 : restHours.toFixed(1)}h < 11h) entre le ${dateStr} (${currentTaskCode}) et le ${nextDateStr} (${nextTaskCode})`
-                        });
-                    }
-                }
-                currentDate.setDate(currentDate.getDate() + 1);
-            }
-
-            // 2. RÈGLE DES 35H DE REPOS HEBDOMADAIRE
-            let sundayIter = new Date(startYearDate);
-            while (sundayIter.getDay() !== 0) {
-                sundayIter.setDate(sundayIter.getDate() - 1);
-            }
-
-            while (sundayIter <= endYearDate) {
-                const sundayStr = formatDate(sundayIter);
-
-                let weekDays = [];
-                for (let i = 0; i < 7; i++) {
-                    let d = new Date(sundayIter);
-                    d.setDate(d.getDate() + i);
-                    let dStr = formatDate(d);
-                    let tCode = getEffectiveAgentTask(agent, team.id, dStr);
-                    let tDef = TASKS[tCode] || TASKS['R'];
-                    weekDays.push({ date: d, dateStr: dStr, code: tCode, def: tDef });
-                }
-
-                let monTask = weekDays[1].def;
-                let endSunDate = new Date(sundayIter);
-                endSunDate.setDate(endSunDate.getDate() + 7);
-                let endSunStr = formatDate(endSunDate);
-                let endSunCode = getEffectiveAgentTask(agent, team.id, endSunStr);
-                let endSunTask = TASKS[endSunCode] || TASKS['R'];
-
-                let isSpecialShiftWeek = (monTask.shift === 'M' && endSunTask.shift === 'N');
-                let valid35h = false;
-
-                if (isSpecialShiftWeek) {
-                    let prevSatDate = new Date(sundayIter);
-                    prevSatDate.setDate(prevSatDate.getDate() - 1);
-                    let prevSatStr = formatDate(prevSatDate);
-                    let prevSatCode = getEffectiveAgentTask(agent, team.id, prevSatStr);
-                    let prevSatTask = TASKS[prevSatCode] || TASKS['R'];
-
-                    let sunIsFullRest = weekDays[0].def.isRest;
-                    let satFinishTime = prevSatTask.isRest ? 0 : timeToDecimal(prevSatTask.end);
-                    let satHas11hRest = prevSatTask.isRest || (satFinishTime <= 13);
-
-                    // Si le samedi était de Nuit, le dimanche ne peut pas compter comme 24h plein
-                    if (prevSatTask.shift !== 'N' && sunIsFullRest && satHas11hRest) {
-                        valid35h = true;
-                    }
-                }
-
-                if (!valid35h) {
-                    for (let i = 0; i < 7; i++) {
-                        if (weekDays[i].def.isRest) {
-                            // Vérification du quart du jour précédent
-                            let prevShift = 'none';
-                            if (i > 0) {
-                                prevShift = weekDays[i - 1].def.shift;
+                            // Si le poste actuel est une Nuit (shift 'N' ou fin à cheval sur le lendemain)
+                            if (currentTask.shift === 'N' || finishCurrent < timeToDecimal(currentTask.start)) {
+                                // finishCurrent correspond à l'heure de fin le matin du jour nextDateStr
+                                // startNext correspond à l'heure de début du service le jour nextDateStr
+                                restHours = startNext - finishCurrent;
                             } else {
-                                let pSatDate = new Date(sundayIter);
-                                pSatDate.setDate(pSatDate.getDate() - 1);
-                                let pSatCode = getEffectiveAgentTask(agent, team.id, formatDate(pSatDate));
-                                let pSatT = TASKS[pSatCode] || TASKS['R'];
-                                prevShift = pSatT.shift;
+                                // Cas standard (ex: Matin suivi d'un Matin ou d'une Nuit le lendemain)
+                                restHours = (24 - finishCurrent) + startNext;
                             }
 
-                            // Si précédé d'une Nuit ('N'), la nuit empiète jusqu'au matin : ne peut PAS valoir 24h plein
-                            if (prevShift === 'N') {
-                                continue;
-                            }
-
-                            let prevHas11h = false;
-                            let nextHas11h = false;
-
-                            if (i > 0) {
-                                let prevT = weekDays[i - 1].def;
-                                let finish = prevT.isRest ? 0 : timeToDecimal(prevT.end);
-                                if (prevT.isRest || finish <= 13) prevHas11h = true;
-                            } else {
-                                let pSatDate = new Date(sundayIter);
-                                pSatDate.setDate(pSatDate.getDate() - 1);
-                                let pSatCode = getEffectiveAgentTask(agent, team.id, formatDate(pSatDate));
-                                let pSatT = TASKS[pSatCode] || TASKS['R'];
-                                let finish = pSatT.isRest ? 0 : timeToDecimal(pSatT.end);
-                                if (pSatT.isRest || finish <= 13) prevHas11h = true;
-                            }
-
-                            if (i < 6) {
-                                let nextT = weekDays[i + 1].def;
-                                let start = nextT.isRest ? 24 : timeToDecimal(nextT.start);
-                                if (nextT.isRest || start >= 11) nextHas11h = true;
-                            } else {
-                                let nSunDate = new Date(sundayIter);
-                                nSunDate.setDate(nSunDate.getDate() + 7);
-                                let nSunCode = getEffectiveAgentTask(agent, team.id, formatDate(nSunDate));
-                                let nSunT = TASKS[nSunCode] || TASKS['R'];
-                                let start = nSunT.isRest ? 24 : timeToDecimal(nSunT.start);
-                                if (nSunT.isRest || start >= 11) nextHas11h = true;
-                            }
-
-                            if (prevHas11h || nextHas11h) {
-                                valid35h = true;
-                                break;
+                            if (restHours < 11) {
+                                generatedAlerts.push({
+                                    id: `REST11_${agent.id}_${dateStr}`,
+                                    agentId: agent.id,
+                                    agentName: agent.name,
+                                    date: dateStr,
+                                    type: 'REPOS_11H',
+                                    description: `Repos quotidien insuffisant (${restHours < 0 ? 0 : restHours.toFixed(1)}h < 11h) entre le ${dateStr} (${currentTaskCode}) et le ${nextDateStr} (${nextTaskCode})`
+                                });
                             }
                         }
+                        currentDate.setDate(currentDate.getDate() + 1);
                     }
-                }
 
-                if (!valid35h) {
-                    generatedAlerts.push({
-                        id: `REST35_${agent.id}_${sundayStr}`,
-                        agentId: agent.id,
-                        agentName: agent.name,
-                        date: sundayStr,
-                        type: 'REPOS_35H',
-                        description: `Repos hebdomadaire de 35h (24h + 11h) non respecté sur la semaine du dimanche ${sundayStr}`
-                    });
-                }
+                    // 2. RÈGLE DES 35H DE REPOS HEBDOMADAIRE
+                    let sundayIter = new Date(startYearDate);
+                    while (sundayIter.getDay() !== 0) {
+                        sundayIter.setDate(sundayIter.getDate() - 1);
+                    }
 
-                sundayIter.setDate(sundayIter.getDate() + 7);
+                    while (sundayIter <= endYearDate) {
+                        const sundayStr = formatDate(sundayIter);
+
+                        let weekDays = [];
+                        for (let i = 0; i < 7; i++) {
+                            let d = new Date(sundayIter);
+                            d.setDate(d.getDate() + i);
+                            let dStr = formatDate(d);
+                            let tCode = getEffectiveAgentTask(agent, team.id, dStr);
+                            let tDef = TASKS[tCode] || TASKS['R'];
+                            weekDays.push({ date: d, dateStr: dStr, code: tCode, def: tDef });
+                        }
+
+                        let monTask = weekDays[1].def;
+                        let endSunDate = new Date(sundayIter);
+                        endSunDate.setDate(endSunDate.getDate() + 7);
+                        let endSunStr = formatDate(endSunDate);
+                        let endSunCode = getEffectiveAgentTask(agent, team.id, endSunStr);
+                        let endSunTask = TASKS[endSunCode] || TASKS['R'];
+
+                        let isSpecialShiftWeek = (monTask.shift === 'M' && endSunTask.shift === 'N');
+                        let valid35h = false;
+
+                        if (isSpecialShiftWeek) {
+                            let prevSatDate = new Date(sundayIter);
+                            prevSatDate.setDate(prevSatDate.getDate() - 1);
+                            let prevSatStr = formatDate(prevSatDate);
+                            let prevSatCode = getEffectiveAgentTask(agent, team.id, prevSatStr);
+                            let prevSatTask = TASKS[prevSatCode] || TASKS['R'];
+
+                            let sunIsFullRest = weekDays[0].def.isRest;
+                            let satFinishTime = prevSatTask.isRest ? 0 : timeToDecimal(prevSatTask.end);
+                            let satHas11hRest = prevSatTask.isRest || (satFinishTime <= 13);
+
+                            // Si le samedi était de Nuit, le dimanche ne peut pas compter comme 24h plein
+                            if (prevSatTask.shift !== 'N' && sunIsFullRest && satHas11hRest) {
+                                valid35h = true;
+                            }
+                        }
+
+                        if (!valid35h) {
+                            for (let i = 0; i < 7; i++) {
+                                if (weekDays[i].def.isRest) {
+                                    // Vérification du quart du jour précédent
+                                    let prevShift = 'none';
+                                    if (i > 0) {
+                                        prevShift = weekDays[i - 1].def.shift;
+                                    } else {
+                                        let pSatDate = new Date(sundayIter);
+                                        pSatDate.setDate(pSatDate.getDate() - 1);
+                                        let pSatCode = getEffectiveAgentTask(agent, team.id, formatDate(pSatDate));
+                                        let pSatT = TASKS[pSatCode] || TASKS['R'];
+                                        prevShift = pSatT.shift;
+                                    }
+
+                                    // Si précédé d'une Nuit ('N'), la nuit empiète jusqu'au matin : ne peut PAS valoir 24h plein
+                                    if (prevShift === 'N') {
+                                        continue;
+                                    }
+
+                                    let prevHas11h = false;
+                                    let nextHas11h = false;
+
+                                    if (i > 0) {
+                                        let prevT = weekDays[i - 1].def;
+                                        let finish = prevT.isRest ? 0 : timeToDecimal(prevT.end);
+                                        if (prevT.isRest || finish <= 13) prevHas11h = true;
+                                    } else {
+                                        let pSatDate = new Date(sundayIter);
+                                        pSatDate.setDate(pSatDate.getDate() - 1);
+                                        let pSatCode = getEffectiveAgentTask(agent, team.id, formatDate(pSatDate));
+                                        let pSatT = TASKS[pSatCode] || TASKS['R'];
+                                        let finish = pSatT.isRest ? 0 : timeToDecimal(pSatT.end);
+                                        if (pSatT.isRest || finish <= 13) prevHas11h = true;
+                                    }
+
+                                    if (i < 6) {
+                                        let nextT = weekDays[i + 1].def;
+                                        let start = nextT.isRest ? 24 : timeToDecimal(nextT.start);
+                                        if (nextT.isRest || start >= 11) nextHas11h = true;
+                                    } else {
+                                        let nSunDate = new Date(sundayIter);
+                                        nSunDate.setDate(nSunDate.getDate() + 7);
+                                        let nSunCode = getEffectiveAgentTask(agent, team.id, formatDate(nSunDate));
+                                        let nSunT = TASKS[nSunCode] || TASKS['R'];
+                                        let start = nSunT.isRest ? 24 : timeToDecimal(nSunT.start);
+                                        if (nSunT.isRest || start >= 11) nextHas11h = true;
+                                    }
+
+                                    if (prevHas11h || nextHas11h) {
+                                        valid35h = true;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+
+                        if (!valid35h) {
+                            generatedAlerts.push({
+                                id: `REST35_${agent.id}_${sundayStr}`,
+                                agentId: agent.id,
+                                agentName: agent.name,
+                                date: sundayStr,
+                                type: 'REPOS_35H',
+                                description: `Repos hebdomadaire de 35h (24h + 11h) non respecté sur la semaine du dimanche ${sundayStr}`
+                            });
+                        }
+
+                        sundayIter.setDate(sundayIter.getDate() + 7);
+                    }
+
+                    // 3. LIMITATION À 11 JOURS CONSÉCUTIFS DE TRAVAIL MAX
+                    let consecutiveWorkDays = 0;
+                    let workStartDate = null;
+                    let checkMaxDate = new Date(startYearDate);
+
+                    while (checkMaxDate <= endYearDate) {
+                        const dStr = formatDate(checkMaxDate);
+                        const tCode = getEffectiveAgentTask(agent, team.id, dStr);
+                        const tDef = TASKS[tCode] || TASKS['R'];
+
+                        if (!tDef.isRest) {
+                            if (consecutiveWorkDays === 0) workStartDate = dStr;
+                            consecutiveWorkDays++;
+
+                            if (consecutiveWorkDays > 11) {
+                                generatedAlerts.push({
+                                    id: `MAX11DAYS_${agent.id}_${dStr}`,
+                                    agentId: agent.id,
+                                    agentName: agent.name,
+                                    date: dStr,
+                                    type: 'MAX_11_JOURS',
+                                    description: `Dépassement de la limite de 11 jours de travail consécutifs (${consecutiveWorkDays} jours d'affilée depuis le ${workStartDate})`
+                                });
+                            }
+                        } else {
+                            consecutiveWorkDays = 0;
+                            workStartDate = null;
+                        }
+                        checkMaxDate.setDate(checkMaxDate.getDate() + 1);
+                    }
+
+                });
+            });
+
+            const activeAlerts = generatedAlerts.filter(a => !acknowledgedAlerts.some(ack => ack.id === a.id));
+            const alertBanner = document.getElementById('alertBanner');
+            const alertList = document.getElementById('alertList');
+            alertList.innerHTML = '';
+
+            if (activeAlerts.length > 0) {
+                alertBanner.style.display = 'block';
+                activeAlerts.forEach(al => {
+                    const li = document.createElement('li');
+                    li.innerHTML = `
+                        <span><strong>${al.agentName}</strong> (${al.date}) : ${al.description}</span>
+                        ${!isReadOnly ? `<button class="btn btn-ack" onclick="openAckModal('${al.id}', '${al.agentName}', '${al.date}', '${al.description}')">Acquitter</button>` : ''}
+                    `;
+                    alertList.appendChild(li);
+                });
+            } else {
+                alertBanner.style.display = 'none';
             }
 
-            // 3. LIMITATION À 11 JOURS CONSÉCUTIFS DE TRAVAIL MAX
-            let consecutiveWorkDays = 0;
-            let workStartDate = null;
-            let checkMaxDate = new Date(startYearDate);
-
-            while (checkMaxDate <= endYearDate) {
-                const dStr = formatDate(checkMaxDate);
-                const tCode = getEffectiveAgentTask(agent, team.id, dStr);
-                const tDef = TASKS[tCode] || TASKS['R'];
-
-                if (!tDef.isRest) {
-                    if (consecutiveWorkDays === 0) workStartDate = dStr;
-                    consecutiveWorkDays++;
-
-                    if (consecutiveWorkDays > 11) {
-                        generatedAlerts.push({
-                            id: `MAX11DAYS_${agent.id}_${dStr}`,
-                            agentId: agent.id,
-                            agentName: agent.name,
-                            date: dStr,
-                            type: 'MAX_11_JOURS',
-                            description: `Dépassement de la limite de 11 jours de travail consécutifs (${consecutiveWorkDays} jours d'affilée depuis le ${workStartDate})`
-                        });
-                    }
-                } else {
-                    consecutiveWorkDays = 0;
-                    workStartDate = null;
+            activeAlerts.forEach(al => {
+                if (!knownAlertKeys.has(al.id)) {
+                    knownAlertKeys.add(al.id);
+                    showNotificationModal(al);
                 }
-                checkMaxDate.setDate(checkMaxDate.getDate() + 1);
-            }
-
-        });
-    });
-
-    const activeAlerts = generatedAlerts.filter(a => !acknowledgedAlerts.some(ack => ack.id === a.id));
-    const alertBanner = document.getElementById('alertBanner');
-    const alertList = document.getElementById('alertList');
-    alertList.innerHTML = '';
-
-    if (activeAlerts.length > 0) {
-        alertBanner.style.display = 'block';
-        activeAlerts.forEach(al => {
-            const li = document.createElement('li');
-            li.innerHTML = `
-                <span><strong>${al.agentName}</strong> (${al.date}) : ${al.description}</span>
-                ${!isReadOnly ? `<button class="btn btn-ack" onclick="openAckModal('${al.id}', '${al.agentName}', '${al.date}', '${al.description}')">Acquitter</button>` : ''}
-            `;
-            alertList.appendChild(li);
-        });
-    } else {
-        alertBanner.style.display = 'none';
-    }
-
-    activeAlerts.forEach(al => {
-        if (!knownAlertKeys.has(al.id)) {
-            knownAlertKeys.add(al.id);
-            showNotificationModal(al);
+            });
         }
-    });
-}
-
-
 
         function showNotificationModal(al) {
             const modal = document.getElementById('notificationModal');
@@ -2167,7 +2163,9 @@
 
             let sourceTeamId = null;
             teams.forEach(t => {
-                if (t.agents.some(a => a.id === sourceAgentId)) sourceTeamId = t.id;
+                if (t.agents.some(a => a.id === sourceAgentId)) {
+                    sourceTeamId = t.id;
+                }
             });
 
             if (!agentSchedules[targetAgentId]) agentSchedules[targetAgentId] = {};
@@ -2175,12 +2173,13 @@
             let curr = new Date(dStart);
             while (curr <= dEnd) {
                 const dStr = formatDate(curr);
-                const task = getEffectiveAgentTask({ id: sourceAgentId }, sourceTeamId, dStr);
-                agentSchedules[targetAgentId][dStr] = task;
+                const taskCode = getEffectiveAgentTask({ id: sourceAgentId }, sourceTeamId, dStr);
+                agentSchedules[targetAgentId][dStr] = taskCode;
 
                 if (comment) {
                     taskDescriptions[`${targetAgentId}_${dStr}`] = comment;
                 }
+
                 curr.setDate(curr.getDate() + 1);
             }
 
@@ -2194,8 +2193,8 @@
             const agentId = document.getElementById('editAgentId').value;
             const taskCode = document.getElementById('bulkAgentTask').value;
             const desc = document.getElementById('bulkAgentDesc').value.trim();
-            const startStr = document.getElementById('bulkStartDate').value;
             const freq = document.getElementById('bulkAgentFreq').value;
+            const startStr = document.getElementById('bulkStartDate').value;
 
             if (!startStr) {
                 alert("Veuillez sélectionner une date de début.");
@@ -2204,22 +2203,23 @@
 
             if (!agentSchedules[agentId]) agentSchedules[agentId] = {};
 
-            const startDate = parseDate(startStr);
-
             if (freq === 'NONE') {
                 const endStr = document.getElementById('bulkEndDate').value;
                 if (!endStr) {
                     alert("Veuillez sélectionner une date de fin.");
                     return;
                 }
-                const endDate = parseDate(endStr);
-                if (startDate > endDate) {
+
+                const dStart = parseDate(startStr);
+                const dEnd = parseDate(endStr);
+
+                if (dStart > dEnd) {
                     alert("La date de début doit être antérieure à la date de fin.");
                     return;
                 }
 
-                let curr = new Date(startDate);
-                while (curr <= endDate) {
+                let curr = new Date(dStart);
+                while (curr <= dEnd) {
                     const dStr = formatDate(curr);
                     agentSchedules[agentId][dStr] = taskCode;
                     if (desc) taskDescriptions[`${agentId}_${dStr}`] = desc;
@@ -2227,38 +2227,84 @@
                 }
             } else {
                 const durationYears = parseInt(document.getElementById('bulkAgentDuration').value, 10);
-                let stepDays = 1;
-                if (freq !== '1_DAY') stepDays = parseInt(freq, 10) * 7;
+                const start = parseDate(startStr);
 
-                const endDate = new Date(startDate);
-                endDate.setFullYear(endDate.getFullYear() + durationYears);
+                let stepDays = 7;
+                if (freq === '1_DAY') stepDays = 1;
+                else stepDays = parseInt(freq, 10) * 7;
 
-                let curr = new Date(startDate);
-                while (curr <= endDate) {
-                    const dStr = formatDate(curr);
+                const totalDays = durationYears * 365;
+                let current = new Date(start);
+                const endDate = new Date(start);
+                endDate.setDate(endDate.getDate() + totalDays);
+
+                while (current <= endDate) {
+                    const dStr = formatDate(current);
                     agentSchedules[agentId][dStr] = taskCode;
                     if (desc) taskDescriptions[`${agentId}_${dStr}`] = desc;
-                    curr.setDate(curr.getDate() + stepDays);
+                    current.setDate(current.getDate() + stepDays);
                 }
             }
 
-            alert("✅ Affectation effectuée !");
+            alert("✅ Tâche appliquée avec succès !");
             closeAgentModal();
             renderAll(true);
         }
 
+        function addNewAgentToTeam(teamId) {
+            if (isReadOnly) return;
+            const team = teams.find(t => t.id === teamId);
+            if (!team) return;
+
+            const agentNum = team.agents.length + 1;
+            const newAgentId = `${teamId}_a${Date.now()}`;
+            const newAgentName = `Nouvel Agent ${agentNum}`;
+
+            team.agents.push({
+                id: newAgentId,
+                name: newAgentName,
+                skills: ['C1']
+            });
+
+            renderAll(true);
+        }
+
+        function deleteAgentFromTeam(teamId, agentId) {
+            if (isReadOnly) return;
+            const team = teams.find(t => t.id === teamId);
+            if (!team) return;
+
+            const agent = team.agents.find(a => a.id === agentId);
+            if (!agent) return;
+
+            if (confirm(`Voulez-vous vraiment supprimer l'agent ${agent.name} ?`)) {
+                team.agents = team.agents.filter(a => a.id !== agentId);
+                delete agentSchedules[agentId];
+                
+                Object.keys(taskDescriptions).forEach(k => {
+                    if (k.startsWith(`${agentId}_`)) delete taskDescriptions[k];
+                });
+
+                renderAll(true);
+            }
+        }
+
         function openSettings() {
-            if (!isAdmin) return;
+            if (!isAdmin) {
+                alert("Accès réservé aux Administrateurs.");
+                return;
+            }
+
             renderSkillsConfig();
             renderMonitoredSkillsConfig();
             renderTasksConfig();
 
-            document.getElementById('th_M_orange').value = settings.thresholds.M.orange;
-            document.getElementById('th_M_green').value = settings.thresholds.M.green;
-            document.getElementById('th_A_orange').value = settings.thresholds.A.orange;
-            document.getElementById('th_A_green').value = settings.thresholds.A.green;
-            document.getElementById('th_N_orange').value = settings.thresholds.N.orange;
-            document.getElementById('th_N_green').value = settings.thresholds.N.green;
+            document.getElementById('th_M_orange').value = settings.thresholds.M ? settings.thresholds.M.orange : 5;
+            document.getElementById('th_M_green').value = settings.thresholds.M ? settings.thresholds.M.green : 7;
+            document.getElementById('th_A_orange').value = settings.thresholds.A ? settings.thresholds.A.orange : 5;
+            document.getElementById('th_A_green').value = settings.thresholds.A ? settings.thresholds.A.green : 7;
+            document.getElementById('th_N_orange').value = settings.thresholds.N ? settings.thresholds.N.orange : 3;
+            document.getElementById('th_N_green').value = settings.thresholds.N ? settings.thresholds.N.green : 5;
 
             document.getElementById('settingsModal').style.display = 'flex';
         }
@@ -2270,28 +2316,23 @@
         function renderSkillsConfig() {
             const container = document.getElementById('skillsConfigContainer');
             container.innerHTML = '';
-
             skillDefinitions.forEach((sk, idx) => {
                 const row = document.createElement('div');
                 row.className = 'skill-config-row';
                 row.innerHTML = `
-                    <input type="text" value="${sk.id}" id="sk_id_${idx}" style="font-weight:bold;">
-                    <input type="text" value="${sk.name}" id="sk_name_${idx}">
-                    <input type="color" value="${sk.color}" id="sk_color_${idx}">
-                    <input type="number" value="${sk.min !== undefined ? sk.min : 1}" min="0" id="sk_min_${idx}">
-                    <button class="btn btn-danger" onclick="removeSkillRow(${idx})">✕</button>
+                    <input type="text" value="${sk.id}" onchange="skillDefinitions[${idx}].id = this.value">
+                    <input type="text" value="${sk.name}" onchange="skillDefinitions[${idx}].name = this.value">
+                    <input type="number" min="0" value="${sk.min !== undefined ? sk.min : 1}" onchange="skillDefinitions[${idx}].min = parseInt(this.value, 10)">
+                    <input type="color" value="${sk.color}" onchange="skillDefinitions[${idx}].color = this.value">
+                    <button class="btn btn-danger" style="padding: 2px 6px;" onclick="removeSkillRow(${idx})">✕</button>
                 `;
                 container.appendChild(row);
             });
         }
 
         function addSkillRow() {
-            skillDefinitions.push({
-                id: `C${skillDefinitions.length + 1}`,
-                name: 'Nouvelle Compétence',
-                color: '#34495e',
-                min: 1
-            });
+            const nextId = `C${skillDefinitions.length + 1}`;
+            skillDefinitions.push({ id: nextId, name: 'Nouvelle Compétence', color: '#7f8c8d', min: 1 });
             renderSkillsConfig();
         }
 
@@ -2303,24 +2344,35 @@
         function renderMonitoredSkillsConfig() {
             const container = document.getElementById('monitoredSkillsConfigContainer');
             container.innerHTML = '';
-
-            (exclusiveSkillMonitoredGroups || []).forEach((group, idx) => {
+            
+            (exclusiveSkillMonitoredGroups || []).forEach((group, groupIdx) => {
                 const row = document.createElement('div');
                 row.className = 'monitored-skills-row';
-
+                
                 let checkboxesHtml = '';
                 skillDefinitions.forEach(sk => {
-                    const checked = group.includes(sk.id) ? 'checked' : '';
-                    checkboxesHtml += `<label style="font-size:0.75rem; display:inline-flex; align-items:center; gap:3px;"><input type="checkbox" class="monitored-cb-${idx}" value="${sk.id}" ${checked}> ${sk.id}</label> `;
+                    const isChecked = group.includes(sk.id) ? 'checked' : '';
+                    checkboxesHtml += `
+                        <label style="font-size:0.8rem; display:inline-flex; align-items:center; gap:3px;">
+                            <input type="checkbox" data-group="${groupIdx}" data-skill="${sk.id}" ${isChecked} onchange="updateMonitoredGroupSkills(${groupIdx})">
+                            ${sk.id}
+                        </label>
+                    `;
                 });
 
                 row.innerHTML = `
-                    <span style="font-weight:bold; font-size:0.8rem;">Groupe ${idx + 1} :</span>
-                    <div style="display:flex; flex-wrap:wrap; gap:8px;">${checkboxesHtml}</div>
-                    <button class="btn btn-danger" style="margin-left:auto;" onclick="removeMonitoredSkillGroupRow(${idx})">✕</button>
+                    <span style="font-weight:bold; font-size:0.8rem; width:80px;">Règle #${groupIdx + 1} :</span>
+                    <div style="display:flex; gap:10px; flex-wrap:wrap; flex:1;">${checkboxesHtml}</div>
+                    <button class="btn btn-danger" style="padding:2px 6px;" onclick="removeMonitoredSkillGroupRow(${groupIdx})">✕</button>
                 `;
                 container.appendChild(row);
             });
+        }
+
+        function updateMonitoredGroupSkills(groupIdx) {
+            const checkedBoxes = document.querySelectorAll(`input[data-group="${groupIdx}"]:checked`);
+            const selectedSkills = Array.from(checkedBoxes).map(cb => cb.getAttribute('data-skill'));
+            exclusiveSkillMonitoredGroups[groupIdx] = selectedSkills;
         }
 
         function addMonitoredSkillGroupRow() {
@@ -2329,112 +2381,92 @@
             renderMonitoredSkillsConfig();
         }
 
-        function removeMonitoredSkillGroupRow(idx) {
-            exclusiveSkillMonitoredGroups.splice(idx, 1);
+        function removeMonitoredSkillGroupRow(groupIdx) {
+            exclusiveSkillMonitoredGroups.splice(groupIdx, 1);
             renderMonitoredSkillsConfig();
         }
 
         function renderTasksConfig() {
             const container = document.getElementById('tasksContainer');
             container.innerHTML = '';
-
-            Object.keys(TASKS).forEach((code, idx) => {
-                const t = TASKS[code];
+            Object.keys(TASKS).forEach(code => {
+                const task = TASKS[code];
                 const row = document.createElement('div');
                 row.className = 'task-row';
                 row.innerHTML = `
-                    <input type="text" value="${code}" id="task_code_${idx}" style="font-weight:bold;">
-                    <input type="text" value="${t.label}" id="task_label_${idx}">
-                    <select id="task_shift_${idx}">
-                        <option value="none" ${t.shift === 'none' ? 'selected' : ''}>Aucun</option>
-                        <option value="M" ${t.shift === 'M' ? 'selected' : ''}>Matin</option>
-                        <option value="A" ${t.shift === 'A' ? 'selected' : ''}>Après-Midi</option>
-                        <option value="N" ${t.shift === 'N' ? 'selected' : ''}>Nuit</option>
-                        <option value="J" ${t.shift === 'J' ? 'selected' : ''}>Journée</option>
+                    <input type="text" value="${code}" disabled style="background:#eee;">
+                    <input type="text" value="${task.label}" onchange="TASKS['${code}'].label = this.value">
+                    <select onchange="TASKS['${code}'].shift = this.value">
+                        <option value="none" ${task.shift === 'none' ? 'selected' : ''}>Aucun</option>
+                        <option value="M" ${task.shift === 'M' ? 'selected' : ''}>Matin</option>
+                        <option value="A" ${task.shift === 'A' ? 'selected' : ''}>Après-Midi</option>
+                        <option value="N" ${task.shift === 'N' ? 'selected' : ''}>Nuit</option>
+                        <option value="J" ${task.shift === 'J' ? 'selected' : ''}>Journée</option>
                     </select>
-                    <input type="time" value="${t.start || '00:00'}" id="task_start_${idx}">
-                    <input type="time" value="${t.end || '00:00'}" id="task_end_${idx}">
-                    <input type="checkbox" ${t.isRest ? 'checked' : ''} id="task_rest_${idx}">
-                    <input type="color" value="${t.color}" id="task_color_${idx}">
-                    <input type="color" value="${t.text}" id="task_text_${idx}">
-                    <button class="btn btn-danger" onclick="removeTaskRow('${code}')">✕</button>
+                    <input type="time" value="${task.start}" onchange="TASKS['${code}'].start = this.value">
+                    <input type="time" value="${task.end}" onchange="TASKS['${code}'].end = this.value">
+                    <select onchange="TASKS['${code}'].isRest = (this.value === 'true')">
+                        <option value="true" ${task.isRest ? 'selected' : ''}>Oui</option>
+                        <option value="false" ${!task.isRest ? 'selected' : ''}>Non</option>
+                    </select>
+                    <input type="color" value="${task.color}" onchange="TASKS['${code}'].color = this.value">
+                    <input type="color" value="${task.text}" onchange="TASKS['${code}'].text = this.value">
+                    <button class="btn btn-danger" style="padding:2px;" onclick="removeTaskRow('${code}')">✕</button>
                 `;
                 container.appendChild(row);
             });
         }
 
         function addTaskRow() {
-            const newCode = `T${Object.keys(TASKS).length + 1}`;
-            TASKS[newCode] = { label: 'Nouvelle Tâche', color: '#95a5a6', text: '#ffffff', shift: 'none', start: '08:00', end: '16:00', isRest: false };
+            const newCode = prompt("Saisir le code de la nouvelle tâche (ex: CA, FO, T) :")?.toUpperCase().trim();
+            if (!newCode) return;
+            if (TASKS[newCode]) {
+                alert("Ce code existe déjà.");
+                return;
+            }
+            TASKS[newCode] = { label: 'Nouvelle Tâche', color: '#34495e', text: '#ffffff', shift: 'none', start: '08:00', end: '16:00', isRest: false };
             renderTasksConfig();
         }
 
         function removeTaskRow(code) {
+            if (['R', 'RD', 'M', 'A', 'N', 'J'].includes(code)) {
+                alert("Impossible de supprimer cette tâche système de base.");
+                return;
+            }
             delete TASKS[code];
             renderTasksConfig();
         }
 
         function saveSettings() {
             if (!isAdmin) return;
+            settings.thresholds.M = {
+                orange: parseInt(document.getElementById('th_M_orange').value, 10),
+                green: parseInt(document.getElementById('th_M_green').value, 10)
+            };
+            settings.thresholds.A = {
+                orange: parseInt(document.getElementById('th_A_orange').value, 10),
+                green: parseInt(document.getElementById('th_A_green').value, 10)
+            };
+            settings.thresholds.N = {
+                orange: parseInt(document.getElementById('th_N_orange').value, 10),
+                green: parseInt(document.getElementById('th_N_green').value, 10)
+            };
 
-            const newSkills = [];
-            document.querySelectorAll('.skill-config-row').forEach((row, idx) => {
-                newSkills.push({
-                    id: document.getElementById(`sk_id_${idx}`).value.trim(),
-                    name: document.getElementById(`sk_name_${idx}`).value.trim(),
-                    color: document.getElementById(`sk_color_${idx}`).value,
-                    min: parseInt(document.getElementById(`sk_min_${idx}`).value, 10) || 0
-                });
-            });
-            skillDefinitions = newSkills;
-
-            const newMonitoredGroups = [];
-            (exclusiveSkillMonitoredGroups || []).forEach((_, idx) => {
-                const selected = [];
-                document.querySelectorAll(`.monitored-cb-${idx}:checked`).forEach(cb => {
-                    selected.push(cb.value);
-                });
-                if (selected.length > 0) newMonitoredGroups.push(selected);
-            });
-            exclusiveSkillMonitoredGroups = newMonitoredGroups;
-
-            const newTasks = {};
-            document.querySelectorAll('.task-row').forEach((row, idx) => {
-                const code = document.getElementById(`task_code_${idx}`).value.trim();
-                if (code) {
-                    newTasks[code] = {
-                        label: document.getElementById(`task_label_${idx}`).value.trim(),
-                        shift: document.getElementById(`task_shift_${idx}`).value,
-                        start: document.getElementById(`task_start_${idx}`).value,
-                        end: document.getElementById(`task_end_${idx}`).value,
-                        isRest: document.getElementById(`task_rest_${idx}`).checked,
-                        color: document.getElementById(`task_color_${idx}`).value,
-                        text: document.getElementById(`task_text_${idx}`).value
-                    };
-                }
-            });
-            TASKS = newTasks;
-
-            settings.thresholds.M.orange = parseInt(document.getElementById('th_M_orange').value, 10);
-            settings.thresholds.M.green = parseInt(document.getElementById('th_M_green').value, 10);
-            settings.thresholds.A.orange = parseInt(document.getElementById('th_A_orange').value, 10);
-            settings.thresholds.A.green = parseInt(document.getElementById('th_A_green').value, 10);
-            settings.thresholds.N.orange = parseInt(document.getElementById('th_N_orange').value, 10);
-            settings.thresholds.N.green = parseInt(document.getElementById('th_N_green').value, 10);
+            exclusiveSkillMonitoredGroups = (exclusiveSkillMonitoredGroups || []).filter(g => g && g.length >= 2);
 
             closeSettings();
             renderAll(true);
         }
 
         function openPrintModal() {
-            const printYear = document.getElementById('printYear');
-            printYear.innerHTML = '';
+            const selYear = document.getElementById('printYear');
+            selYear.innerHTML = '';
             for (let y = minYearAvailable; y <= maxYearAvailable; y++) {
                 const opt = document.createElement('option');
                 opt.value = y;
                 opt.innerText = y;
                 if (y === currentYear) opt.selected = true;
-                printYear.appendChild(opt);
+                selYear.appendChild(opt);
             }
             document.getElementById('printMonth').value = new Date().getMonth();
             document.getElementById('printModal').style.display = 'flex';
@@ -2445,97 +2477,73 @@
         }
 
         function generateAndPrintMonth() {
-            const month = parseInt(document.getElementById('printMonth').value, 10);
-            const year = parseInt(document.getElementById('printYear').value, 10);
+            const m = parseInt(document.getElementById('printMonth').value, 10);
+            const y = parseInt(document.getElementById('printYear').value, 10);
 
-            const daysInMonth = new Date(year, month + 1, 0).getDate();
-            const monthName = new Date(year, month, 1).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+            const firstDay = new Date(y, m, 1);
+            const lastDay = new Date(y, m + 1, 0);
+            const daysInMonth = lastDay.getDate();
 
-            let html = `<h2>Planning - ${monthName.toUpperCase()}</h2><table><thead><tr><th>Agent</th>`;
-            for (let d = 1; d <= daysInMonth; d++) {
-                const date = new Date(year, month, d);
-                const dayStr = date.toLocaleDateString('fr-FR', { weekday: 'narrow' });
-                html += `<th>${dayStr}<br>${d}</th>`;
+            let printHtml = `
+                <div style="text-align:center; margin-bottom:10px;">
+                    <h2>Planning Annuel Opérationnel - ${firstDay.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }).toUpperCase()}</h2>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width:140px;">Équipe / Agent</th>
+                            <th style="width:100px;">Compétences</th>
+            `;
+
+            for (let day = 1; day <= daysInMonth; day++) {
+                const d = new Date(y, m, day);
+                const dayName = d.toLocaleDateString('fr-FR', { weekday: 'short' }).slice(0, 2);
+                printHtml += `<th>${dayName}<br>${day}</th>`;
             }
-            html += `</tr></thead><tbody>`;
+            printHtml += `</tr></thead><tbody>`;
 
             teams.forEach(team => {
-                html += `<tr style="background:#eee; font-weight:bold;"><td style="text-align:left;">${team.name}</td>`;
-                for (let d = 1; d <= daysInMonth; d++) {
-                    const dStr = formatDate(new Date(year, month, d));
-                    const code = teamSchedules[team.id] ? (teamSchedules[team.id][dStr] || 'R') : 'R';
-                    const tDef = TASKS[code] || TASKS['R'];
-                    html += `<td style="background-color:${tDef.color}; color:${tDef.text}">${code}</td>`;
+                printHtml += `
+                    <tr style="background-color:#eee; font-weight:bold;">
+                        <td style="text-align:left;">${team.name}</td>
+                        <td>Roulement</td>
+                `;
+
+                for (let day = 1; day <= daysInMonth; day++) {
+                    const dStr = formatDate(new Date(y, m, day));
+                    const taskCode = teamSchedules[team.id] ? (teamSchedules[team.id][dStr] || 'R') : 'R';
+                    const taskDef = TASKS[taskCode] || TASKS['R'];
+                    printHtml += `<td style="background-color:${taskDef.color}; color:${taskDef.text};">${taskCode}</td>`;
                 }
-                html += `</tr>`;
+                printHtml += `</tr>`;
 
                 team.agents.forEach(agent => {
-                    html += `<tr><td style="text-align:left; padding-left:10px;">${agent.name}</td>`;
-                    for (let d = 1; d <= daysInMonth; d++) {
-                        const dStr = formatDate(new Date(year, month, d));
-                        const code = getEffectiveAgentTask(agent, team.id, dStr);
-                        const tDef = TASKS[code] || TASKS['R'];
-                        html += `<td style="background-color:${tDef.color}; color:${tDef.text}">${code}</td>`;
+                    let skillsStr = (agent.skills || []).join(', ');
+                    printHtml += `
+                        <tr>
+                            <td style="text-align:left; padding-left:10px;">${agent.name}</td>
+                            <td style="font-size:6pt;">${skillsStr}</td>
+                    `;
+
+                    for (let day = 1; day <= daysInMonth; day++) {
+                        const dStr = formatDate(new Date(y, m, day));
+                        const taskCode = getEffectiveAgentTask(agent, team.id, dStr);
+                        const taskDef = TASKS[taskCode] || TASKS['R'];
+                        printHtml += `<td style="background-color:${taskDef.color}; color:${taskDef.text};">${taskCode}</td>`;
                     }
-                    html += `</tr>`;
+                    printHtml += `</tr>`;
                 });
             });
 
-            html += `</tbody></table>`;
+            printHtml += `</tbody></table>`;
 
-            document.getElementById('printSection').innerHTML = html;
+            document.getElementById('printSection').innerHTML = printHtml;
             closePrintModal();
-            window.print();
+
+            setTimeout(() => {
+                window.print();
+            }, 300);
         }
-
-// Fonction pour ajouter un nouvel agent à une équipe
-function addNewAgentToTeam(teamId) {
-    if (isReadOnly) return;
-
-    const team = teams.find(t => t.id === teamId);
-    if (!team) return;
-
-    const newAgentNumber = team.agents.length + 1;
-    const teamNum = teamId.replace('team_', '');
-    const newAgentId = `e${teamNum}_a${Date.now()}`; // Identifiant unique
-    const newAgentName = prompt("Nom du nouvel agent :", `Agent ${teamNum}.${newAgentNumber}`);
-
-    if (!newAgentName || !newAgentName.trim()) return;
-
-    // Création de la structure de l'agent
-    const newAgent = {
-        id: newAgentId,
-        name: newAgentName.trim(),
-        skills: ['C1'] // Compétence attribuée par défaut
-    };
-
-    team.agents.push(newAgent);
-    renderAll(true); // Redessine et sauvegarde automatiquement dans Firebase
-}
-
-// Fonction pour supprimer un agent d'une équipe
-function deleteAgentFromTeam(teamId, agentId) {
-    if (isReadOnly) return;
-
-    const team = teams.find(t => t.id === teamId);
-    if (!team) return;
-
-    const agent = team.agents.find(a => a.id === agentId);
-    if (!agent) return;
-
-    if (confirm(`Êtes-vous sûr de vouloir supprimer l'agent "${agent.name}" de l'équipe "${team.name}" ?`)) {
-        // 1. Retrait de l'agent du tableau de l'équipe
-        team.agents = team.agents.filter(a => a.id !== agentId);
-
-        // 2. Nettoyage des plannings individuels rattachés à cet agent
-        if (agentSchedules[agentId]) {
-            delete agentSchedules[agentId];
-        }
-
-        renderAll(true); // Redessine et sauvegarde dans Firebase
-    }
-}
-
 
         window.onload = init;
     </script>
