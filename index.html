@@ -921,6 +921,10 @@ let replacementArchives = [];  // Stocke l'historique des fiches soldées
 let activeRplContext = null;   // Contexte courant de la fiche ouverte
 let clickTimer = null;         // Pour distinguer le clic simple du double-clic
 
+let touchTimer = null;         // Timer pour le maintien de 2 secondes (mobile)
+let touchPreventClick = false;  // Pour éviter d'ouvrir la modale simple après un appui long
+
+
 // Mettre à jour getAppState() :
 function getAppState() {
     return { teamSchedules, agentSchedules, taskDescriptions, teams, acknowledgedAlerts, skillDefinitions, exclusiveSkillMonitoredGroups, TASKS, settings, replacementSheets, replacementArchives };
@@ -1618,7 +1622,9 @@ function loadAppState(data) {
 
             if (!isReadOnly) {
                 
-cellDiv.onclick = (e) => handleTaskCellClick(e, true, team.id, team.name, dateStr, currentVal, desc);
+// Clics et événements tactiles sur cellule d'équipe
+bindCellEvents(cellDiv, true, team.id, team.name, dateStr, currentVal, desc);
+
             }
             attachCellHoverEvents(cellDiv, desc);
 
@@ -1674,7 +1680,9 @@ cellDiv.onclick = (e) => handleTaskCellClick(e, true, team.id, team.name, dateSt
                 cellDiv.innerText = taskCode;
 
                 if (!isReadOnly) {
-                    cellDiv.onclick = (e) => handleTaskCellClick(e, false, agent.id, agent.name, dateStr, taskCode, desc);
+                    // Clics et événements tactiles sur cellule agent
+bindCellEvents(cellDiv, false, agent.id, agent.name, dateStr, taskCode, desc);
+
                 }
                 attachCellHoverEvents(cellDiv, desc);
 
@@ -1686,6 +1694,66 @@ cellDiv.onclick = (e) => handleTaskCellClick(e, true, team.id, team.name, dateSt
         });
     });
 }
+
+function bindCellEvents(cellDiv, isTeam, targetId, targetName, dateStr, currentTaskCode, currentDesc) {
+    // --- GESTION DU MAINTIEN DE 3 SECONDES (MOBILE / TOUCH) ---
+    cellDiv.ontouchstart = (e) => {
+        touchPreventClick = false;
+        
+        // Déclenche le chrono de 3 secondes si la tâche est RPL
+        if (currentTaskCode === 'RPL') {
+            touchTimer = setTimeout(() => {
+                touchPreventClick = true; // Empêche le clic classique au relâchement
+                if (navigator.vibrate) navigator.vibrate(50); // Retour haptique (vibration) si disponible
+                openReplacementModal(isTeam, targetId, targetName, dateStr);
+            }, 3000); // 3000 ms = 3 secondes
+        }
+    };
+
+    cellDiv.ontouchend = () => {
+        if (touchTimer) {
+            clearTimeout(touchTimer);
+            touchTimer = null;
+        }
+    };
+
+    cellDiv.ontouchmove = () => {
+        // Si l'utilisateur fait défiler la page (scroll), on annule le maintien
+        if (touchTimer) {
+            clearTimeout(touchTimer);
+            touchTimer = null;
+        }
+    };
+
+    // --- GESTION DU DOUBLE-CLIC (PC / SOURIS) ---
+    cellDiv.onclick = (e) => {
+        // Si la fiche a été ouverte via le maintien de 3s sur mobile, on stoppe l'événement clic
+        if (touchPreventClick) {
+            touchPreventClick = false;
+            return;
+        }
+
+        if (clickTimer) {
+            clearTimeout(clickTimer);
+            clickTimer = null;
+            // DOUBLE CLIC :
+            if (currentTaskCode === 'RPL') {
+                openReplacementModal(isTeam, targetId, targetName, dateStr);
+            } else if (!isReadOnly) {
+                openTaskModal(isTeam, targetId, targetName, dateStr, currentTaskCode, currentDesc);
+            }
+        } else {
+            clickTimer = setTimeout(() => {
+                clickTimer = null;
+                // SIMPLE CLIC :
+                if (!isReadOnly) {
+                    openTaskModal(isTeam, targetId, targetName, dateStr, currentTaskCode, currentDesc);
+                }
+            }, 250);
+        }
+    };
+}
+
 
 function handleTaskCellClick(event, isTeam, targetId, targetName, dateStr, currentTaskCode, currentDesc) {
     if (clickTimer) {
