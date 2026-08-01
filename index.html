@@ -2158,37 +2158,81 @@ function toggleRplShowAllAgents() {
         // mémorise le contexte (équipe/agent, date) ; initialise les données de remplacement ; charge la liste des agents disponibles ; prépare l'interface ; affiche la fenêtre modale.
         
 function openReplacementModal(isTeam, targetId, targetName, dateStr) {
-    const shiftToFill = getShiftToFillForRpl(isTeam, targetId, dateStr);
-    const shiftLabel = shiftToFill
-        ? `\( {shiftToFill} ( \){(TASKS[shiftToFill] || {}).label || ''})`
-        : 'Quart non déterminé (roulement équipe absent ou en repos)';
+    // 1. Déterminer le quart d'absence = roulement de l'équipe ce jour-là
+    let shiftToFill = null;
+    let teamIdForShift = isTeam ? targetId : null;
 
-    activeRplContext = { isTeam, targetId, targetName, dateStr, shiftToFill };
+    if (!isTeam) {
+        // Trouver l'équipe de l'agent
+        teams.forEach(t => {
+            if (t.agents.some(a => a.id === targetId)) teamIdForShift = t.id;
+        });
+    }
+
+    if (teamIdForShift && teamSchedules[teamIdForShift] && teamSchedules[teamIdForShift][dateStr] !== undefined) {
+        const teamCode = teamSchedules[teamIdForShift][dateStr];
+        const def = TASKS[teamCode] || TASKS['R'];
+        if (def && !def.isRest && def.shift && def.shift !== 'none') {
+            shiftToFill = teamCode; // ex. 'M', 'A', 'N', 'J'
+        }
+    }
+
+    // 2. Construire le libellé du quart
+    let shiftLabel = 'Quart non déterminé';
+    if (shiftToFill && TASKS[shiftToFill]) {
+        shiftLabel = shiftToFill + ' (' + TASKS[shiftToFill].label + ')';
+    }
+
+    // 3. Stocker le contexte
+    activeRplContext = {
+        isTeam: isTeam,
+        targetId: targetId,
+        targetName: targetName,
+        dateStr: dateStr,
+        shiftToFill: shiftToFill
+    };
     rplShowAllAgents = false;
 
-    const sheetKey = `\( {targetId}_ \){dateStr}`;
+    // 4. Initialiser la fiche si besoin
+    const sheetKey = targetId + '_' + dateStr;
     if (!replacementSheets[sheetKey]) {
         replacementSheets[sheetKey] = { volunteers: [], selectedVolunteers: [] };
     }
 
-    document.getElementById('rplTargetInfo').innerHTML = `
-        Fiche RPL pour : <strong>\( {targetName}</strong> le <strong> \){dateStr}</strong><br>
-        <span style="color:#c0392b;">Quart d'absence à combler : <strong>${shiftLabel}</strong></span>
-    `;
+    // 5. Afficher le titre (version simple, sans template littéral fragile)
+    const infoEl = document.getElementById('rplTargetInfo');
+    if (infoEl) {
+        infoEl.innerHTML =
+            'Fiche RPL pour : <strong>' + targetName + '</strong> le <strong>' + dateStr + '</strong><br>' +
+            '<span style="color:#c0392b;">Quart d\'absence à combler : <strong>' + shiftLabel + '</strong></span>';
+    }
 
-    // Bouton + hint
+    // 6. Réinitialiser le bouton "Voir tous / éligibles"
     const btn = document.getElementById('rplShowAllBtn');
     const hint = document.getElementById('rplFilterHint');
     if (btn) btn.textContent = 'Voir tous les agents';
-    if (hint) hint.textContent = 'Liste filtrée : agents en Repos (R) ou en Journée (J) respectant les 11h de repos.';
+    if (hint) hint.textContent = 'Liste filtrée : agents en Repos (R) ou en Journée (J) respectant les temps de repos.';
 
-    populateRplAgentSelect(false);
+    // 7. Remplir la liste déroulante
+    if (typeof populateRplAgentSelect === 'function') {
+        populateRplAgentSelect(false);
+    }
 
-    document.getElementById('rplAgentStats').innerText = '';
-    document.getElementById('rplComment').value = '';
-    document.getElementById('rplReSection').style.display = !isReadOnly ? 'block' : 'none';
+    // 8. Nettoyage UI
+    const statsEl = document.getElementById('rplAgentStats');
+    if (statsEl) statsEl.innerText = '';
+    const commentEl = document.getElementById('rplComment');
+    if (commentEl) commentEl.value = '';
 
-    renderVolunteersList();
+    const reSection = document.getElementById('rplReSection');
+    if (reSection) reSection.style.display = !isReadOnly ? 'block' : 'none';
+
+    // 9. Afficher les volontaires déjà inscrits
+    if (typeof renderVolunteersList === 'function') {
+        renderVolunteersList();
+    }
+
+    // 10. Ouvrir la modale
     document.getElementById('replacementModal').style.display = 'flex';
 }
 
