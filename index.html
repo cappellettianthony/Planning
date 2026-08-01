@@ -1861,28 +1861,26 @@ function getShiftToFillForRpl(isTeam, targetId, dateStr) {
     return null;
 }
 
-/**
- * Retourne le code tâche effectif d'un agent un jour donné + son teamId.
- */
+/** Retourne les infos d’un agent un jour donné */
 function getAgentInfoOnDate(agentId, dateStr) {
     let found = null;
-    teams.forEach(t => {
-        const a = t.agents.find(ag => ag.id === agentId);
+    teams.forEach(function(t) {
+        const a = t.agents.find(function(ag) { return ag.id === agentId; });
         if (a) found = { agent: a, teamId: t.id, teamName: t.name };
     });
     if (!found) return null;
 
     const code = getEffectiveAgentTask(found.agent, found.teamId, dateStr);
     const def = TASKS[code] || TASKS['R'];
-    return { ...found, taskCode: code, taskDef: def };
+    return {
+        agent: found.agent,
+        teamId: found.teamId,
+        teamName: found.teamName,
+        taskCode: code,
+        taskDef: def
+    };
 }
 
-/**
- * Vérifie si un agent peut prendre un quart de remplacement ce jour-là :
- * - doit être en R (isRest) ou en J
- * - ne doit pas être l'agent absent lui-même
- * - respect des 11h de repos avec la veille et le lendemain si on lui affecte le quart cible
- */
 /**
  * Vérifie si un agent peut prendre un quart de remplacement ce jour-là.
  * Contrôles (identiques à checkRestAlerts) :
@@ -2104,54 +2102,91 @@ function canAgentTakeReplacement(agentId, dateStr, targetShiftCode) {
 }
 
 
-/**
- * Remplit la liste déroulante des agents (filtrée ou complète).
- */
-function populateRplAgentSelect(showAll = false) {
+/** Remplit la liste déroulante des volontaires */
+function populateRplAgentSelect(showAll) {
     const select = document.getElementById('rplAgentSelect');
-    select.innerHTML = '<option value="">-- Sélectionner un agent --</option>';
+    if (!select) return;
+
+    // Vider la liste
+    select.innerHTML = '';
+    const emptyOpt = document.createElement('option');
+    emptyOpt.value = '';
+    emptyOpt.textContent = '-- Sélectionner un agent --';
+    select.appendChild(emptyOpt);
 
     if (!activeRplContext) return;
 
-    const { dateStr, shiftToFill } = activeRplContext;
-    const allAgents = [];
+    const dateStr = activeRplContext.dateStr;
+    const shiftToFill = activeRplContext.shiftToFill;
 
-    teams.forEach(t => {
-        t.agents.forEach(a => {
-            allAgents.push({ id: a.id, name: a.name, teamId: t.id, teamName: t.name, obj: a });
+    // Récupérer tous les agents
+    const allAgents = [];
+    teams.forEach(function(t) {
+        t.agents.forEach(function(a) {
+            allAgents.push({
+                id: a.id,
+                name: a.name,
+                teamId: t.id,
+                teamName: t.name
+            });
         });
     });
-    allAgents.sort((a, b) => a.name.localeCompare(b.name));
 
-    allAgents.forEach(a => {
-        const eligible = shiftToFill ? canAgentTakeReplacement(a.id, dateStr, shiftToFill) : true;
+    // Trier par nom
+    allAgents.sort(function(a, b) {
+        return a.name.localeCompare(b.name);
+    });
+
+    allAgents.forEach(function(a) {
+        // Vérifier l’éligibilité (si la fonction existe)
+        let eligible = true;
+        if (shiftToFill && typeof canAgentTakeReplacement === 'function') {
+            eligible = canAgentTakeReplacement(a.id, dateStr, shiftToFill);
+        }
+
+        // Mode filtré : on n’affiche que les éligibles
         if (!showAll && !eligible) return;
 
+        // Statut du jour
+        let statusLabel = '?';
         const info = getAgentInfoOnDate(a.id, dateStr);
-        const statusLabel = info ? info.taskCode : '?';
+        if (info) statusLabel = info.taskCode;
+
         const opt = document.createElement('option');
         opt.value = a.id;
-        opt.textContent = `\( {a.name} ( \){a.teamName}) [\( {statusLabel}] \){eligible ? '' : ' ⚠ non éligible'}`;
-        if (!eligible && showAll) opt.style.color = '#c0392b';
+
+        // Texte de l’option (sans template littéral)
+        let text = a.name + ' (' + a.teamName + ') [' + statusLabel + ']';
+        if (!eligible && showAll) {
+            text += ' ⚠ non éligible';
+            opt.style.color = '#c0392b';
+        }
+        opt.textContent = text;
+
         select.appendChild(opt);
     });
 }
 
+/** Bascule entre liste filtrée et liste complète */
 function toggleRplShowAllAgents() {
     rplShowAllAgents = !rplShowAllAgents;
+
     const btn = document.getElementById('rplShowAllBtn');
     const hint = document.getElementById('rplFilterHint');
-    if (rplShowAllAgents) {
-        btn.textContent = 'Voir agents éligibles';
-        hint.textContent = 'Liste complète affichée (les agents non éligibles sont marqués en rouge).';
-    } else {
-        btn.textContent = 'Voir tous les agents';
-        hint.textContent = 'Liste filtrée : agents en Repos (R) ou en Journée (J) respectant les 11h de repos.';
-    }
-    populateRplAgentSelect(rplShowAllAgents);
-    document.getElementById('rplAgentStats').innerText = '';
-}
 
+    if (rplShowAllAgents) {
+        if (btn) btn.textContent = 'Voir agents éligibles';
+        if (hint) hint.textContent = 'Liste complète affichée (les agents non éligibles sont marqués).';
+    } else {
+        if (btn) btn.textContent = 'Voir tous les agents';
+        if (hint) hint.textContent = 'Liste filtrée : agents en Repos (R) ou en Journée (J) respectant les temps de repos.';
+    }
+
+    populateRplAgentSelect(rplShowAllAgents);
+
+    const statsEl = document.getElementById('rplAgentStats');
+    if (statsEl) statsEl.innerText = '';
+}
         
         // sert à ouvrir et préparer la fiche de remplacement (RPL) associée à une cellule du planning.
         // En pratique, lorsqu'un utilisateur double-clique ou effectue un appui long sur une tâche de type remplacement, cette fonction :
