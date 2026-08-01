@@ -1935,58 +1935,46 @@ function canAgentTakeReplacement(agentId, dateStr, targetShiftCode) {
     }
 
     // ------------------------------------------------------------------
-    // 1. Statut éligible
-    // - Repos ou J le jour du remplacement
-    // - OU J la veille
-    // - OU J le lendemain
+    // 1. Statut du jour : doit être en Repos OU en J
     // ------------------------------------------------------------------
     const currentDef = info.taskDef;
-
-    const prevDateObj = new Date(parseDate(dateStr));
-    prevDateObj.setDate(prevDateObj.getDate() - 1);
-    const nextDateObj = new Date(parseDate(dateStr));
-    nextDateObj.setDate(nextDateObj.getDate() + 1);
-
-    const prevInfo = getAgentInfoOnDate(agentId, formatDate(prevDateObj));
-    const nextInfo = getAgentInfoOnDate(agentId, formatDate(nextDateObj));
-
-    const isRestOrJToday = currentDef.isRest || currentDef.shift === 'J';
-    const isJBefore = prevInfo && prevInfo.taskDef.shift === 'J';
-    const isJAfter = nextInfo && nextInfo.taskDef.shift === 'J';
-
-    const isEligibleStatus = isRestOrJToday || isJBefore || isJAfter;
+    const isEligibleStatus = currentDef.isRest || currentDef.shift === 'J';
     if (!isEligibleStatus) return false;
 
     const targetDef = TASKS[targetShiftCode];
     if (targetDef.isRest) return true;
 
     // ------------------------------------------------------------------
-    // 2. EXCEPTION J PRIORITAIRE
-    // Si l'agent est concerné par un J → on autorise directement
-    // (le RE mettra le J en Repos)
+    // Helper : une tâche est considérée comme REPOS si isRest OU si c'est un J
     // ------------------------------------------------------------------
-    const isJException = (currentDef.shift === 'J') || isJBefore || isJAfter;
-    if (isJException) {
-        return true; // ← pas de contrôle 11h / 35h / 11 jours
+    function isRestLike(def) {
+        return def.isRest || def.shift === 'J';
     }
 
-    // ------------------------------------------------------------------
-    // 3. Agent uniquement en Repos → contrôles complets
-    // ------------------------------------------------------------------
     function getSimulatedTask(agent, teamId, dStr) {
         if (dStr === dateStr) return targetShiftCode;
         return getEffectiveAgentTask(agent, teamId, dStr);
     }
+
     function getSimulatedDef(agent, teamId, dStr) {
         const code = getSimulatedTask(agent, teamId, dStr);
         return TASKS[code] || TASKS['R'];
     }
 
-    // --- 11 h de repos ---
+    // ------------------------------------------------------------------
+    // 2. Contrôle des 11 h de repos (veille + lendemain)
+    //    Les J sont traités comme des repos
+    // ------------------------------------------------------------------
+    const prevDateObj = new Date(parseDate(dateStr));
+    prevDateObj.setDate(prevDateObj.getDate() - 1);
+    const nextDateObj = new Date(parseDate(dateStr));
+    nextDateObj.setDate(nextDateObj.getDate() + 1);
+
     const prevDef = getSimulatedDef(info.agent, info.teamId, formatDate(prevDateObj));
     const nextDef = getSimulatedDef(info.agent, info.teamId, formatDate(nextDateObj));
 
-    if (!prevDef.isRest) {
+    // 11 h avec la veille (si la veille n'est pas un repos/J)
+    if (!isRestLike(prevDef)) {
         let finishPrev = timeToDecimal(prevDef.end);
         let startTarget = timeToDecimal(targetDef.start);
         let restH = 0;
@@ -1998,7 +1986,8 @@ function canAgentTakeReplacement(agentId, dateStr, targetShiftCode) {
         if (restH < 11) return false;
     }
 
-    if (!nextDef.isRest) {
+    // 11 h avec le lendemain (si le lendemain n'est pas un repos/J)
+    if (!isRestLike(nextDef)) {
         let finishTarget = timeToDecimal(targetDef.end);
         let startNext = timeToDecimal(nextDef.start);
         let restH = 0;
@@ -2010,7 +1999,10 @@ function canAgentTakeReplacement(agentId, dateStr, targetShiftCode) {
         if (restH < 11) return false;
     }
 
-    // --- 35 h de repos hebdomadaire ---
+    // ------------------------------------------------------------------
+    // 3. Contrôle des 35 h de repos hebdomadaire
+    //    Les J sont traités comme des repos
+    // ------------------------------------------------------------------
     const targetDateObj = parseDate(dateStr);
     let sundayOfWeek = new Date(targetDateObj);
     while (sundayOfWeek.getDay() !== 0) {
@@ -2022,7 +2014,10 @@ function canAgentTakeReplacement(agentId, dateStr, targetShiftCode) {
         let d = new Date(sundayOfWeek);
         d.setDate(d.getDate() + i);
         let dStr = formatDate(d);
-        weekDays.push({ dateStr: dStr, def: getSimulatedDef(info.agent, info.teamId, dStr) });
+        weekDays.push({
+            dateStr: dStr,
+            def: getSimulatedDef(info.agent, info.teamId, dStr)
+        });
     }
 
     let monTask = weekDays[1].def;
@@ -2036,9 +2031,11 @@ function canAgentTakeReplacement(agentId, dateStr, targetShiftCode) {
         let prevSatDate = new Date(sundayOfWeek);
         prevSatDate.setDate(prevSatDate.getDate() - 1);
         let prevSatDef = getSimulatedDef(info.agent, info.teamId, formatDate(prevSatDate));
-        let sunIsFullRest = weekDays[0].def.isRest;
-        let satFinishTime = prevSatDef.isRest ? 0 : timeToDecimal(prevSatDef.end);
-        let satHas11hRest = prevSatDef.isRest || (satFinishTime <= 13);
+
+        let sunIsFullRest = isRestLike(weekDays[0].def);
+        let satFinishTime = isRestLike(prevSatDef) ? 0 : timeToDecimal(prevSatDef.end);
+        let satHas11hRest = isRestLike(prevSatDef) || (satFinishTime <= 13);
+
         if (prevSatDef.shift !== 'N' && sunIsFullRest && satHas11hRest) {
             valid35h = true;
         }
@@ -2046,7 +2043,8 @@ function canAgentTakeReplacement(agentId, dateStr, targetShiftCode) {
 
     if (!valid35h) {
         for (let i = 0; i < 7; i++) {
-            if (weekDays[i].def.isRest) {
+            if (isRestLike(weekDays[i].def)) {
+                // Quart précédent
                 let prevShift = 'none';
                 if (i > 0) {
                     prevShift = weekDays[i - 1].def.shift;
@@ -2056,33 +2054,37 @@ function canAgentTakeReplacement(agentId, dateStr, targetShiftCode) {
                     let pSatDef = getSimulatedDef(info.agent, info.teamId, formatDate(pSatDate));
                     prevShift = pSatDef.shift;
                 }
+
+                // Nuit la veille → ne compte pas comme 24 h plein
                 if (prevShift === 'N') continue;
 
                 let prevHas11h = false;
                 let nextHas11h = false;
 
+                // 11 h avant
                 if (i > 0) {
                     let prevT = weekDays[i - 1].def;
-                    let finish = prevT.isRest ? 0 : timeToDecimal(prevT.end);
-                    if (prevT.isRest || finish <= 13) prevHas11h = true;
+                    let finish = isRestLike(prevT) ? 0 : timeToDecimal(prevT.end);
+                    if (isRestLike(prevT) || finish <= 13) prevHas11h = true;
                 } else {
                     let pSatDate = new Date(sundayOfWeek);
                     pSatDate.setDate(pSatDate.getDate() - 1);
                     let pSatDef = getSimulatedDef(info.agent, info.teamId, formatDate(pSatDate));
-                    let finish = pSatDef.isRest ? 0 : timeToDecimal(pSatDef.end);
-                    if (pSatDef.isRest || finish <= 13) prevHas11h = true;
+                    let finish = isRestLike(pSatDef) ? 0 : timeToDecimal(pSatDef.end);
+                    if (isRestLike(pSatDef) || finish <= 13) prevHas11h = true;
                 }
 
+                // 11 h après
                 if (i < 6) {
                     let nextT = weekDays[i + 1].def;
-                    let start = nextT.isRest ? 24 : timeToDecimal(nextT.start);
-                    if (nextT.isRest || start >= 11) nextHas11h = true;
+                    let start = isRestLike(nextT) ? 24 : timeToDecimal(nextT.start);
+                    if (isRestLike(nextT) || start >= 11) nextHas11h = true;
                 } else {
                     let nSunDate = new Date(sundayOfWeek);
                     nSunDate.setDate(nSunDate.getDate() + 7);
                     let nSunDef = getSimulatedDef(info.agent, info.teamId, formatDate(nSunDate));
-                    let start = nSunDef.isRest ? 24 : timeToDecimal(nSunDef.start);
-                    if (nSunDef.isRest || start >= 11) nextHas11h = true;
+                    let start = isRestLike(nSunDef) ? 24 : timeToDecimal(nSunDef.start);
+                    if (isRestLike(nSunDef) || start >= 11) nextHas11h = true;
                 }
 
                 if (prevHas11h || nextHas11h) {
@@ -2095,33 +2097,40 @@ function canAgentTakeReplacement(agentId, dateStr, targetShiftCode) {
 
     if (!valid35h) return false;
 
-    // --- 11 jours consécutifs max ---
+    // ------------------------------------------------------------------
+    // 4. Contrôle des 11 jours de travail consécutifs max
+    //    Les J sont traités comme des repos (ils coupent la série)
+    // ------------------------------------------------------------------
     let consecutive = 0;
     let checkDate = new Date(targetDateObj);
 
+    // Remonter avant la date
     while (true) {
         checkDate.setDate(checkDate.getDate() - 1);
         const def = getSimulatedDef(info.agent, info.teamId, formatDate(checkDate));
-        if (def.isRest) break;
+        if (isRestLike(def)) break;
         consecutive++;
         if (consecutive > 20) break;
     }
-    consecutive++; // le jour du remplacement
 
+    // Le jour du remplacement compte comme travaillé
+    consecutive++;
+
+    // Continuer après la date
     checkDate = new Date(targetDateObj);
     while (true) {
         checkDate.setDate(checkDate.getDate() + 1);
         const def = getSimulatedDef(info.agent, info.teamId, formatDate(checkDate));
-        if (def.isRest) break;
+        if (isRestLike(def)) break;
         consecutive++;
         if (consecutive > 20) break;
     }
 
     if (consecutive > 11) return false;
 
+    // Tout est OK
     return true;
 }
-
 
 /** Remplit la liste déroulante des volontaires */
 function populateRplAgentSelect(showAll) {
