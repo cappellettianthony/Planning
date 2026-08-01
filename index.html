@@ -2276,6 +2276,8 @@ function openReplacementModal(isTeam, targetId, targetName, dateStr) {
 function updateRplAgentStats() {
     const agentId = document.getElementById('rplAgentSelect').value;
     const statsEl = document.getElementById('rplAgentStats');
+    if (!statsEl) return;
+
     if (!agentId) {
         statsEl.innerText = '';
         return;
@@ -2288,15 +2290,18 @@ function updateRplAgentStats() {
     }
 
     const count = calculateExtraShiftsCount(info.agent, info.teamId);
-    const eligible = activeRplContext && activeRplContext.shiftToFill
-        ? canAgentTakeReplacement(agentId, activeRplContext.dateStr, activeRplContext.shiftToFill)
-        : true;
 
-    statsEl.innerHTML = `
-        Statut du jour : <strong>${info.taskCode}</strong> —
-        Remplacements déjà réalisés cette année : <strong>${count}</strong> quart(s)
-        ${eligible ? '' : ' <span style="color:#c0392b;">⚠ Non éligible (repos 11h ou statut incompatible)</span>'}
-    `;
+    let eligibleText = '';
+    if (activeRplContext && activeRplContext.shiftToFill && typeof canAgentTakeReplacement === 'function') {
+        const ok = canAgentTakeReplacement(agentId, activeRplContext.dateStr, activeRplContext.shiftToFill);
+        if (!ok) {
+            eligibleText = ' ⚠ Non éligible (temps de repos)';
+        }
+    }
+
+    statsEl.innerText = 'Statut du jour : ' + info.taskCode +
+        ' — Remplacements déjà réalisés cette année : ' + count + ' quart(s)' +
+        eligibleText;
 }
 
 
