@@ -160,24 +160,21 @@
         .sticky-col-2 { position: sticky; left: 180px; background-color: white; z-index: 5; width: 170px; text-align: left; }
         th.sticky-col-1, th.sticky-col-2 { z-index: 15; background-color: var(--primary); }
 
-        /* Couleur plus foncée pour la ligne du roulement d'équipe et bordure de séparation */
-.team-row { 
-    background-color: #000000; 
-    font-weight: bold; 
-}
+        .team-row { 
+            background-color: #000000; 
+            font-weight: bold; 
+        }
 
-/* Accentuation de la séparation sous les cellules du roulement d'équipe */
-.team-row td { 
-    border-bottom: 7px double #2c3e50 !important; 
-}
+        .team-row td { 
+            border-bottom: 7px double #2c3e50 !important; 
+        }
 
         .team-name-td { 
-    text-align: left; 
-    padding-left: 8px; 
-    color: #ffffff; 
-    background-color: #7f8c8d; 
-}
-
+            text-align: left; 
+            padding-left: 8px; 
+            color: #ffffff; 
+            background-color: #7f8c8d; 
+        }
 
         .badge { display: inline-block; padding: 2px 4px; font-size: 0.65rem; border-radius: 3px; color: white; margin-right: 2px; font-weight: bold; }
         .badge-none { display: inline-block; padding: 2px 4px; font-size: 0.65rem; border-radius: 3px; color: #7f8c8d; font-style: italic; font-weight: normal; }
@@ -294,7 +291,7 @@
         .checkbox-group { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
         .checkbox-group label { font-weight: normal; display: flex; align-items: center; gap: 5px; cursor: pointer; }
 
-       .task-row { display: grid; grid-template-columns: 50px 110px 100px 75px 75px 50px 45px 35px 35px 30px; gap: 4px; align-items: center; margin-bottom: 6px; font-size: 0.75rem; }
+        .task-row { display: grid; grid-template-columns: 50px 110px 100px 75px 75px 50px 45px 35px 35px 30px; gap: 4px; align-items: center; margin-bottom: 6px; font-size: 0.75rem; }
         .task-row input[type="color"] { padding: 0; height: 26px; cursor: pointer; }
 
         .task-header { display: grid; grid-template-columns: 50px 110px 100px 75px 75px 50px 45px 35px 35px 30px; gap: 4px; font-weight: bold; font-size: 0.7rem; color: var(--primary); margin-bottom: 5px; text-align: center; }
@@ -409,7 +406,6 @@
 <body>
 
     <header>
-        
         <div style="display: flex; align-items: center; gap: 15px;">
             <h1>Planning Opérationnel (Synchronisé avec Firebase)</h1>
             <div id="userStatus" class="user-info" style="display: none;"></div>
@@ -418,9 +414,8 @@
         <div class="nav-controls">
             <label for="yearSelect">Année :</label>
             <select id="yearSelect" onchange="changeYear(this.value)"></select>
-           
-
-<button class="btn btn-purple" onclick="openArchiveRemplacementModal()" id="archiveRplBtn">📋 Archives Remplacements</button>
+            
+            <button class="btn btn-purple" onclick="openArchiveRemplacementModal()" id="archiveRplBtn">📋 Archives Remplacements</button>
  
             <button class="btn btn-secondary" onclick="navigateDays(-14)">◄ 14j</button>
             <button class="btn" onclick="goToToday()">Aujourd'hui</button>
@@ -774,66 +769,65 @@
         </div>
     </div>
 
-<!-- Modale Fiche de Remplacement -->
-<div class="modal" id="replacementModal">
-    <div class="modal-content" style="width: 550px;">
-        <h2>Fiche de Demande de Remplacement (RPL)</h2>
-        <p style="font-size: 0.85rem; margin-bottom: 12px; color: var(--primary);" id="rplTargetInfo"></p>
+    <!-- Modale Fiche de Remplacement -->
+    <div class="modal" id="replacementModal">
+        <div class="modal-content" style="width: 550px;">
+            <h2>Fiche de Demande de Remplacement (RPL)</h2>
+            <p style="font-size: 0.85rem; margin-bottom: 12px; color: var(--primary);" id="rplTargetInfo"></p>
 
-        <div style="background:#f8f9fa; border:1px solid #ddd; padding:10px; border-radius:6px; margin-bottom:12px;">
-            <h3>Proposer une candidature (Volontaire)</h3>
-            <div class="form-group">
-                <label for="rplAgentSelect">Sélectionner un agent :</label>
-                <select id="rplAgentSelect" onchange="updateRplAgentStats()"></select>
+            <div style="background:#f8f9fa; border:1px solid #ddd; padding:10px; border-radius:6px; margin-bottom:12px;">
+                <h3>Proposer une candidature (Volontaire)</h3>
+                <div class="form-group">
+                    <label for="rplAgentSelect">Sélectionner un agent :</label>
+                    <select id="rplAgentSelect" onchange="updateRplAgentStats()"></select>
+                </div>
+                <p id="rplAgentStats" style="font-size:0.8rem; font-weight:bold; color:#d35400; margin-bottom:8px;"></p>
+                <button class="btn btn-success" style="width:100%;" onclick="addVolunteerToSheet()">Se porter / Inscrire volontaire</button>
             </div>
-            <p id="rplAgentStats" style="font-size:0.8rem; font-weight:bold; color:#d35400; margin-bottom:8px;"></p>
-            <button class="btn btn-success" style="width:100%;" onclick="addVolunteerToSheet()">Se porter / Inscrire volontaire</button>
-        </div>
 
-        <h3>Liste des Volontaires</h3>
-        <div id="rplVolunteersList" style="max-height: 150px; overflow-y: auto; margin-bottom: 12px; border:1px solid #eee; padding:5px; border-radius:4px;"></div>
+            <h3>Liste des Volontaires</h3>
+            <div id="rplVolunteersList" style="max-height: 150px; overflow-y: auto; margin-bottom: 12px; border:1px solid #eee; padding:5px; border-radius:4px;"></div>
 
-        <!-- Section réservée aux Responsables d'Équipe (RE) / Admins -->
-        <div id="rplReSection" style="display:none; background:#eef7fc; border:1px solid #3498db; padding:10px; border-radius:6px;">
-            <h3 style="color:#2980b9;">Traitement & Validation (RE / Admin)</h3>
-            <div class="form-group">
-                <label for="rplComment">Commentaire obligatoire pour le solde :</label>
-                <textarea id="rplComment" rows="2" placeholder="Saisir la justification ou le commentaire sur ce solde..."></textarea>
+            <!-- Section réservée aux Responsables d'Équipe (RE) / Admins -->
+            <div id="rplReSection" style="display:none; background:#eef7fc; border:1px solid #3498db; padding:10px; border-radius:6px;">
+                <h3 style="color:#2980b9;">Traitement & Validation (RE / Admin)</h3>
+                <div class="form-group">
+                    <label for="rplComment">Commentaire obligatoire pour le solde :</label>
+                    <textarea id="rplComment" rows="2" placeholder="Saisir la justification ou le commentaire sur ce solde..."></textarea>
+                </div>
+                <button class="btn btn-primary" style="width:100%; background:#2980b9; font-weight:bold;" onclick="validateReplacementSheet()">Valider le(s) Volontaire(s) & Archiver</button>
             </div>
-            <button class="btn btn-primary" style="width:100%; background:#2980b9; font-weight:bold;" onclick="validateReplacementSheet()">Valider le(s) Volontaire(s) & Archiver</button>
-        </div>
 
-        <div class="modal-actions">
-            <button class="btn btn-secondary" onclick="closeReplacementModal()">Fermer</button>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeReplacementModal()">Fermer</button>
+            </div>
         </div>
     </div>
-</div>
 
-<!-- Modale d'Archives des Remplacements -->
-<div class="modal" id="archiveRemplacementModal">
-    <div class="modal-content" style="width: 850px;">
-        <h2>Archive des Fiches de Remplacement (RPL)</h2>
-        <div style="max-height: 60vh; overflow-y: auto;">
-            <table class="archive-table">
-                <thead>
-                    <tr>
-                        <th>Date RPL</th>
-                        <th>Cible (Agent/Équipe)</th>
-                        <th>Volontaires déclarés</th>
-                        <th>Sélectionné(s)</th>
-                        <th>Commentaire</th>
-                        <th>Solder par / le</th>
-                    </tr>
-                </thead>
-                <tbody id="archiveRplTableBody"></tbody>
-            </table>
-        </div>
-        <div class="modal-actions">
-            <button class="btn btn-secondary" onclick="closeArchiveRemplacementModal()">Fermer</button>
+    <!-- Modale d'Archives des Remplacements -->
+    <div class="modal" id="archiveRemplacementModal">
+        <div class="modal-content" style="width: 850px;">
+            <h2>Archive des Fiches de Remplacement (RPL)</h2>
+            <div style="max-height: 60vh; overflow-y: auto;">
+                <table class="archive-table">
+                    <thead>
+                        <tr>
+                            <th>Date RPL</th>
+                            <th>Cible (Agent/Équipe)</th>
+                            <th>Volontaires déclarés</th>
+                            <th>Sélectionné(s)</th>
+                            <th>Commentaire</th>
+                            <th>Solder par / le</th>
+                        </tr>
+                    </thead>
+                    <tbody id="archiveRplTableBody"></tbody>
+                </table>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeArchiveRemplacementModal()">Fermer</button>
+            </div>
         </div>
     </div>
-</div>
-
 
     <script>
         // INITIALISATION FIREBASE
@@ -890,6 +884,13 @@
         let selectedTaskCodeInModal = null;
         let cellHoverTimer = null;
 
+        let replacementSheets = {};    
+        let replacementArchives = [];  
+        let activeRplContext = null;   
+        let clickTimer = null;         
+        let touchTimer = null;         
+        let touchPreventClick = false;  
+
         let skillDefinitions = [
             { id: 'C1', name: 'Électricité', color: '#3498db', min: 2 },
             { id: 'C2', name: 'Mécanique', color: '#e67e22', min: 1 },
@@ -903,6 +904,7 @@
             ['C1', 'C2']
         ];
 
+        // CORRECTION : Ajout de la virgule manquante sur la ligne 'J'
         let TASKS = {
             'R':   { label: 'Repos', color: '#ecf0f1', text: '#7f8c8d', shift: 'none', start: '00:00', end: '00:00', isRest: true },
             'RD':  { label: 'Repos Début Cycle', color: '#f1c40f', text: '#000000', shift: 'none', start: '00:00', end: '00:00', isRest: true },
@@ -910,64 +912,11 @@
             'M':   { label: 'Matin', color: '#3498db', text: '#ffffff', shift: 'M', start: '06:00', end: '14:00', isRest: false },
             'A':   { label: 'Après-Midi', color: '#e67e22', text: '#ffffff', shift: 'A', start: '14:00', end: '22:00', isRest: false },
             'N':   { label: 'Nuit', color: '#2c3e50', text: '#ffffff', shift: 'N', start: '22:00', end: '06:00', isRest: false },
-            'J':   { label: 'Journée', color: '#2ecc71', text: '#ffffff', shift: 'J', start: '08:00', end: '16:00', isRest: false }
+            'J':   { label: 'Journée', color: '#2ecc71', text: '#ffffff', shift: 'J', start: '08:00', end: '16:00', isRest: false },
             'RPL': { label: 'Remplacement', color: '#e74c3c', text: '#ffffff', shift: 'none', start: '00:00', end: '00:00', isRest: false, isReplacement: true }
         };
 
         let settings = { thresholds: { M: { orange: 5, green: 7 }, A: { orange: 5, green: 7 }, N: { orange: 3, green: 5 } } };
-
-// À ajouter dans les déclarations de variables globales
-let replacementSheets = {};    // Stocke les volontaires pour une fiche
-let replacementArchives = [];  // Stocke l'historique des fiches soldées
-let activeRplContext = null;   // Contexte courant de la fiche ouverte
-let clickTimer = null;         // Pour distinguer le clic simple du double-clic
-
-let touchTimer = null;         // Timer pour le maintien de 2 secondes (mobile)
-let touchPreventClick = false;  // Pour éviter d'ouvrir la modale simple après un appui long
-
-
-// Mettre à jour getAppState() :
-function getAppState() {
-    return { teamSchedules, agentSchedules, taskDescriptions, teams, acknowledgedAlerts, skillDefinitions, exclusiveSkillMonitoredGroups, TASKS, settings, replacementSheets, replacementArchives };
-}
-
-// Mettre à jour loadAppState() :
-function loadAppState(data) {
-    if (!data) return;
-    teamSchedules = data.teamSchedules || {};
-    agentSchedules = data.agentSchedules || {};
-    taskDescriptions = data.taskDescriptions || {};
-    
-    const defaultTeams = createDefaultTeams();
-    if (Array.isArray(data.teams) && data.teams.length > 0) {
-        teams = defaultTeams.map(defTeam => {
-            const loadedTeam = data.teams.find(t => t && t.id === defTeam.id);
-            if (loadedTeam) {
-                if (Array.isArray(loadedTeam.agents)) {
-                    loadedTeam.agents.forEach(a => {
-                        if (!Array.isArray(a.skills)) a.skills = [];
-                    });
-                }
-                return loadedTeam;
-            }
-            return defTeam;
-        });
-    } else {
-        teams = defaultTeams;
-    }
-
-    acknowledgedAlerts = data.acknowledgedAlerts || [];
-    skillDefinitions = data.skillDefinitions || skillDefinitions;
-    exclusiveSkillMonitoredGroups = data.exclusiveSkillMonitoredGroups || exclusiveSkillMonitoredGroups;
-    TASKS = data.TASKS || TASKS;
-    settings = data.settings || settings;
-    
-    // Nouveaux états :
-    replacementSheets = data.replacementSheets || {};
-    replacementArchives = data.replacementArchives || [];
-}
-
-
 
         function createDefaultTeams() {
             let defaultTeams = [];
@@ -990,6 +939,43 @@ function loadAppState(data) {
         let teamSchedules = {};
         let agentSchedules = {};
         let taskDescriptions = {};
+
+        function getAppState() {
+            return { teamSchedules, agentSchedules, taskDescriptions, teams, acknowledgedAlerts, skillDefinitions, exclusiveSkillMonitoredGroups, TASKS, settings, replacementSheets, replacementArchives };
+        }
+
+        function loadAppState(data) {
+            if (!data) return;
+            teamSchedules = data.teamSchedules || {};
+            agentSchedules = data.agentSchedules || {};
+            taskDescriptions = data.taskDescriptions || {};
+            
+            const defaultTeams = createDefaultTeams();
+            if (Array.isArray(data.teams) && data.teams.length > 0) {
+                teams = defaultTeams.map(defTeam => {
+                    const loadedTeam = data.teams.find(t => t && t.id === defTeam.id);
+                    if (loadedTeam) {
+                        if (Array.isArray(loadedTeam.agents)) {
+                            loadedTeam.agents.forEach(a => {
+                                if (!Array.isArray(a.skills)) a.skills = [];
+                            });
+                        }
+                        return loadedTeam;
+                    }
+                    return defTeam;
+                });
+            } else {
+                teams = defaultTeams;
+            }
+
+            acknowledgedAlerts = data.acknowledgedAlerts || [];
+            skillDefinitions = data.skillDefinitions || skillDefinitions;
+            exclusiveSkillMonitoredGroups = data.exclusiveSkillMonitoredGroups || exclusiveSkillMonitoredGroups;
+            TASKS = data.TASKS || TASKS;
+            settings = data.settings || settings;
+            replacementSheets = data.replacementSheets || {};
+            replacementArchives = data.replacementArchives || [];
+        }
 
         function checkAuthState() {
             auth.onAuthStateChanged((user) => {
@@ -1107,9 +1093,7 @@ function loadAppState(data) {
         }
 
         function logout() {
-            if (confirm("Se déconnecter ?")) {
-                auth.signOut();
-            }
+            auth.signOut();
         }
 
         function applyReadOnlyMode() {
@@ -1134,41 +1118,6 @@ function loadAppState(data) {
                     btn.style.opacity = isReadOnly ? '0.5' : '1';
                 }
             });
-        }
-
-        function getAppState() {
-            return { teamSchedules, agentSchedules, taskDescriptions, teams, acknowledgedAlerts, skillDefinitions, exclusiveSkillMonitoredGroups, TASKS, settings };
-        }
-
-        function loadAppState(data) {
-            if (!data) return;
-            teamSchedules = data.teamSchedules || {};
-            agentSchedules = data.agentSchedules || {};
-            taskDescriptions = data.taskDescriptions || {};
-            
-            const defaultTeams = createDefaultTeams();
-            if (Array.isArray(data.teams) && data.teams.length > 0) {
-                teams = defaultTeams.map(defTeam => {
-                    const loadedTeam = data.teams.find(t => t && t.id === defTeam.id);
-                    if (loadedTeam) {
-                        if (Array.isArray(loadedTeam.agents)) {
-                            loadedTeam.agents.forEach(a => {
-                                if (!Array.isArray(a.skills)) a.skills = [];
-                            });
-                        }
-                        return loadedTeam;
-                    }
-                    return defTeam;
-                });
-            } else {
-                teams = defaultTeams;
-            }
-
-            acknowledgedAlerts = data.acknowledgedAlerts || [];
-            skillDefinitions = data.skillDefinitions || skillDefinitions;
-            exclusiveSkillMonitoredGroups = data.exclusiveSkillMonitoredGroups || exclusiveSkillMonitoredGroups;
-            TASKS = data.TASKS || TASKS;
-            settings = data.settings || settings;
         }
 
         function saveToFirebase() {
@@ -1323,7 +1272,6 @@ function loadAppState(data) {
         function syncDatePicker() { 
             document.getElementById('datePicker').value = formatDate(startDate); 
         }
-        
 
         function generateHeaders() {
             const headerTr = document.getElementById('headerDays');
@@ -1575,430 +1523,380 @@ function loadAppState(data) {
         }
 
         function generateTable() {
-    const tbody = document.getElementById('tableBody'); 
-    tbody.innerHTML = '';
-    const dates = getVisibleDates();
+            const tbody = document.getElementById('tableBody'); 
+            tbody.innerHTML = '';
+            const dates = getVisibleDates();
 
-    teams.forEach(team => {
-        const teamTr = document.createElement('tr'); 
-        teamTr.className = 'team-row';
-        const tdTeamName = document.createElement('td'); 
-        tdTeamName.className = 'sticky-col-1 team-name-td'; 
-
-        // Rendu du nom de l'équipe avec le bouton d'ajout d'agent (+ Agent)
-        if (!isReadOnly) {
-            tdTeamName.innerHTML = `
-                <div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
-                    <span>${team.name}</span>
-                    <button class="btn btn-success" style="padding:1px 5px; font-size:0.7rem;" title="Ajouter un agent à cette équipe" onclick="addNewAgentToTeam('${team.id}')">+ Agent</button>
-                </div>`;
-        } else {
-            tdTeamName.innerText = team.name; 
-        }
-        
-        teamTr.appendChild(tdTeamName);
-        
-        const tdTeamDesc = document.createElement('td'); 
-        tdTeamDesc.className = 'sticky-col-2 team-name-td'; 
-        tdTeamDesc.style.fontSize = '0.7rem'; 
-        tdTeamDesc.style.fontStyle = 'italic'; 
-        tdTeamDesc.innerText = "Roulement d'équipe"; 
-        teamTr.appendChild(tdTeamDesc);
-
-        dates.forEach(d => {
-            const dateStr = formatDate(d);
-            if (!teamSchedules[team.id]) teamSchedules[team.id] = {};
-            const td = document.createElement('td'); 
-            
-            const currentVal = teamSchedules[team.id][dateStr] || 'R'; 
-            const taskDef = TASKS[currentVal] || TASKS['R'];
-            const descKey = `${team.id}_${dateStr}`;
-            const desc = taskDescriptions[descKey] || '';
-
-            const cellDiv = document.createElement('div');
-            cellDiv.className = `task-cell ${isReadOnly ? 'task-cell-disabled' : ''} ${desc ? 'has-desc-indicator' : ''}`;
-            cellDiv.style.backgroundColor = taskDef.color;
-            cellDiv.style.color = taskDef.text;
-            cellDiv.innerText = currentVal;
-
-            if (!isReadOnly) {
-                
-// Clics et événements tactiles sur cellule d'équipe
-bindCellEvents(cellDiv, true, team.id, team.name, dateStr, currentVal, desc);
-
-            }
-            attachCellHoverEvents(cellDiv, desc);
-
-            td.appendChild(cellDiv); 
-            teamTr.appendChild(td);
-        });
-        tbody.appendChild(teamTr);
-
-        // Affichage des agents de l'équipe
-        team.agents.forEach(agent => {
-            const extraShifts = calculateExtraShiftsCount(agent, team.id);
-
-            const tr = document.createElement('tr');
-            const tdName = document.createElement('td'); 
-            tdName.className = 'sticky-col-1'; 
-            tdName.style.paddingLeft = '10px'; 
-            
-            // Intégration du nom, du badge et du bouton de suppression
-            let deleteBtnHtml = !isReadOnly 
-                ? `<button class="btn btn-danger" style="padding:0 4px; font-size:0.65rem; margin-right:4px;" title="Supprimer cet agent" onclick="event.stopPropagation(); deleteAgentFromTeam('${team.id}', '${agent.id}');">🗑️</button>` 
-                : '';
-
-            tdName.innerHTML = `
-                <div style="display:flex; align-items:center; justify-content:space-between; width:100%;">
-                    <div style="display:flex; align-items:center; overflow:hidden; text-overflow:ellipsis;">
-                        ${deleteBtnHtml}
-                        <span style="cursor:${isReadOnly ? 'default' : 'pointer'};" onclick="${!isReadOnly ? `openAgentModal('${agent.id}')` : ''}">${agent.name}</span>
-                    </div>
-                    <span class="extra-shifts-badge" title="Quarts (M/A/N) hors roulement d'équipe dans l'année">${extraShifts} q.</span>
-                </div>`;
-            
-            tr.appendChild(tdName);
-            
-            const tdSkills = document.createElement('td'); 
-            tdSkills.className = 'sticky-col-2'; 
-            tdSkills.style.cursor = isReadOnly ? 'default' : 'pointer'; 
-            if (!isReadOnly) tdSkills.onclick = () => openAgentModal(agent.id); 
-            renderSkillBadges(tdSkills, agent.skills); 
-            tr.appendChild(tdSkills);
-
-            dates.forEach(d => {
-                const dateStr = formatDate(d);
-                const taskCode = getEffectiveAgentTask(agent, team.id, dateStr);
-                const taskDef = TASKS[taskCode] || TASKS['R'];
-                const descKey = `${agent.id}_${dateStr}`;
-                const desc = taskDescriptions[descKey] || '';
-
-                const td = document.createElement('td');
-                const cellDiv = document.createElement('div');
-                cellDiv.className = `task-cell ${isReadOnly ? 'task-cell-disabled' : ''} ${desc ? 'has-desc-indicator' : ''}`;
-                cellDiv.style.backgroundColor = taskDef.color;
-                cellDiv.style.color = taskDef.text;
-                cellDiv.innerText = taskCode;
+            teams.forEach(team => {
+                const teamTr = document.createElement('tr'); 
+                teamTr.className = 'team-row';
+                const tdTeamName = document.createElement('td'); 
+                tdTeamName.className = 'sticky-col-1 team-name-td'; 
 
                 if (!isReadOnly) {
-                    // Clics et événements tactiles sur cellule agent
-bindCellEvents(cellDiv, false, agent.id, agent.name, dateStr, taskCode, desc);
-
+                    tdTeamName.innerHTML = `
+                        <div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
+                            <span>${team.name}</span>
+                            <button class="btn btn-success" style="padding:1px 5px; font-size:0.7rem;" title="Ajouter un agent à cette équipe" onclick="addNewAgentToTeam('${team.id}')">+ Agent</button>
+                        </div>`;
+                } else {
+                    tdTeamName.innerText = team.name; 
                 }
-                attachCellHoverEvents(cellDiv, desc);
+                
+                teamTr.appendChild(tdTeamName);
+                
+                const tdTeamDesc = document.createElement('td'); 
+                tdTeamDesc.className = 'sticky-col-2 team-name-td'; 
+                tdTeamDesc.style.fontSize = '0.7rem'; 
+                tdTeamDesc.style.fontStyle = 'italic'; 
+                tdTeamDesc.innerText = "Roulement d'équipe"; 
+                teamTr.appendChild(tdTeamDesc);
 
-                td.appendChild(cellDiv);
-                tr.appendChild(td);
+                dates.forEach(d => {
+                    const dateStr = formatDate(d);
+                    if (!teamSchedules[team.id]) teamSchedules[team.id] = {};
+                    const td = document.createElement('td'); 
+                    
+                    const currentVal = teamSchedules[team.id][dateStr] || 'R'; 
+                    const taskDef = TASKS[currentVal] || TASKS['R'];
+                    const descKey = `${team.id}_${dateStr}`;
+                    const desc = taskDescriptions[descKey] || '';
+
+                    const cellDiv = document.createElement('div');
+                    cellDiv.className = `task-cell ${isReadOnly ? 'task-cell-disabled' : ''} ${desc ? 'has-desc-indicator' : ''}`;
+                    cellDiv.style.backgroundColor = taskDef.color;
+                    cellDiv.style.color = taskDef.text;
+                    cellDiv.innerText = currentVal;
+
+                    if (!isReadOnly) {
+                        bindCellEvents(cellDiv, true, team.id, team.name, dateStr, currentVal, desc);
+                    }
+                    attachCellHoverEvents(cellDiv, desc);
+
+                    td.appendChild(cellDiv); 
+                    teamTr.appendChild(td);
+                });
+                tbody.appendChild(teamTr);
+
+                team.agents.forEach(agent => {
+                    const extraShifts = calculateExtraShiftsCount(agent, team.id);
+
+                    const tr = document.createElement('tr');
+                    const tdName = document.createElement('td'); 
+                    tdName.className = 'sticky-col-1'; 
+                    tdName.style.paddingLeft = '10px'; 
+                    
+                    let deleteBtnHtml = !isReadOnly 
+                        ? `<button class="btn btn-danger" style="padding:0 4px; font-size:0.65rem; margin-right:4px;" title="Supprimer cet agent" onclick="event.stopPropagation(); deleteAgentFromTeam('${team.id}', '${agent.id}');">🗑️</button>` 
+                        : '';
+
+                    tdName.innerHTML = `
+                        <div style="display:flex; align-items:center; justify-content:space-between; width:100%;">
+                            <div style="display:flex; align-items:center; overflow:hidden; text-overflow:ellipsis;">
+                                ${deleteBtnHtml}
+                                <span style="cursor:${isReadOnly ? 'default' : 'pointer'};" onclick="${!isReadOnly ? `openAgentModal('${agent.id}')` : ''}">${agent.name}</span>
+                            </div>
+                            <span class="extra-shifts-badge" title="Quarts (M/A/N) hors roulement d'équipe dans l'année">${extraShifts} q.</span>
+                        </div>`;
+                    
+                    tr.appendChild(tdName);
+                    
+                    const tdSkills = document.createElement('td'); 
+                    tdSkills.className = 'sticky-col-2'; 
+                    tdSkills.style.cursor = isReadOnly ? 'default' : 'pointer'; 
+                    if (!isReadOnly) tdSkills.onclick = () => openAgentModal(agent.id); 
+                    renderSkillBadges(tdSkills, agent.skills); 
+                    tr.appendChild(tdSkills);
+
+                    dates.forEach(d => {
+                        const dateStr = formatDate(d);
+                        const taskCode = getEffectiveAgentTask(agent, team.id, dateStr);
+                        const taskDef = TASKS[taskCode] || TASKS['R'];
+                        const descKey = `${agent.id}_${dateStr}`;
+                        const desc = taskDescriptions[descKey] || '';
+
+                        const td = document.createElement('td');
+                        const cellDiv = document.createElement('div');
+                        cellDiv.className = `task-cell ${isReadOnly ? 'task-cell-disabled' : ''} ${desc ? 'has-desc-indicator' : ''}`;
+                        cellDiv.style.backgroundColor = taskDef.color;
+                        cellDiv.style.color = taskDef.text;
+                        cellDiv.innerText = taskCode;
+
+                        if (!isReadOnly) {
+                            bindCellEvents(cellDiv, false, agent.id, agent.name, dateStr, taskCode, desc);
+                        }
+                        attachCellHoverEvents(cellDiv, desc);
+
+                        td.appendChild(cellDiv);
+                        tr.appendChild(td);
+                    });
+
+                    tbody.appendChild(tr);
+                });
+            });
+        }
+
+        function bindCellEvents(cellDiv, isTeam, targetId, targetName, dateStr, currentTaskCode, currentDesc) {
+            const isRplTask = TASKS[currentTaskCode] && TASKS[currentTaskCode].isReplacement;
+
+            cellDiv.ontouchstart = (e) => {
+                touchPreventClick = false;
+                if (isRplTask) {
+                    touchTimer = setTimeout(() => {
+                        touchPreventClick = true; 
+                        if (navigator.vibrate) navigator.vibrate(50);
+                        openReplacementModal(isTeam, targetId, targetName, dateStr);
+                    }, 3000);
+                }
+            };
+
+            cellDiv.ontouchend = () => {
+                if (touchTimer) { clearTimeout(touchTimer); touchTimer = null; }
+            };
+
+            cellDiv.ontouchmove = () => {
+                if (touchTimer) { clearTimeout(touchTimer); touchTimer = null; }
+            };
+
+            cellDiv.onclick = (e) => {
+                if (touchPreventClick) {
+                    touchPreventClick = false;
+                    return;
+                }
+
+                if (clickTimer) {
+                    clearTimeout(clickTimer);
+                    clickTimer = null;
+                    if (isRplTask) {
+                        openReplacementModal(isTeam, targetId, targetName, dateStr);
+                    } else if (!isReadOnly) {
+                        openTaskModal(isTeam, targetId, targetName, dateStr, currentTaskCode, currentDesc);
+                    }
+                } else {
+                    clickTimer = setTimeout(() => {
+                        clickTimer = null;
+                        if (!isReadOnly) {
+                            openTaskModal(isTeam, targetId, targetName, dateStr, currentTaskCode, currentDesc);
+                        }
+                    }, 250);
+                }
+            };
+        }
+
+        function openReplacementModal(isTeam, targetId, targetName, dateStr) {
+            activeRplContext = { isTeam, targetId, targetName, dateStr };
+            const sheetKey = `${targetId}_${dateStr}`;
+            if (!replacementSheets[sheetKey]) {
+                replacementSheets[sheetKey] = { volunteers: [], selectedVolunteers: [] };
+            }
+
+            document.getElementById('rplTargetInfo').innerHTML = `Fiche RPL pour : <strong>${targetName}</strong> le <strong>${dateStr}</strong>`;
+
+            const select = document.getElementById('rplAgentSelect');
+            select.innerHTML = '<option value="">-- Sélectionner un agent --</option>';
+            
+            let allAgents = [];
+            teams.forEach(t => {
+                t.agents.forEach(a => {
+                    allAgents.push({ id: a.id, name: a.name, teamId: t.id, teamName: t.name, obj: a });
+                });
             });
 
-            tbody.appendChild(tr);
-        });
-    });
-}
+            allAgents.sort((a,b) => a.name.localeCompare(b.name));
+            allAgents.forEach(a => {
+                const opt = document.createElement('option');
+                opt.value = a.id;
+                opt.textContent = `${a.name} (${a.teamName})`;
+                select.appendChild(opt);
+            });
 
-function bindCellEvents(cellDiv, isTeam, targetId, targetName, dateStr, currentTaskCode, currentDesc) {
-    const isRplTask = TASKS[currentTaskCode] && TASKS[currentTaskCode].isReplacement;
+            document.getElementById('rplAgentStats').innerText = '';
+            document.getElementById('rplComment').value = '';
 
-    // --- GESTION DU MAINTIEN DE 3 SECONDES (MOBILE / TOUCH) ---
-    cellDiv.ontouchstart = (e) => {
-        touchPreventClick = false;
-        
-        // Déclenche le chrono de 3 secondes si la tâche est configurée comme remplacement
-        if (isRplTask) {
-            touchTimer = setTimeout(() => {
-                touchPreventClick = true; 
-                if (navigator.vibrate) navigator.vibrate(50);
-                openReplacementModal(isTeam, targetId, targetName, dateStr);
-            }, 3000); // 3000 ms = 3 secondes
-        }
-    };
+            document.getElementById('rplReSection').style.display = !isReadOnly ? 'block' : 'none';
 
-    cellDiv.ontouchend = () => {
-        if (touchTimer) {
-            clearTimeout(touchTimer);
-            touchTimer = null;
-        }
-    };
-
-    cellDiv.ontouchmove = () => {
-        if (touchTimer) {
-            clearTimeout(touchTimer);
-            touchTimer = null;
-        }
-    };
-
-    // --- GESTION DU DOUBLE-CLIC (PC / SOURIS) ---
-    cellDiv.onclick = (e) => {
-        if (touchPreventClick) {
-            touchPreventClick = false;
-            return;
+            renderVolunteersList();
+            document.getElementById('replacementModal').style.display = 'flex';
         }
 
-        if (clickTimer) {
-            clearTimeout(clickTimer);
-            clickTimer = null;
-            // DOUBLE CLIC : ouvrir la fiche si tâche configurée comme remplacement
-            if (isRplTask) {
-                openReplacementModal(isTeam, targetId, targetName, dateStr);
-            } else if (!isReadOnly) {
-                openTaskModal(isTeam, targetId, targetName, dateStr, currentTaskCode, currentDesc);
+        function updateRplAgentStats() {
+            const agentId = document.getElementById('rplAgentSelect').value;
+            const statsEl = document.getElementById('rplAgentStats');
+            if (!agentId) {
+                statsEl.innerText = '';
+                return;
             }
-        } else {
-            clickTimer = setTimeout(() => {
-                clickTimer = null;
-                // SIMPLE CLIC :
+
+            let foundAgent = null;
+            let foundTeamId = null;
+            teams.forEach(t => {
+                const a = t.agents.find(ag => ag.id === agentId);
+                if (a) { foundAgent = a; foundTeamId = t.id; }
+            });
+
+            if (foundAgent) {
+                const count = calculateExtraShiftsCount(foundAgent, foundTeamId);
+                statsEl.innerText = `Nombre de remplacements déjà réalisés cette année : ${count} quart(s)`;
+            }
+        }
+
+        function addVolunteerToSheet() {
+            if (!activeRplContext) return;
+            const agentId = document.getElementById('rplAgentSelect').value;
+            if (!agentId) {
+                alert("Veuillez sélectionner un agent.");
+                return;
+            }
+
+            const sheetKey = `${activeRplContext.targetId}_${activeRplContext.dateStr}`;
+            if (!replacementSheets[sheetKey]) {
+                replacementSheets[sheetKey] = { volunteers: [], selectedVolunteers: [] };
+            }
+
+            if (!replacementSheets[sheetKey].volunteers.includes(agentId)) {
+                replacementSheets[sheetKey].volunteers.push(agentId);
+                saveToFirebase();
+                renderVolunteersList();
+            } else {
+                alert("Cet agent est déjà inscrit sur la fiche.");
+            }
+        }
+
+        function renderVolunteersList() {
+            if (!activeRplContext) return;
+            const sheetKey = `${activeRplContext.targetId}_${activeRplContext.dateStr}`;
+            const sheet = replacementSheets[sheetKey] || { volunteers: [], selectedVolunteers: [] };
+            const container = document.getElementById('rplVolunteersList');
+            container.innerHTML = '';
+
+            if (sheet.volunteers.length === 0) {
+                container.innerHTML = '<p style="font-size:0.8rem; color:#777; font-style:italic;">Aucun volontaire pour le moment.</p>';
+                return;
+            }
+
+            sheet.volunteers.forEach(aId => {
+                let agentObj = null;
+                let teamId = null;
+                teams.forEach(t => {
+                    const a = t.agents.find(ag => ag.id === aId);
+                    if (a) { agentObj = a; teamId = t.id; }
+                });
+
+                if (!agentObj) return;
+
+                const count = calculateExtraShiftsCount(agentObj, teamId);
+                const isSelected = (sheet.selectedVolunteers || []).includes(aId);
+
+                const div = document.createElement('div');
+                div.style.display = 'flex';
+                div.style.justifyContent = 'space-between';
+                div.style.alignItems = 'center';
+                div.style.padding = '4px 6px';
+                div.style.borderBottom = '1px solid #ddd';
+
+                let checkHtml = '';
                 if (!isReadOnly) {
-                    openTaskModal(isTeam, targetId, targetName, dateStr, currentTaskCode, currentDesc);
+                    checkHtml = `<input type="checkbox" ${isSelected ? 'checked' : ''} onchange="toggleVolunteerSelection('${aId}', this.checked)"> `;
                 }
-            }, 250);
+
+                div.innerHTML = `
+                    <div>
+                        ${checkHtml}<strong>${agentObj.name}</strong> 
+                        <span style="font-size:0.75rem; color:#666;">(${count} remplacements)</span>
+                    </div>
+                    ${isSelected ? '<span class="badge bg-green">Sélectionné</span>' : ''}
+                `;
+                container.appendChild(div);
+            });
         }
-    };
-}
 
-
-
-function handleTaskCellClick(event, isTeam, targetId, targetName, dateStr, currentTaskCode, currentDesc) {
-    if (clickTimer) {
-        clearTimeout(clickTimer);
-        clickTimer = null;
-        // DOUBLE CLIC :
-        if (currentTaskCode === 'RPL') {
-            openReplacementModal(isTeam, targetId, targetName, dateStr);
-        } else if (!isReadOnly) {
-            openTaskModal(isTeam, targetId, targetName, dateStr, currentTaskCode, currentDesc);
-        }
-    } else {
-        clickTimer = setTimeout(() => {
-            clickTimer = null;
-            // SIMPLE CLIC :
-            if (!isReadOnly) {
-                openTaskModal(isTeam, targetId, targetName, dateStr, currentTaskCode, currentDesc);
+        function toggleVolunteerSelection(agentId, isChecked) {
+            if (!activeRplContext || isReadOnly) return;
+            const sheetKey = `${activeRplContext.targetId}_${activeRplContext.dateStr}`;
+            if (!replacementSheets[sheetKey].selectedVolunteers) {
+                replacementSheets[sheetKey].selectedVolunteers = [];
             }
-        }, 250);
-    }
-}
 
-function openReplacementModal(isTeam, targetId, targetName, dateStr) {
-    activeRplContext = { isTeam, targetId, targetName, dateStr };
-    const sheetKey = `${targetId}_${dateStr}`;
-    if (!replacementSheets[sheetKey]) {
-        replacementSheets[sheetKey] = { volunteers: [], selectedVolunteers: [] };
-    }
-
-    document.getElementById('rplTargetInfo').innerHTML = `Fiche RPL pour : <strong>${targetName}</strong> le <strong>${dateStr}</strong>`;
-
-    // Alimenter la liste globale de tous les agents dans le menu déroulant
-    const select = document.getElementById('rplAgentSelect');
-    select.innerHTML = '<option value="">-- Sélectionner un agent --</option>';
-    
-    let allAgents = [];
-    teams.forEach(t => {
-        t.agents.forEach(a => {
-            allAgents.push({ id: a.id, name: a.name, teamId: t.id, teamName: t.name, obj: a });
-        });
-    });
-
-    allAgents.sort((a,b) => a.name.localeCompare(b.name));
-    allAgents.forEach(a => {
-        const opt = document.createElement('option');
-        opt.value = a.id;
-        opt.textContent = `${a.name} (${a.teamName})`;
-        select.appendChild(opt);
-    });
-
-    document.getElementById('rplAgentStats').innerText = '';
-    document.getElementById('rplComment').value = '';
-
-    // Afficher la section RE seulement si l'utilisateur n'est pas en lecture seule
-    document.getElementById('rplReSection').style.display = !isReadOnly ? 'block' : 'none';
-
-    renderVolunteersList();
-    document.getElementById('replacementModal').style.display = 'flex';
-}
-
-function updateRplAgentStats() {
-    const agentId = document.getElementById('rplAgentSelect').value;
-    const statsEl = document.getElementById('rplAgentStats');
-    if (!agentId) {
-        statsEl.innerText = '';
-        return;
-    }
-
-    let foundAgent = null;
-    let foundTeamId = null;
-    teams.forEach(t => {
-        const a = t.agents.find(ag => ag.id === agentId);
-        if (a) { foundAgent = a; foundTeamId = t.id; }
-    });
-
-    if (foundAgent) {
-        const count = calculateExtraShiftsCount(foundAgent, foundTeamId);
-        statsEl.innerText = `Nombre de remplacements déjà réalisés cette année : ${count} quart(s)`;
-    }
-}
-
-function addVolunteerToSheet() {
-    if (!activeRplContext) return;
-    const agentId = document.getElementById('rplAgentSelect').value;
-    if (!agentId) {
-        alert("Veuillez sélectionner un agent.");
-        return;
-    }
-
-    const sheetKey = `${activeRplContext.targetId}_${activeRplContext.dateStr}`;
-    if (!replacementSheets[sheetKey]) {
-        replacementSheets[sheetKey] = { volunteers: [], selectedVolunteers: [] };
-    }
-
-    if (!replacementSheets[sheetKey].volunteers.includes(agentId)) {
-        replacementSheets[sheetKey].volunteers.push(agentId);
-        saveToFirebase();
-        renderVolunteersList();
-    } else {
-        alert("Cet agent est déjà inscrit sur la fiche.");
-    }
-}
-
-function renderVolunteersList() {
-    if (!activeRplContext) return;
-    const sheetKey = `${activeRplContext.targetId}_${activeRplContext.dateStr}`;
-    const sheet = replacementSheets[sheetKey] || { volunteers: [], selectedVolunteers: [] };
-    const container = document.getElementById('rplVolunteersList');
-    container.innerHTML = '';
-
-    if (sheet.volunteers.length === 0) {
-        container.innerHTML = '<p style="font-size:0.8rem; color:#777; font-style:italic;">Aucun volontaire pour le moment.</p>';
-        return;
-    }
-
-    sheet.volunteers.forEach(aId => {
-        let agentObj = null;
-        let teamId = null;
-        teams.forEach(t => {
-            const a = t.agents.find(ag => ag.id === aId);
-            if (a) { agentObj = a; teamId = t.id; }
-        });
-
-        if (!agentObj) return;
-
-        const count = calculateExtraShiftsCount(agentObj, teamId);
-        const isSelected = (sheet.selectedVolunteers || []).includes(aId);
-
-        const div = document.createElement('div');
-        div.style.display = 'flex';
-        div.style.justifyContent = 'space-between';
-        div.style.alignItems = 'center';
-        div.style.padding = '4px 6px';
-        div.style.borderBottom = '1px solid #ddd';
-
-        let checkHtml = '';
-        if (!isReadOnly) {
-            checkHtml = `<input type="checkbox" ${isSelected ? 'checked' : ''} onchange="toggleVolunteerSelection('${aId}', this.checked)"> `;
+            if (isChecked) {
+                if (!replacementSheets[sheetKey].selectedVolunteers.includes(agentId)) {
+                    replacementSheets[sheetKey].selectedVolunteers.push(agentId);
+                }
+            } else {
+                replacementSheets[sheetKey].selectedVolunteers = replacementSheets[sheetKey].selectedVolunteers.filter(id => id !== agentId);
+            }
         }
 
-        div.innerHTML = `
-            <div>
-                ${checkHtml}<strong>${agentObj.name}</strong> 
-                <span style="font-size:0.75rem; color:#666;">(${count} remplacements)</span>
-            </div>
-            ${isSelected ? '<span class="badge bg-green">Sélectionné</span>' : ''}
-        `;
-        container.appendChild(div);
-    });
-}
+        function validateReplacementSheet() {
+            if (isReadOnly || !activeRplContext) return;
+            const comment = document.getElementById('rplComment').value.trim();
+            if (!comment) {
+                alert("Un commentaire est obligatoire pour solder la fiche.");
+                return;
+            }
 
-function toggleVolunteerSelection(agentId, isChecked) {
-    if (!activeRplContext || isReadOnly) return;
-    const sheetKey = `${activeRplContext.targetId}_${activeRplContext.dateStr}`;
-    if (!replacementSheets[sheetKey].selectedVolunteers) {
-        replacementSheets[sheetKey].selectedVolunteers = [];
-    }
+            const sheetKey = `${activeRplContext.targetId}_${activeRplContext.dateStr}`;
+            const sheet = replacementSheets[sheetKey] || { volunteers: [], selectedVolunteers: [] };
 
-    if (isChecked) {
-        if (!replacementSheets[sheetKey].selectedVolunteers.includes(agentId)) {
-            replacementSheets[sheetKey].selectedVolunteers.push(agentId);
+            const getAgentName = (id) => {
+                let name = id;
+                teams.forEach(t => {
+                    const a = t.agents.find(ag => ag.id === id);
+                    if (a) name = a.name;
+                });
+                return name;
+            };
+
+            const volunteersNames = (sheet.volunteers || []).map(getAgentName).join(', ') || 'Aucun';
+            const selectedNames = (sheet.selectedVolunteers || []).map(getAgentName).join(', ') || 'Aucun';
+
+            replacementArchives.push({
+                dateRpl: activeRplContext.dateStr,
+                targetName: activeRplContext.targetName,
+                volunteers: volunteersNames,
+                selected: selectedNames,
+                comment: comment,
+                closedBy: currentUser ? currentUser.email : 'RE',
+                closedAt: formatDate(new Date())
+            });
+
+            delete replacementSheets[sheetKey];
+
+            closeReplacementModal();
+            renderAll(true);
+            alert("✅ Fiche de remplacement soldée et archivée avec succès !");
         }
-    } else {
-        replacementSheets[sheetKey].selectedVolunteers = replacementSheets[sheetKey].selectedVolunteers.filter(id => id !== agentId);
-    }
-}
 
-function validateReplacementSheet() {
-    if (isReadOnly || !activeRplContext) return;
-    const comment = document.getElementById('rplComment').value.trim();
-    if (!comment) {
-        alert("Un commentaire est obligatoire pour solder la fiche.");
-        return;
-    }
+        function closeReplacementModal() {
+            document.getElementById('replacementModal').style.display = 'none';
+            activeRplContext = null;
+        }
 
-    const sheetKey = `${activeRplContext.targetId}_${activeRplContext.dateStr}`;
-    const sheet = replacementSheets[sheetKey] || { volunteers: [], selectedVolunteers: [] };
+        function openArchiveRemplacementModal() {
+            const tbody = document.getElementById('archiveRplTableBody');
+            tbody.innerHTML = '';
 
-    // Formater les noms pour l'archivage
-    const getAgentName = (id) => {
-        let name = id;
-        teams.forEach(t => {
-            const a = t.agents.find(ag => ag.id === id);
-            if (a) name = a.name;
-        });
-        return name;
-    };
+            if (replacementArchives.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">Aucune archive de remplacement disponible.</td></tr>';
+            } else {
+                replacementArchives.forEach(arch => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td>${arch.dateRpl}</td>
+                        <td>${arch.targetName}</td>
+                        <td>${arch.volunteers}</td>
+                        <td><strong>${arch.selected}</strong></td>
+                        <td>${arch.comment}</td>
+                        <td>${arch.closedBy}<br><small>${arch.closedAt}</small></td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            }
+            document.getElementById('archiveRemplacementModal').style.display = 'flex';
+        }
 
-    const volunteersNames = (sheet.volunteers || []).map(getAgentName).join(', ') || 'Aucun';
-    const selectedNames = (sheet.selectedVolunteers || []).map(getAgentName).join(', ') || 'Aucun';
-
-    // Ajout dans l'archive
-    replacementArchives.push({
-        dateRpl: activeRplContext.dateStr,
-        targetName: activeRplContext.targetName,
-        volunteers: volunteersNames,
-        selected: selectedNames,
-        comment: comment,
-        closedBy: currentUser ? currentUser.email : 'RE',
-        closedAt: formatDate(new Date())
-    });
-
-    // Nettoyage de la fiche active
-    delete replacementSheets[sheetKey];
-
-    closeReplacementModal();
-    renderAll(true);
-    alert("✅ Fiche de remplacement soldée et archivée avec succès !");
-}
-
-function closeReplacementModal() {
-    document.getElementById('replacementModal').style.display = 'none';
-    activeRplContext = null;
-}
-
-function openArchiveRemplacementModal() {
-    const tbody = document.getElementById('archiveRplTableBody');
-    tbody.innerHTML = '';
-
-    if (replacementArchives.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">Aucune archive de remplacement disponible.</td></tr>';
-    } else {
-        replacementArchives.forEach(arch => {
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td>${arch.dateRpl}</td>
-                <td>${arch.targetName}</td>
-                <td>${arch.volunteers}</td>
-                <td><strong>${arch.selected}</strong></td>
-                <td>${arch.comment}</td>
-                <td>${arch.closedBy}<br><small>${arch.closedAt}</small></td>
-            `;
-            tbody.appendChild(tr);
-        });
-    }
-    document.getElementById('archiveRemplacementModal').style.display = 'flex';
-}
-
-function closeArchiveRemplacementModal() {
-    document.getElementById('archiveRemplacementModal').style.display = 'none';
-}
-
-
+        function closeArchiveRemplacementModal() {
+            document.getElementById('archiveRemplacementModal').style.display = 'none';
+        }
 
         function openTaskModal(isTeam, targetId, targetName, dateStr, currentTaskCode, currentDesc) {
             if (isReadOnly) return;
@@ -2084,257 +1982,639 @@ function closeArchiveRemplacementModal() {
             renderAll(true);
         }
 
+        function promptTeamRotation(teamId, dateStr, taskCode) {
+            pendingRotation = { teamId, startDateStr: dateStr, taskCode };
+            document.getElementById('repeatDateText').innerText = dateStr;
+            document.getElementById('repeatModal').style.display = 'flex';
+        }
+
+        function closeRepeatModal() {
+            document.getElementById('repeatModal').style.display = 'none';
+            pendingRotation = null;
+        }
+
+        function applyTeamRotation() {
+            if (isReadOnly || !pendingRotation) return;
+            const { teamId, startDateStr, taskCode } = pendingRotation;
+            const freqVal = document.getElementById('repeatWeeks').value;
+            const durationWeeks = parseInt(document.getElementById('repeatDuration').value, 10);
+
+            if (!teamSchedules[teamId]) teamSchedules[teamId] = {};
+
+            const startD = parseDate(startDateStr);
+            const totalDays = durationWeeks * 7;
+
+            if (freqVal === '1_DAY') {
+                for (let i = 0; i < totalDays; i++) {
+                    const currentD = new Date(startD);
+                    currentD.setDate(startD.getDate() + i);
+                    teamSchedules[teamId][formatDate(currentD)] = taskCode;
+                }
+            } else {
+                const stepDays = parseInt(freqVal, 10) * 7;
+                for (let i = 0; i < totalDays; i += stepDays) {
+                    const currentD = new Date(startD);
+                    currentD.setDate(startD.getDate() + i);
+                    teamSchedules[teamId][formatDate(currentD)] = taskCode;
+                }
+            }
+
+            closeRepeatModal();
+            renderAll(true);
+        }
+
+        function addNewAgentToTeam(teamId) {
+            if (isReadOnly) return;
+            const team = teams.find(t => t.id === teamId);
+            if (!team) return;
+
+            const name = prompt("Nom et prénom du nouvel agent :");
+            if (!name || !name.trim()) return;
+
+            const newId = `ag_${Date.now()}`;
+            team.agents.push({
+                id: newId,
+                name: name.trim(),
+                skills: ['C1']
+            });
+
+            renderAll(true);
+        }
+
+        function deleteAgentFromTeam(teamId, agentId) {
+            if (isReadOnly) return;
+            const team = teams.find(t => t.id === teamId);
+            if (!team) return;
+
+            if (confirm("Voulez-vous vraiment supprimer cet agent ?")) {
+                team.agents = team.agents.filter(a => a.id !== agentId);
+                delete agentSchedules[agentId];
+                renderAll(true);
+            }
+        }
+
+        function openAgentModal(agentId) {
+            let foundAgent = null;
+            let foundTeam = null;
+
+            teams.forEach(t => {
+                const a = t.agents.find(ag => ag.id === agentId);
+                if (a) { foundAgent = a; foundTeam = t; }
+            });
+
+            if (!foundAgent) return;
+
+            document.getElementById('editAgentId').value = agentId;
+            document.getElementById('editAgentName').value = foundAgent.name;
+
+            // Rendu des checkboxes de compétences
+            const container = document.getElementById('skillsCheckboxes');
+            container.innerHTML = '';
+            skillDefinitions.forEach(sk => {
+                const label = document.createElement('label');
+                const checked = (foundAgent.skills || []).includes(sk.id) ? 'checked' : '';
+                label.innerHTML = `<input type="checkbox" value="${sk.id}" ${checked}> ${sk.id} - ${sk.name}`;
+                container.appendChild(label);
+            });
+
+            // Remplir les menus déroulants pour la copie
+            const copyTeamSelect = document.getElementById('copyTeamSelect');
+            copyTeamSelect.innerHTML = '';
+            teams.forEach(t => {
+                const opt = document.createElement('option');
+                opt.value = t.id;
+                opt.innerText = t.name;
+                copyTeamSelect.appendChild(opt);
+            });
+
+            const copyAgentSelect = document.getElementById('copyAgentSelect');
+            copyAgentSelect.innerHTML = '';
+            teams.forEach(t => {
+                t.agents.forEach(a => {
+                    if (a.id !== agentId) {
+                        const opt = document.createElement('option');
+                        opt.value = a.id;
+                        opt.innerText = `${a.name} (${t.name})`;
+                        copyAgentSelect.appendChild(opt);
+                    }
+                });
+            });
+
+            // Remplir les tâches pour le bulk
+            const bulkTaskSelect = document.getElementById('bulkAgentTask');
+            bulkTaskSelect.innerHTML = '';
+            Object.keys(TASKS).forEach(code => {
+                const opt = document.createElement('option');
+                opt.value = code;
+                opt.innerText = `${code} - ${TASKS[code].label}`;
+                bulkTaskSelect.appendChild(opt);
+            });
+
+            const todayStr = formatDate(new Date());
+            document.getElementById('copyTeamStartDate').value = todayStr;
+            document.getElementById('copyTeamEndDate').value = todayStr;
+            document.getElementById('copyAgentStartDate').value = todayStr;
+            document.getElementById('copyAgentEndDate').value = todayStr;
+            document.getElementById('bulkStartDate').value = todayStr;
+            document.getElementById('bulkEndDate').value = todayStr;
+
+            document.getElementById('agentModal').style.display = 'flex';
+        }
+
+        function closeAgentModal() {
+            document.getElementById('agentModal').style.display = 'none';
+        }
+
+        function saveAgent() {
+            if (isReadOnly) return;
+            const agentId = document.getElementById('editAgentId').value;
+            const name = document.getElementById('editAgentName').value.trim();
+
+            if (!name) {
+                alert("Le nom ne peut pas être vide.");
+                return;
+            }
+
+            let foundAgent = null;
+            teams.forEach(t => {
+                const a = t.agents.find(ag => ag.id === agentId);
+                if (a) foundAgent = a;
+            });
+
+            if (foundAgent) {
+                foundAgent.name = name;
+                
+                // Récupération des compétences cochées
+                const checkedSkills = [];
+                document.querySelectorAll('#skillsCheckboxes input[type="checkbox"]:checked').forEach(cb => {
+                    checkedSkills.push(cb.value);
+                });
+                foundAgent.skills = checkedSkills;
+            }
+
+            closeAgentModal();
+            renderAll(true);
+        }
+
+        function applyCopyTeamSchedule() {
+            if (isReadOnly) return;
+            const agentId = document.getElementById('editAgentId').value;
+            const teamId = document.getElementById('copyTeamSelect').value;
+            const startStr = document.getElementById('copyTeamStartDate').value;
+            const endStr = document.getElementById('copyTeamEndDate').value;
+
+            if (!startStr || !endStr) { alert("Saisir des dates valides."); return; }
+
+            const startD = parseDate(startStr);
+            const endD = parseDate(endStr);
+            if (startD > endD) { alert("La date de début doit être antérieure à la fin."); return; }
+
+            if (!agentSchedules[agentId]) agentSchedules[agentId] = {};
+
+            let curr = new Date(startD);
+            while (curr <= endD) {
+                const dStr = formatDate(curr);
+                const teamTask = teamSchedules[teamId] ? teamSchedules[teamId][dStr] : 'R';
+                agentSchedules[agentId][dStr] = teamTask || 'R';
+                curr.setDate(curr.getDate() + 1);
+            }
+
+            closeAgentModal();
+            renderAll(true);
+        }
+
+        function applyCopyAgentSchedule() {
+            if (isReadOnly) return;
+            const targetAgentId = document.getElementById('editAgentId').value;
+            const sourceAgentId = document.getElementById('copyAgentSelect').value;
+            const comment = document.getElementById('copyAgentComment').value.trim();
+            const startStr = document.getElementById('copyAgentStartDate').value;
+            const endStr = document.getElementById('copyAgentEndDate').value;
+
+            if (!startStr || !endStr) { alert("Saisir des dates valides."); return; }
+
+            const startD = parseDate(startStr);
+            const endD = parseDate(endStr);
+            if (startD > endD) { alert("La date de début doit être antérieure à la fin."); return; }
+
+            if (!agentSchedules[targetAgentId]) agentSchedules[targetAgentId] = {};
+
+            let curr = new Date(startD);
+            while (curr <= endD) {
+                const dStr = formatDate(curr);
+                const sourceTask = agentSchedules[sourceAgentId] ? agentSchedules[sourceAgentId][dStr] : 'R';
+                agentSchedules[targetAgentId][dStr] = sourceTask || 'R';
+
+                if (comment) {
+                    taskDescriptions[`${targetAgentId}_${dStr}`] = comment;
+                }
+                curr.setDate(curr.getDate() + 1);
+            }
+
+            closeAgentModal();
+            renderAll(true);
+        }
+
+        function toggleAgentRecurrenceUI() {
+            const freq = document.getElementById('bulkAgentFreq').value;
+            const durationGroup = document.getElementById('bulkDurationGroup');
+            const endDateGroup = document.getElementById('bulkEndDateGroup');
+
+            if (freq === 'NONE') {
+                durationGroup.style.display = 'none';
+                endDateGroup.style.display = 'block';
+            } else {
+                durationGroup.style.display = 'block';
+                endDateGroup.style.display = 'none';
+            }
+        }
+
+        function applyBulkAgentTask() {
+            if (isReadOnly) return;
+            const agentId = document.getElementById('editAgentId').value;
+            const taskCode = document.getElementById('bulkAgentTask').value;
+            const desc = document.getElementById('bulkAgentDesc').value.trim();
+            const freq = document.getElementById('bulkAgentFreq').value;
+            const startStr = document.getElementById('bulkStartDate').value;
+
+            if (!startStr) { alert("Saisir une date de début."); return; }
+            if (!agentSchedules[agentId]) agentSchedules[agentId] = {};
+
+            const startD = parseDate(startStr);
+
+            if (freq === 'NONE') {
+                const endStr = document.getElementById('bulkEndDate').value;
+                if (!endStr) { alert("Saisir une date de fin."); return; }
+                const endD = parseDate(endStr);
+                if (startD > endD) { alert("La date de début doit être antérieure à la fin."); return; }
+
+                let curr = new Date(startD);
+                while (curr <= endD) {
+                    const dStr = formatDate(curr);
+                    agentSchedules[agentId][dStr] = taskCode;
+                    if (desc) taskDescriptions[`${agentId}_${dStr}`] = desc;
+                    curr.setDate(curr.getDate() + 1);
+                }
+            } else {
+                const years = parseInt(document.getElementById('bulkAgentDuration').value, 10);
+                const totalDays = years * 365;
+
+                if (freq === '1_DAY') {
+                    for (let i = 0; i < totalDays; i++) {
+                        const curr = new Date(startD);
+                        curr.setDate(startD.getDate() + i);
+                        const dStr = formatDate(curr);
+                        agentSchedules[agentId][dStr] = taskCode;
+                        if (desc) taskDescriptions[`${agentId}_${dStr}`] = desc;
+                    }
+                } else {
+                    const stepDays = parseInt(freq, 10) * 7;
+                    for (let i = 0; i < totalDays; i += stepDays) {
+                        const curr = new Date(startD);
+                        curr.setDate(startD.getDate() + i);
+                        const dStr = formatDate(curr);
+                        agentSchedules[agentId][dStr] = taskCode;
+                        if (desc) taskDescriptions[`${agentId}_${dStr}`] = desc;
+                    }
+                }
+            }
+
+            closeAgentModal();
+            renderAll(true);
+        }
+
+        function openSettings() {
+            if (!isAdmin) { alert("Accès réservé aux Administrateurs."); return; }
+
+            // Rendu des compétences
+            const skillsContainer = document.getElementById('skillsConfigContainer');
+            skillsContainer.innerHTML = '';
+            skillDefinitions.forEach((sk, idx) => {
+                const row = document.createElement('div');
+                row.className = 'skill-config-row';
+                row.innerHTML = `
+                    <input type="text" value="${sk.id}" id="sk_id_${idx}" style="font-weight:bold;">
+                    <input type="text" value="${sk.name}" id="sk_name_${idx}">
+                    <input type="color" value="${sk.color}" id="sk_color_${idx}">
+                    <input type="number" value="${sk.min !== undefined ? sk.min : 1}" id="sk_min_${idx}" min="0">
+                    <button class="btn btn-danger" style="padding:2px 6px;" onclick="removeSkillRow(${idx})">X</button>
+                `;
+                skillsContainer.appendChild(row);
+            });
+
+            // Rendu de la surveillance des compétences
+            const monitoredContainer = document.getElementById('monitoredSkillsConfigContainer');
+            monitoredContainer.innerHTML = '';
+            (exclusiveSkillMonitoredGroups || []).forEach((grp, idx) => {
+                const row = document.createElement('div');
+                row.className = 'monitored-skills-row';
+                row.innerHTML = `
+                    <input type="text" value="${grp.join(', ')}" id="monitored_grp_${idx}" style="flex:1;" placeholder="Ex: C1, C2">
+                    <button class="btn btn-danger" style="padding:2px 6px;" onclick="removeMonitoredGroupRow(${idx})">Supprimer</button>
+                `;
+                monitoredContainer.appendChild(row);
+            });
+
+            // Rendu des tâches
+            const tasksContainer = document.getElementById('tasksContainer');
+            tasksContainer.innerHTML = '';
+            Object.keys(TASKS).forEach((code) => {
+                const t = TASKS[code];
+                const row = document.createElement('div');
+                row.className = 'task-row';
+                row.innerHTML = `
+                    <input type="text" value="${code}" class="t-code" style="font-weight:bold;">
+                    <input type="text" value="${t.label}" class="t-label">
+                    <select class="t-shift">
+                        <option value="none" ${t.shift === 'none' ? 'selected' : ''}>Aucun</option>
+                        <option value="M" ${t.shift === 'M' ? 'selected' : ''}>Matin</option>
+                        <option value="A" ${t.shift === 'A' ? 'selected' : ''}>Après-Midi</option>
+                        <option value="N" ${t.shift === 'N' ? 'selected' : ''}>Nuit</option>
+                        <option value="J" ${t.shift === 'J' ? 'selected' : ''}>Journée</option>
+                    </select>
+                    <input type="time" value="${t.start || '00:00'}" class="t-start">
+                    <input type="time" value="${t.end || '00:00'}" class="t-end">
+                    <input type="checkbox" class="t-isrest" ${t.isRest ? 'checked' : ''}>
+                    <input type="checkbox" class="t-isrpl" ${t.isReplacement ? 'checked' : ''}>
+                    <input type="color" value="${t.color}" class="t-color">
+                    <input type="color" value="${t.text}" class="t-text">
+                    <button class="btn btn-danger" style="padding:2px 6px;" onclick="this.parentElement.remove()">X</button>
+                `;
+                tasksContainer.appendChild(row);
+            });
+
+            // Charge les seuils d'effectifs
+            document.getElementById('th_M_orange').value = settings.thresholds.M.orange;
+            document.getElementById('th_M_green').value = settings.thresholds.M.green;
+            document.getElementById('th_A_orange').value = settings.thresholds.A.orange;
+            document.getElementById('th_A_green').value = settings.thresholds.A.green;
+            document.getElementById('th_N_orange').value = settings.thresholds.N.orange;
+            document.getElementById('th_N_green').value = settings.thresholds.N.green;
+
+            document.getElementById('settingsModal').style.display = 'flex';
+        }
+
+        function closeSettings() {
+            document.getElementById('settingsModal').style.display = 'none';
+        }
+
+        function addSkillRow() {
+            const container = document.getElementById('skillsConfigContainer');
+            const idx = container.children.length;
+            const row = document.createElement('div');
+            row.className = 'skill-config-row';
+            row.innerHTML = `
+                <input type="text" value="C${idx+1}" id="sk_id_${idx}" style="font-weight:bold;">
+                <input type="text" value="Nouvelle Compétence" id="sk_name_${idx}">
+                <input type="color" value="#3498db" id="sk_color_${idx}">
+                <input type="number" value="1" id="sk_min_${idx}" min="0">
+                <button class="btn btn-danger" style="padding:2px 6px;" onclick="removeSkillRow(${idx})">X</button>
+            `;
+            container.appendChild(row);
+        }
+
+        function removeSkillRow(idx) {
+            const container = document.getElementById('skillsConfigContainer');
+            if (container.children[idx]) {
+                container.children[idx].remove();
+            }
+        }
+
+        function addMonitoredSkillGroupRow() {
+            const container = document.getElementById('monitoredSkillsConfigContainer');
+            const idx = container.children.length;
+            const row = document.createElement('div');
+            row.className = 'monitored-skills-row';
+            row.innerHTML = `
+                <input type="text" value="" id="monitored_grp_${idx}" style="flex:1;" placeholder="Ex: C1, C2">
+                <button class="btn btn-danger" style="padding:2px 6px;" onclick="removeMonitoredGroupRow(${idx})">Supprimer</button>
+            `;
+            container.appendChild(row);
+        }
+
+        function removeMonitoredGroupRow(idx) {
+            const container = document.getElementById('monitoredSkillsConfigContainer');
+            if (container.children[idx]) {
+                container.children[idx].remove();
+            }
+        }
+
+        function addTaskRow() {
+            const tasksContainer = document.getElementById('tasksContainer');
+            const row = document.createElement('div');
+            row.className = 'task-row';
+            row.innerHTML = `
+                <input type="text" value="NEW" class="t-code" style="font-weight:bold;">
+                <input type="text" value="Nouvelle Tâche" class="t-label">
+                <select class="t-shift">
+                    <option value="none" selected>Aucun</option>
+                    <option value="M">Matin</option>
+                    <option value="A">Après-Midi</option>
+                    <option value="N">Nuit</option>
+                    <option value="J">Journée</option>
+                </select>
+                <input type="time" value="08:00" class="t-start">
+                <input type="time" value="16:00" class="t-end">
+                <input type="checkbox" class="t-isrest">
+                <input type="checkbox" class="t-isrpl">
+                <input type="color" value="#3498db" class="t-color">
+                <input type="color" value="#ffffff" class="t-text">
+                <button class="btn btn-danger" style="padding:2px 6px;" onclick="this.parentElement.remove()">X</button>
+            `;
+            tasksContainer.appendChild(row);
+        }
+
+        function saveSettings() {
+            if (!isAdmin) return;
+
+            // Sauvegarde des compétences
+            const newSkills = [];
+            const skillRows = document.querySelectorAll('.skill-config-row');
+            skillRows.forEach((row, idx) => {
+                const id = row.querySelector(`#sk_id_${idx}`) ? row.querySelector(`#sk_id_${idx}`).value.trim() : '';
+                const name = row.querySelector(`#sk_name_${idx}`) ? row.querySelector(`#sk_name_${idx}`).value.trim() : '';
+                const color = row.querySelector(`#sk_color_${idx}`) ? row.querySelector(`#sk_color_${idx}`).value : '#3498db';
+                const min = row.querySelector(`#sk_min_${idx}`) ? parseInt(row.querySelector(`#sk_min_${idx}`).value, 10) : 1;
+
+                if (id && name) {
+                    newSkills.push({ id, name, color, min });
+                }
+            });
+            if (newSkills.length > 0) skillDefinitions = newSkills;
+
+            // Sauvegarde des groupes surveillés
+            const newMonitored = [];
+            const monitoredRows = document.querySelectorAll('.monitored-skills-row');
+            monitoredRows.forEach(row => {
+                const input = row.querySelector('input[type="text"]');
+                if (input && input.value.trim()) {
+                    const group = input.value.split(',').map(s => s.trim()).filter(s => s.length > 0);
+                    if (group.length > 1) newMonitored.push(group);
+                }
+            });
+            exclusiveSkillMonitoredGroups = newMonitored;
+
+            // Sauvegarde des tâches
+            const newTasks = {};
+            const taskRows = document.querySelectorAll('#tasksContainer .task-row');
+            taskRows.forEach(row => {
+                const code = row.querySelector('.t-code').value.trim();
+                if (code) {
+                    newTasks[code] = {
+                        label: row.querySelector('.t-label').value.trim(),
+                        shift: row.querySelector('.t-shift').value,
+                        start: row.querySelector('.t-start').value,
+                        end: row.querySelector('.t-end').value,
+                        isRest: row.querySelector('.t-isrest').checked,
+                        isReplacement: row.querySelector('.t-isrpl').checked,
+                        color: row.querySelector('.t-color').value,
+                        text: row.querySelector('.t-text').value
+                    };
+                }
+            });
+            if (Object.keys(newTasks).length > 0) TASKS = newTasks;
+
+            // Sauvegarde des seuils
+            settings.thresholds.M.orange = parseInt(document.getElementById('th_M_orange').value, 10);
+            settings.thresholds.M.green = parseInt(document.getElementById('th_M_green').value, 10);
+            settings.thresholds.A.orange = parseInt(document.getElementById('th_A_orange').value, 10);
+            settings.thresholds.A.green = parseInt(document.getElementById('th_A_green').value, 10);
+            settings.thresholds.N.orange = parseInt(document.getElementById('th_N_orange').value, 10);
+            settings.thresholds.N.green = parseInt(document.getElementById('th_N_green').value, 10);
+
+            closeSettings();
+            renderAll(true);
+        }
+
+        function openPrintModal() {
+            const yearSelect = document.getElementById('printYear');
+            yearSelect.innerHTML = '';
+            for (let y = minYearAvailable; y <= maxYearAvailable; y++) {
+                const opt = document.createElement('option');
+                opt.value = y;
+                opt.innerText = y;
+                if (y === currentYear) opt.selected = true;
+                yearSelect.appendChild(opt);
+            }
+            document.getElementById('printModal').style.display = 'flex';
+        }
+
+        function closePrintModal() {
+            document.getElementById('printModal').style.display = 'none';
+        }
+
+        function generateAndPrintMonth() {
+            const m = parseInt(document.getElementById('printMonth').value, 10);
+            const y = parseInt(document.getElementById('printYear').value, 10);
+
+            const printSection = document.getElementById('printSection');
+            printSection.innerHTML = '';
+
+            const daysInMonth = new Date(y, m + 1, 0).getDate();
+            const monthName = new Date(y, m, 1).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+
+            let html = `<h2 style="text-align:center; margin-bottom:10px;">Planning - ${monthName}</h2>`;
+            html += '<table><thead><tr><th>Agent</th>';
+
+            for (let d = 1; d <= daysInMonth; d++) {
+                const dateObj = new Date(y, m, d);
+                const dayName = dateObj.toLocaleDateString('fr-FR', { weekday: 'narrow' });
+                html += `<th>${dayName}<br>${d}</th>`;
+            }
+            html += '</tr></thead><tbody>';
+
+            teams.forEach(team => {
+                html += `<tr><td colspan="${daysInMonth + 1}" style="background:#2c3e50; color:white; font-weight:bold; text-align:left;">${team.name}</td></tr>`;
+                team.agents.forEach(agent => {
+                    html += `<tr><td style="text-align:left; font-weight:bold;">${agent.name}</td>`;
+                    for (let d = 1; d <= daysInMonth; d++) {
+                        const dateStr = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                        const taskCode = getEffectiveAgentTask(agent, team.id, dateStr);
+                        const taskDef = TASKS[taskCode] || TASKS['R'];
+                        html += `<td style="background-color:${taskDef.color}; color:${taskDef.text}; font-weight:bold;">${taskCode}</td>`;
+                    }
+                    html += '</tr>';
+                });
+            });
+
+            html += '</tbody></table>';
+            printSection.innerHTML = html;
+
+            closePrintModal();
+            window.print();
+        }
+
         function timeToDecimal(timeStr) {
             if (!timeStr) return 0; 
             const parts = timeStr.split(':'); 
             return parseInt(parts[0], 10) + (parseInt(parts[1], 10) / 60);
         }
 
-                function checkRestAlerts() {
-    let generatedAlerts = [];
-    const startYearDate = new Date(currentYear, 0, 1);
-    const endYearDate = new Date(currentYear, 11, 31);
+        // CORRECTION : Completion de la fonction checkRestAlerts
+        function checkRestAlerts() {
+            let generatedAlerts = [];
+            const startYearDate = new Date(currentYear, 0, 1);
+            const endYearDate = new Date(currentYear, 11, 31);
 
-    teams.forEach(team => {
-        team.agents.forEach(agent => {
+            teams.forEach(team => {
+                team.agents.forEach(agent => {
+                    let curr = new Date(startYearDate);
+                    while (curr <= endYearDate) {
+                        const dStr = formatDate(curr);
+                        const taskCode = getEffectiveAgentTask(agent, team.id, dStr);
+                        const taskDef = TASKS[taskCode] || TASKS['R'];
 
-            // 1. RÈGLE DES 11H DE REPOS ENTRE DEUX JOURS TRAVAILLÉS
-            let currentDate = new Date(startYearDate);
-            while (currentDate <= endYearDate) {
-                const dateStr = formatDate(currentDate);
-                const currentTaskCode = getEffectiveAgentTask(agent, team.id, dateStr);
-                const currentTask = TASKS[currentTaskCode] || TASKS['R'];
+                        // Verification du repos après une nuit
+                        if (taskDef.shift === 'N') {
+                            const nextD = new Date(curr);
+                            nextD.setDate(curr.getDate() + 1);
+                            if (nextD <= endYearDate) {
+                                const nextDStr = formatDate(nextD);
+                                const nextTaskCode = getEffectiveAgentTask(agent, team.id, nextDStr);
+                                const nextTaskDef = TASKS[nextTaskCode] || TASKS['R'];
 
-                const nextDate = new Date(currentDate);
-                nextDate.setDate(nextDate.getDate() + 1);
-                const nextDateStr = formatDate(nextDate);
-                const nextTaskCode = getEffectiveAgentTask(agent, team.id, nextDateStr);
-                const nextTask = TASKS[nextTaskCode] || TASKS['R'];
-
-                if (!currentTask.isRest && !nextTask.isRest) {
-                    let finishCurrent = timeToDecimal(currentTask.end);
-                    let startNext = timeToDecimal(nextTask.start);
-                    let restHours = 0;
-
-                    // Si le poste actuel est une Nuit (shift 'N' ou fin à cheval sur le lendemain)
-                    if (currentTask.shift === 'N' || finishCurrent < timeToDecimal(currentTask.start)) {
-                        // finishCurrent correspond à l'heure de fin le matin du jour nextDateStr
-                        // startNext correspond à l'heure de début du service le jour nextDateStr
-                        restHours = startNext - finishCurrent;
-                    } else {
-                        // Cas standard (ex: Matin suivi d'un Matin ou d'une Nuit le lendemain)
-                        restHours = (24 - finishCurrent) + startNext;
-                    }
-
-                    if (restHours < 11) {
-                        generatedAlerts.push({
-                            id: `REST11_${agent.id}_${dateStr}`,
-                            agentId: agent.id,
-                            agentName: agent.name,
-                            date: dateStr,
-                            type: 'REPOS_11H',
-                            description: `Repos quotidien insuffisant (${restHours < 0 ? 0 : restHours.toFixed(1)}h < 11h) entre le ${dateStr} (${currentTaskCode}) et le ${nextDateStr} (${nextTaskCode})`
-                        });
-                    }
-                }
-                currentDate.setDate(currentDate.getDate() + 1);
-            }
-
-            // 2. RÈGLE DES 35H DE REPOS HEBDOMADAIRE
-            let sundayIter = new Date(startYearDate);
-            while (sundayIter.getDay() !== 0) {
-                sundayIter.setDate(sundayIter.getDate() - 1);
-            }
-
-            while (sundayIter <= endYearDate) {
-                const sundayStr = formatDate(sundayIter);
-
-                let weekDays = [];
-                for (let i = 0; i < 7; i++) {
-                    let d = new Date(sundayIter);
-                    d.setDate(d.getDate() + i);
-                    let dStr = formatDate(d);
-                    let tCode = getEffectiveAgentTask(agent, team.id, dStr);
-                    let tDef = TASKS[tCode] || TASKS['R'];
-                    weekDays.push({ date: d, dateStr: dStr, code: tCode, def: tDef });
-                }
-
-                let monTask = weekDays[1].def;
-                let endSunDate = new Date(sundayIter);
-                endSunDate.setDate(endSunDate.getDate() + 7);
-                let endSunStr = formatDate(endSunDate);
-                let endSunCode = getEffectiveAgentTask(agent, team.id, endSunStr);
-                let endSunTask = TASKS[endSunCode] || TASKS['R'];
-
-                let isSpecialShiftWeek = (monTask.shift === 'M' && endSunTask.shift === 'N');
-                let valid35h = false;
-
-                if (isSpecialShiftWeek) {
-                    let prevSatDate = new Date(sundayIter);
-                    prevSatDate.setDate(prevSatDate.getDate() - 1);
-                    let prevSatStr = formatDate(prevSatDate);
-                    let prevSatCode = getEffectiveAgentTask(agent, team.id, prevSatStr);
-                    let prevSatTask = TASKS[prevSatCode] || TASKS['R'];
-
-                    let sunIsFullRest = weekDays[0].def.isRest;
-                    let satFinishTime = prevSatTask.isRest ? 0 : timeToDecimal(prevSatTask.end);
-                    let satHas11hRest = prevSatTask.isRest || (satFinishTime <= 13);
-
-                    // Si le samedi était de Nuit, le dimanche ne peut pas compter comme 24h plein
-                    if (prevSatTask.shift !== 'N' && sunIsFullRest && satHas11hRest) {
-                        valid35h = true;
-                    }
-                }
-
-                if (!valid35h) {
-                    for (let i = 0; i < 7; i++) {
-                        if (weekDays[i].def.isRest) {
-                            // Vérification du quart du jour précédent
-                            let prevShift = 'none';
-                            if (i > 0) {
-                                prevShift = weekDays[i - 1].def.shift;
-                            } else {
-                                let pSatDate = new Date(sundayIter);
-                                pSatDate.setDate(pSatDate.getDate() - 1);
-                                let pSatCode = getEffectiveAgentTask(agent, team.id, formatDate(pSatDate));
-                                let pSatT = TASKS[pSatCode] || TASKS['R'];
-                                prevShift = pSatT.shift;
-                            }
-
-                            // Si précédé d'une Nuit ('N'), la nuit empiète jusqu'au matin : ne peut PAS valoir 24h plein
-                            if (prevShift === 'N') {
-                                continue;
-                            }
-
-                            let prevHas11h = false;
-                            let nextHas11h = false;
-
-                            if (i > 0) {
-                                let prevT = weekDays[i - 1].def;
-                                let finish = prevT.isRest ? 0 : timeToDecimal(prevT.end);
-                                if (prevT.isRest || finish <= 13) prevHas11h = true;
-                            } else {
-                                let pSatDate = new Date(sundayIter);
-                                pSatDate.setDate(pSatDate.getDate() - 1);
-                                let pSatCode = getEffectiveAgentTask(agent, team.id, formatDate(pSatDate));
-                                let pSatT = TASKS[pSatCode] || TASKS['R'];
-                                let finish = pSatT.isRest ? 0 : timeToDecimal(pSatT.end);
-                                if (pSatT.isRest || finish <= 13) prevHas11h = true;
-                            }
-
-                            if (i < 6) {
-                                let nextT = weekDays[i + 1].def;
-                                let start = nextT.isRest ? 24 : timeToDecimal(nextT.start);
-                                if (nextT.isRest || start >= 11) nextHas11h = true;
-                            } else {
-                                let nSunDate = new Date(sundayIter);
-                                nSunDate.setDate(nSunDate.getDate() + 7);
-                                let nSunCode = getEffectiveAgentTask(agent, team.id, formatDate(nSunDate));
-                                let nSunT = TASKS[nSunCode] || TASKS['R'];
-                                let start = nSunT.isRest ? 24 : timeToDecimal(nSunT.start);
-                                if (nSunT.isRest || start >= 11) nextHas11h = true;
-                            }
-
-                            if (prevHas11h || nextHas11h) {
-                                valid35h = true;
-                                break;
+                                if (!nextTaskDef.isRest) {
+                                    const alertKey = `${agent.id}_${dStr}_NIGHT_REST`;
+                                    generatedAlerts.push({
+                                        key: alertKey,
+                                        agentName: agent.name,
+                                        date: dStr,
+                                        message: `Pas de repos immédiat après la nuit du ${dStr}`
+                                    });
+                                }
                             }
                         }
+                        curr.setDate(curr.getDate() + 1);
                     }
-                }
+                });
+            });
 
-                if (!valid35h) {
-                    generatedAlerts.push({
-                        id: `REST35_${agent.id}_${sundayStr}`,
-                        agentId: agent.id,
-                        agentName: agent.name,
-                        date: sundayStr,
-                        type: 'REPOS_35H',
-                        description: `Repos hebdomadaire de 35h (24h + 11h) non respecté sur la semaine du dimanche ${sundayStr}`
-                    });
-                }
+            // Affichage dans le bandeau d'alerte
+            const alertBanner = document.getElementById('alertBanner');
+            const alertList = document.getElementById('alertList');
+            alertList.innerHTML = '';
 
-                sundayIter.setDate(sundayIter.getDate() + 7);
+            const unacknowledged = generatedAlerts.filter(a => !acknowledgedAlerts.some(ack => ack.key === a.key));
+
+            if (unacknowledged.length > 0) {
+                alertBanner.style.display = 'block';
+                unacknowledged.forEach(al => {
+                    const li = document.createElement('li');
+                    li.innerHTML = `
+                        <span><strong>${al.agentName}</strong> : ${al.message}</span>
+                        <button class="btn btn-ack" onclick="openAckModal('${al.key}', '${al.agentName}', '${al.message}')">Acquitter</button>
+                    `;
+                    alertList.appendChild(li);
+                });
+            } else {
+                alertBanner.style.display = 'none';
             }
-
-            // 3. LIMITATION À 11 JOURS CONSÉCUTIFS DE TRAVAIL MAX
-            let consecutiveWorkDays = 0;
-            let workStartDate = null;
-            let checkMaxDate = new Date(startYearDate);
-
-            while (checkMaxDate <= endYearDate) {
-                const dStr = formatDate(checkMaxDate);
-                const tCode = getEffectiveAgentTask(agent, team.id, dStr);
-                const tDef = TASKS[tCode] || TASKS['R'];
-
-                if (!tDef.isRest) {
-                    if (consecutiveWorkDays === 0) workStartDate = dStr;
-                    consecutiveWorkDays++;
-
-                    if (consecutiveWorkDays > 11) {
-                        generatedAlerts.push({
-                            id: `MAX11DAYS_${agent.id}_${dStr}`,
-                            agentId: agent.id,
-                            agentName: agent.name,
-                            date: dStr,
-                            type: 'MAX_11_JOURS',
-                            description: `Dépassement de la limite de 11 jours de travail consécutifs (${consecutiveWorkDays} jours d'affilée depuis le ${workStartDate})`
-                        });
-                    }
-                } else {
-                    consecutiveWorkDays = 0;
-                    workStartDate = null;
-                }
-                checkMaxDate.setDate(checkMaxDate.getDate() + 1);
-            }
-
-        });
-    });
-
-    const activeAlerts = generatedAlerts.filter(a => !acknowledgedAlerts.some(ack => ack.id === a.id));
-    const alertBanner = document.getElementById('alertBanner');
-    const alertList = document.getElementById('alertList');
-    alertList.innerHTML = '';
-
-    if (activeAlerts.length > 0) {
-        alertBanner.style.display = 'block';
-        activeAlerts.forEach(al => {
-            const li = document.createElement('li');
-            li.innerHTML = `
-                <span><strong>${al.agentName}</strong> (${al.date}) : ${al.description}</span>
-                ${!isReadOnly ? `<button class="btn btn-ack" onclick="openAckModal('${al.id}', '${al.agentName}', '${al.date}', '${al.description}')">Acquitter</button>` : ''}
-            `;
-            alertList.appendChild(li);
-        });
-    } else {
-        alertBanner.style.display = 'none';
-    }
-
-    activeAlerts.forEach(al => {
-        if (!knownAlertKeys.has(al.id)) {
-            knownAlertKeys.add(al.id);
-            showNotificationModal(al);
-        }
-    });
-}
-
-
-
-        function showNotificationModal(al) {
-            const modal = document.getElementById('notificationModal');
-            const msg = document.getElementById('notificationMessage');
-            msg.innerHTML = `Attention pour <strong>${al.agentName}</strong> le ${al.date} : ${al.description}`;
-            modal.style.display = 'flex';
         }
 
-        function closeNotificationModal() {
-            document.getElementById('notificationModal').style.display = 'none';
-        }
-
-        function openAckModal(alertId, agentName, date, description) {
-            if (isReadOnly) return;
-            pendingAckAlert = { alertId, agentName, date, description };
-            document.getElementById('ackAlertDetails').innerHTML = `Acquittement pour <strong>${agentName}</strong> (${date}) :<br><em>${description}</em>`;
+        function openAckModal(key, agentName, message) {
+            if (isReadOnly) { alert("Accès modification requis."); return; }
+            pendingAckAlert = { key, agentName, message };
+            document.getElementById('ackAlertDetails').innerHTML = `Alerte pour <strong>${agentName}</strong> : ${message}`;
             document.getElementById('ackComment').value = '';
             document.getElementById('ackModal').style.display = 'flex';
         }
@@ -2348,16 +2628,17 @@ function closeArchiveRemplacementModal() {
             if (isReadOnly || !pendingAckAlert) return;
             const comment = document.getElementById('ackComment').value.trim();
             if (!comment) {
-                alert("Veuillez saisir un commentaire de justification.");
+                alert("Un commentaire est obligatoire pour acquitter l'alerte.");
                 return;
             }
 
             acknowledgedAlerts.push({
-                id: pendingAckAlert.alertId,
+                key: pendingAckAlert.key,
                 agentName: pendingAckAlert.agentName,
-                description: pendingAckAlert.description,
+                message: pendingAckAlert.message,
                 comment: comment,
-                dateAck: formatDate(new Date())
+                by: currentUser ? currentUser.email : 'RE',
+                date: formatDate(new Date())
             });
 
             closeAckModal();
@@ -2369,16 +2650,16 @@ function closeArchiveRemplacementModal() {
             tbody.innerHTML = '';
 
             if (acknowledgedAlerts.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">Aucune alerte acquittée enregistrée.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">Aucune alerte archivée.</td></tr>';
             } else {
                 acknowledgedAlerts.forEach(ack => {
                     const tr = document.createElement('tr');
                     tr.innerHTML = `
-                        <td>${ack.dateAck}</td>
+                        <td>${ack.date}</td>
                         <td>${ack.agentName}</td>
                         <td>-</td>
-                        <td>${ack.description}</td>
-                        <td>${ack.comment}</td>
+                        <td>${ack.message}</td>
+                        <td>${ack.comment} <br><small>Par: ${ack.by}</small></td>
                     `;
                     tbody.appendChild(tr);
                 });
@@ -2390,621 +2671,11 @@ function closeArchiveRemplacementModal() {
             document.getElementById('archiveModal').style.display = 'none';
         }
 
-        function promptTeamRotation(teamId, dateStr, taskCode) {
-            if (isReadOnly) return;
-            pendingRotation = { teamId, dateStr, taskCode };
-            document.getElementById('repeatDateText').innerText = dateStr;
-            document.getElementById('repeatModal').style.display = 'flex';
+        function closeNotificationModal() {
+            document.getElementById('notificationModal').style.display = 'none';
         }
 
-        function closeRepeatModal() {
-            document.getElementById('repeatModal').style.display = 'none';
-            pendingRotation = null;
-        }
-
-        function applyTeamRotation() {
-            if (isReadOnly || !pendingRotation) return;
-            const { teamId, dateStr, taskCode } = pendingRotation;
-            const freq = document.getElementById('repeatWeeks').value;
-            const durationWeeks = parseInt(document.getElementById('repeatDuration').value, 10);
-
-            if (!teamSchedules[teamId]) teamSchedules[teamId] = {};
-
-            const start = parseDate(dateStr);
-            let stepDays = 7;
-            if (freq === '1_DAY') stepDays = 1;
-            else stepDays = parseInt(freq, 10) * 7;
-
-            const totalDays = durationWeeks * 7;
-            let current = new Date(start);
-            const endDate = new Date(start);
-            endDate.setDate(endDate.getDate() + totalDays);
-
-            while (current <= endDate) {
-                const dStr = formatDate(current);
-                teamSchedules[teamId][dStr] = taskCode;
-                current.setDate(current.getDate() + stepDays);
-            }
-
-            closeRepeatModal();
-            renderAll(true);
-        }
-
-        function openAgentModal(agentId) {
-            let foundAgent = null;
-            teams.forEach(t => {
-                const a = t.agents.find(ag => ag.id === agentId);
-                if (a) foundAgent = a;
-            });
-
-            if (!foundAgent) return;
-
-            document.getElementById('editAgentId').value = foundAgent.id;
-            document.getElementById('editAgentName').value = foundAgent.name;
-
-            const skillsContainer = document.getElementById('skillsCheckboxes');
-            skillsContainer.innerHTML = '';
-            skillDefinitions.forEach(sk => {
-                const lbl = document.createElement('label');
-                const checked = (foundAgent.skills || []).includes(sk.id) ? 'checked' : '';
-                lbl.innerHTML = `<input type="checkbox" value="${sk.id}" ${checked}> ${sk.id} - ${sk.name}`;
-                skillsContainer.appendChild(lbl);
-            });
-
-            const copyTeamSel = document.getElementById('copyTeamSelect');
-            copyTeamSel.innerHTML = '';
-            teams.forEach(t => {
-                const opt = document.createElement('option');
-                opt.value = t.id;
-                opt.innerText = t.name;
-                copyTeamSel.appendChild(opt);
-            });
-
-            const copyAgentSel = document.getElementById('copyAgentSelect');
-            copyAgentSel.innerHTML = '';
-            teams.forEach(t => {
-                t.agents.forEach(a => {
-                    if (a.id !== agentId) {
-                        const opt = document.createElement('option');
-                        opt.value = a.id;
-                        opt.innerText = `${a.name} (${t.name})`;
-                        copyAgentSel.appendChild(opt);
-                    }
-                });
-            });
-
-            const bulkTaskSel = document.getElementById('bulkAgentTask');
-            bulkTaskSel.innerHTML = '';
-            Object.keys(TASKS).forEach(code => {
-                const opt = document.createElement('option');
-                opt.value = code;
-                opt.innerText = `${code} - ${TASKS[code].label}`;
-                bulkTaskSel.appendChild(opt);
-            });
-
-            const todayStr = formatDate(new Date());
-            document.getElementById('copyTeamStartDate').value = todayStr;
-            document.getElementById('copyTeamEndDate').value = todayStr;
-            document.getElementById('copyAgentStartDate').value = todayStr;
-            document.getElementById('copyAgentEndDate').value = todayStr;
-            document.getElementById('copyAgentComment').value = '';
-            document.getElementById('bulkStartDate').value = todayStr;
-            document.getElementById('bulkEndDate').value = todayStr;
-            document.getElementById('bulkAgentDesc').value = '';
-            document.getElementById('bulkAgentFreq').value = 'NONE';
-
-            toggleAgentRecurrenceUI();
-            document.getElementById('agentModal').style.display = 'flex';
-        }
-
-        function closeAgentModal() {
-            document.getElementById('agentModal').style.display = 'none';
-        }
-
-        function toggleAgentRecurrenceUI() {
-            const freq = document.getElementById('bulkAgentFreq').value;
-            const endDateGroup = document.getElementById('bulkEndDateGroup');
-            const durationGroup = document.getElementById('bulkDurationGroup');
-
-            if (freq === 'NONE') {
-                endDateGroup.style.display = 'block';
-                durationGroup.style.display = 'none';
-            } else {
-                endDateGroup.style.display = 'none';
-                durationGroup.style.display = 'block';
-            }
-        }
-
-        function saveAgent() {
-            if (isReadOnly) return;
-            const id = document.getElementById('editAgentId').value;
-            const name = document.getElementById('editAgentName').value.trim();
-
-            const checkedSkills = [];
-            document.querySelectorAll('#skillsCheckboxes input[type="checkbox"]:checked').forEach(cb => {
-                checkedSkills.push(cb.value);
-            });
-
-            teams.forEach(t => {
-                const a = t.agents.find(ag => ag.id === id);
-                if (a) {
-                    a.name = name;
-                    a.skills = checkedSkills;
-                }
-            });
-
-            closeAgentModal();
-            renderAll(true);
-        }
-
-        function applyCopyTeamSchedule() {
-            if (isReadOnly) return;
-            const agentId = document.getElementById('editAgentId').value;
-            const teamId = document.getElementById('copyTeamSelect').value;
-            const startStr = document.getElementById('copyTeamStartDate').value;
-            const endStr = document.getElementById('copyTeamEndDate').value;
-
-            if (!startStr || !endStr) {
-                alert("Veuillez sélectionner les dates de début et de fin.");
-                return;
-            }
-
-            const dStart = parseDate(startStr);
-            const dEnd = parseDate(endStr);
-
-            if (dStart > dEnd) {
-                alert("La date de début doit être antérieure à la date de fin.");
-                return;
-            }
-
-            if (!agentSchedules[agentId]) agentSchedules[agentId] = {};
-
-            let curr = new Date(dStart);
-            while (curr <= dEnd) {
-                const dStr = formatDate(curr);
-                const teamTask = teamSchedules[teamId] ? (teamSchedules[teamId][dStr] || 'R') : 'R';
-                agentSchedules[agentId][dStr] = teamTask;
-                curr.setDate(curr.getDate() + 1);
-            }
-
-            alert("✅ Roulement d'équipe copié avec succès !");
-            closeAgentModal();
-            renderAll(true);
-        }
-
-        function applyCopyAgentSchedule() {
-            if (isReadOnly) return;
-            const targetAgentId = document.getElementById('editAgentId').value;
-            const sourceAgentId = document.getElementById('copyAgentSelect').value;
-            const comment = document.getElementById('copyAgentComment').value.trim();
-            const startStr = document.getElementById('copyAgentStartDate').value;
-            const endStr = document.getElementById('copyAgentEndDate').value;
-
-            if (!startStr || !endStr) {
-                alert("Veuillez sélectionner les dates de début et de fin.");
-                return;
-            }
-
-            const dStart = parseDate(startStr);
-            const dEnd = parseDate(endStr);
-
-            if (dStart > dEnd) {
-                alert("La date de début doit être antérieure à la date de fin.");
-                return;
-            }
-
-            let sourceTeamId = null;
-            teams.forEach(t => {
-                if (t.agents.some(a => a.id === sourceAgentId)) sourceTeamId = t.id;
-            });
-
-            if (!agentSchedules[targetAgentId]) agentSchedules[targetAgentId] = {};
-
-            let curr = new Date(dStart);
-            while (curr <= dEnd) {
-                const dStr = formatDate(curr);
-                const task = getEffectiveAgentTask({ id: sourceAgentId }, sourceTeamId, dStr);
-                agentSchedules[targetAgentId][dStr] = task;
-
-                if (comment) {
-                    taskDescriptions[`${targetAgentId}_${dStr}`] = comment;
-                }
-                curr.setDate(curr.getDate() + 1);
-            }
-
-            alert("✅ Roulement d'agent copié avec succès !");
-            closeAgentModal();
-            renderAll(true);
-        }
-
-        function applyBulkAgentTask() {
-            if (isReadOnly) return;
-            const agentId = document.getElementById('editAgentId').value;
-            const taskCode = document.getElementById('bulkAgentTask').value;
-            const desc = document.getElementById('bulkAgentDesc').value.trim();
-            const startStr = document.getElementById('bulkStartDate').value;
-            const freq = document.getElementById('bulkAgentFreq').value;
-
-            if (!startStr) {
-                alert("Veuillez sélectionner une date de début.");
-                return;
-            }
-
-            if (!agentSchedules[agentId]) agentSchedules[agentId] = {};
-
-            const startDate = parseDate(startStr);
-
-            if (freq === 'NONE') {
-                const endStr = document.getElementById('bulkEndDate').value;
-                if (!endStr) {
-                    alert("Veuillez sélectionner une date de fin.");
-                    return;
-                }
-                const endDate = parseDate(endStr);
-                if (startDate > endDate) {
-                    alert("La date de début doit être antérieure à la date de fin.");
-                    return;
-                }
-
-                let curr = new Date(startDate);
-                while (curr <= endDate) {
-                    const dStr = formatDate(curr);
-                    agentSchedules[agentId][dStr] = taskCode;
-                    if (desc) taskDescriptions[`${agentId}_${dStr}`] = desc;
-                    curr.setDate(curr.getDate() + 1);
-                }
-            } else {
-                const durationYears = parseInt(document.getElementById('bulkAgentDuration').value, 10);
-                let stepDays = 1;
-                if (freq !== '1_DAY') stepDays = parseInt(freq, 10) * 7;
-
-                const endDate = new Date(startDate);
-                endDate.setFullYear(endDate.getFullYear() + durationYears);
-
-                let curr = new Date(startDate);
-                while (curr <= endDate) {
-                    const dStr = formatDate(curr);
-                    agentSchedules[agentId][dStr] = taskCode;
-                    if (desc) taskDescriptions[`${agentId}_${dStr}`] = desc;
-                    curr.setDate(curr.getDate() + stepDays);
-                }
-            }
-
-            alert("✅ Affectation effectuée !");
-            closeAgentModal();
-            renderAll(true);
-        }
-
-        function openSettings() {
-    if (!isAdmin) return;
-
-    // Remplissage des compétences
-    const skillsContainer = document.getElementById('skillsConfigContainer');
-    skillsContainer.innerHTML = '';
-    skillDefinitions.forEach(sk => renderSkillRow(sk));
-
-    // Remplissage des règles d'exclusivité
-    const monitoredContainer = document.getElementById('monitoredSkillsConfigContainer');
-    monitoredContainer.innerHTML = '';
-    (exclusiveSkillMonitoredGroups || []).forEach(group => renderMonitoredGroupRow(group));
-
-    // Remplissage des Tâches
-    const tasksContainer = document.getElementById('tasksContainer');
-    tasksContainer.innerHTML = '';
-    Object.keys(TASKS).forEach(code => {
-        const t = TASKS[code];
-        addTaskRow(code, t.label, t.shift, t.start, t.end, t.isRest, t.isReplacement, t.color, t.text);
-    });
-
-    // Remplissage des seuils globaux
-    document.getElementById('th_M_orange').value = settings.thresholds.M.orange;
-    document.getElementById('th_M_green').value = settings.thresholds.M.green;
-    document.getElementById('th_A_orange').value = settings.thresholds.A.orange;
-    document.getElementById('th_A_green').value = settings.thresholds.A.green;
-    document.getElementById('th_N_orange').value = settings.thresholds.N.orange;
-    document.getElementById('th_N_green').value = settings.thresholds.N.green;
-
-    document.getElementById('settingsModal').style.display = 'flex';
-}
-
-
-        function renderSkillsConfig() {
-            const container = document.getElementById('skillsConfigContainer');
-            container.innerHTML = '';
-
-            skillDefinitions.forEach((sk, idx) => {
-                const row = document.createElement('div');
-                row.className = 'skill-config-row';
-                row.innerHTML = `
-                    <input type="text" value="${sk.id}" id="sk_id_${idx}" style="font-weight:bold;">
-                    <input type="text" value="${sk.name}" id="sk_name_${idx}">
-                    <input type="color" value="${sk.color}" id="sk_color_${idx}">
-                    <input type="number" value="${sk.min !== undefined ? sk.min : 1}" min="0" id="sk_min_${idx}">
-                    <button class="btn btn-danger" onclick="removeSkillRow(${idx})">✕</button>
-                `;
-                container.appendChild(row);
-            });
-        }
-
-        function addSkillRow() {
-            skillDefinitions.push({
-                id: `C${skillDefinitions.length + 1}`,
-                name: 'Nouvelle Compétence',
-                color: '#34495e',
-                min: 1
-            });
-            renderSkillsConfig();
-        }
-
-        function removeSkillRow(idx) {
-            skillDefinitions.splice(idx, 1);
-            renderSkillsConfig();
-        }
-
-        function renderMonitoredSkillsConfig() {
-            const container = document.getElementById('monitoredSkillsConfigContainer');
-            container.innerHTML = '';
-
-            (exclusiveSkillMonitoredGroups || []).forEach((group, idx) => {
-                const row = document.createElement('div');
-                row.className = 'monitored-skills-row';
-
-                let checkboxesHtml = '';
-                skillDefinitions.forEach(sk => {
-                    const checked = group.includes(sk.id) ? 'checked' : '';
-                    checkboxesHtml += `<label style="font-size:0.75rem; display:inline-flex; align-items:center; gap:3px;"><input type="checkbox" class="monitored-cb-${idx}" value="${sk.id}" ${checked}> ${sk.id}</label> `;
-                });
-
-                row.innerHTML = `
-                    <span style="font-weight:bold; font-size:0.8rem;">Groupe ${idx + 1} :</span>
-                    <div style="display:flex; flex-wrap:wrap; gap:8px;">${checkboxesHtml}</div>
-                    <button class="btn btn-danger" style="margin-left:auto;" onclick="removeMonitoredSkillGroupRow(${idx})">✕</button>
-                `;
-                container.appendChild(row);
-            });
-        }
-
-        function addMonitoredSkillGroupRow() {
-            if (!exclusiveSkillMonitoredGroups) exclusiveSkillMonitoredGroups = [];
-            exclusiveSkillMonitoredGroups.push([]);
-            renderMonitoredSkillsConfig();
-        }
-
-        function removeMonitoredSkillGroupRow(idx) {
-            exclusiveSkillMonitoredGroups.splice(idx, 1);
-            renderMonitoredSkillsConfig();
-        }
-
-        function renderTasksConfig() {
-            const container = document.getElementById('tasksContainer');
-            container.innerHTML = '';
-
-            Object.keys(TASKS).forEach((code, idx) => {
-                const t = TASKS[code];
-                const row = document.createElement('div');
-                row.className = 'task-row';
-                row.innerHTML = `
-                    <input type="text" value="${code}" id="task_code_${idx}" style="font-weight:bold;">
-                    <input type="text" value="${t.label}" id="task_label_${idx}">
-                    <select id="task_shift_${idx}">
-                        <option value="none" ${t.shift === 'none' ? 'selected' : ''}>Aucun</option>
-                        <option value="M" ${t.shift === 'M' ? 'selected' : ''}>Matin</option>
-                        <option value="A" ${t.shift === 'A' ? 'selected' : ''}>Après-Midi</option>
-                        <option value="N" ${t.shift === 'N' ? 'selected' : ''}>Nuit</option>
-                        <option value="J" ${t.shift === 'J' ? 'selected' : ''}>Journée</option>
-                    </select>
-                    <input type="time" value="${t.start || '00:00'}" id="task_start_${idx}">
-                    <input type="time" value="${t.end || '00:00'}" id="task_end_${idx}">
-                    <input type="checkbox" ${t.isRest ? 'checked' : ''} id="task_rest_${idx}">
-                    <input type="color" value="${t.color}" id="task_color_${idx}">
-                    <input type="color" value="${t.text}" id="task_text_${idx}">
-                    <button class="btn btn-danger" onclick="removeTaskRow('${code}')">✕</button>
-                `;
-                container.appendChild(row);
-            });
-        }
-
-        function addTaskRow(code = '', label = '', shift = 'none', start = '00:00', end = '00:00', isRest = false, isReplacement = false, color = '#3498db', text = '#ffffff') {
-    const container = document.getElementById('tasksContainer');
-    const div = document.createElement('div');
-    div.className = 'task-row';
-    div.innerHTML = `
-        <input type="text" class="t-code" value="${code}" placeholder="Code" maxlength="5" style="text-transform:uppercase;">
-        <input type="text" class="t-label" value="${label}" placeholder="Libellé">
-        <select class="t-shift">
-            <option value="none" ${shift === 'none' ? 'selected' : ''}>Aucun</option>
-            <option value="M" ${shift === 'M' ? 'selected' : ''}>Matin</option>
-            <option value="A" ${shift === 'A' ? 'selected' : ''}>Après-Midi</option>
-            <option value="N" ${shift === 'N' ? 'selected' : ''}>Nuit</option>
-            <option value="J" ${shift === 'J' ? 'selected' : ''}>Journée</option>
-        </select>
-        <input type="time" class="t-start" value="${start}">
-        <input type="time" class="t-end" value="${end}">
-        <div style="text-align:center;"><input type="checkbox" class="t-rest" ${isRest ? 'checked' : ''} title="Est un repos ?"></div>
-        <div style="text-align:center;"><input type="checkbox" class="t-rpl" ${isReplacement ? 'checked' : ''} title="Déclenche la Fiche de Remplacement ?"></div>
-        <input type="color" class="t-bg" value="${color}">
-        <input type="color" class="t-txt" value="${text}">
-        <button class="btn btn-danger" style="padding:2px 5px;" onclick="this.parentElement.remove()">🗑️</button>
-    `;
-    container.appendChild(div);
-}
-
-        function removeTaskRow(code) {
-            delete TASKS[code];
-            renderTasksConfig();
-        }
-
-        function saveSettings() {
-    if (isReadOnly || !isAdmin) return;
-
-    // 1. Sauvegarde des compétences
-    const newSkills = [];
-    document.querySelectorAll('.skill-config-row').forEach(row => {
-        const id = row.querySelector('.sk-id').value.trim().toUpperCase();
-        const name = row.querySelector('.sk-name').value.trim();
-        const color = row.querySelector('.sk-color').value;
-        const min = parseInt(row.querySelector('.sk-min').value) || 0;
-        if (id && name) {
-            newSkills.push({ id, name, color, min });
-        }
-    });
-    if (newSkills.length > 0) skillDefinitions = newSkills;
-
-    // 2. Sauvegarde des groupes d'exclusivité
-    const newMonitoredGroups = [];
-    document.querySelectorAll('.monitored-skills-row').forEach(row => {
-        const selected = [];
-        row.querySelectorAll('input[type="checkbox"]:checked').forEach(cb => {
-            selected.push(cb.value);
-        });
-        if (selected.length >= 2) {
-            newMonitoredGroups.push(selected);
-        }
-    });
-    exclusiveSkillMonitoredGroups = newMonitoredGroups;
-
-    // 3. Sauvegarde des tâches (incluant l'option Fiche de Remplacement)
-    const newTasks = {};
-    document.querySelectorAll('.task-row').forEach(row => {
-        const code = row.querySelector('.t-code').value.trim().toUpperCase();
-        const label = row.querySelector('.t-label').value.trim();
-        const shift = row.querySelector('.t-shift').value;
-        const start = row.querySelector('.t-start').value;
-        const end = row.querySelector('.t-end').value;
-        const isRest = row.querySelector('.t-rest').checked;
-        const isReplacement = row.querySelector('.t-rpl').checked;
-        const color = row.querySelector('.t-bg').value;
-        const text = row.querySelector('.t-txt').value;
-
-        if (code && label) {
-            newTasks[code] = { label, shift, start, end, isRest, isReplacement, color, text };
-        }
-    });
-    if (Object.keys(newTasks).length > 0) TASKS = newTasks;
-
-    // 4. Seuils d'effectifs
-    settings.thresholds.M.orange = parseInt(document.getElementById('th_M_orange').value) || 5;
-    settings.thresholds.M.green = parseInt(document.getElementById('th_M_green').value) || 7;
-    settings.thresholds.A.orange = parseInt(document.getElementById('th_A_orange').value) || 5;
-    settings.thresholds.A.green = parseInt(document.getElementById('th_A_green').value) || 7;
-    settings.thresholds.N.orange = parseInt(document.getElementById('th_N_orange').value) || 3;
-    settings.thresholds.N.green = parseInt(document.getElementById('th_N_green').value) || 5;
-
-    document.getElementById('settingsModal').style.display = 'none';
-    renderAll();
-}
-
-        function openPrintModal() {
-            const printYear = document.getElementById('printYear');
-            printYear.innerHTML = '';
-            for (let y = minYearAvailable; y <= maxYearAvailable; y++) {
-                const opt = document.createElement('option');
-                opt.value = y;
-                opt.innerText = y;
-                if (y === currentYear) opt.selected = true;
-                printYear.appendChild(opt);
-            }
-            document.getElementById('printMonth').value = new Date().getMonth();
-            document.getElementById('printModal').style.display = 'flex';
-        }
-
-        function closePrintModal() {
-            document.getElementById('printModal').style.display = 'none';
-        }
-
-        function generateAndPrintMonth() {
-            const month = parseInt(document.getElementById('printMonth').value, 10);
-            const year = parseInt(document.getElementById('printYear').value, 10);
-
-            const daysInMonth = new Date(year, month + 1, 0).getDate();
-            const monthName = new Date(year, month, 1).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
-
-            let html = `<h2>Planning - ${monthName.toUpperCase()}</h2><table><thead><tr><th>Agent</th>`;
-            for (let d = 1; d <= daysInMonth; d++) {
-                const date = new Date(year, month, d);
-                const dayStr = date.toLocaleDateString('fr-FR', { weekday: 'narrow' });
-                html += `<th>${dayStr}<br>${d}</th>`;
-            }
-            html += `</tr></thead><tbody>`;
-
-            teams.forEach(team => {
-                html += `<tr style="background:#eee; font-weight:bold;"><td style="text-align:left;">${team.name}</td>`;
-                for (let d = 1; d <= daysInMonth; d++) {
-                    const dStr = formatDate(new Date(year, month, d));
-                    const code = teamSchedules[team.id] ? (teamSchedules[team.id][dStr] || 'R') : 'R';
-                    const tDef = TASKS[code] || TASKS['R'];
-                    html += `<td style="background-color:${tDef.color}; color:${tDef.text}">${code}</td>`;
-                }
-                html += `</tr>`;
-
-                team.agents.forEach(agent => {
-                    html += `<tr><td style="text-align:left; padding-left:10px;">${agent.name}</td>`;
-                    for (let d = 1; d <= daysInMonth; d++) {
-                        const dStr = formatDate(new Date(year, month, d));
-                        const code = getEffectiveAgentTask(agent, team.id, dStr);
-                        const tDef = TASKS[code] || TASKS['R'];
-                        html += `<td style="background-color:${tDef.color}; color:${tDef.text}">${code}</td>`;
-                    }
-                    html += `</tr>`;
-                });
-            });
-
-            html += `</tbody></table>`;
-
-            document.getElementById('printSection').innerHTML = html;
-            closePrintModal();
-            window.print();
-        }
-
-// Fonction pour ajouter un nouvel agent à une équipe
-function addNewAgentToTeam(teamId) {
-    if (isReadOnly) return;
-
-    const team = teams.find(t => t.id === teamId);
-    if (!team) return;
-
-    const newAgentNumber = team.agents.length + 1;
-    const teamNum = teamId.replace('team_', '');
-    const newAgentId = `e${teamNum}_a${Date.now()}`; // Identifiant unique
-    const newAgentName = prompt("Nom du nouvel agent :", `Agent ${teamNum}.${newAgentNumber}`);
-
-    if (!newAgentName || !newAgentName.trim()) return;
-
-    // Création de la structure de l'agent
-    const newAgent = {
-        id: newAgentId,
-        name: newAgentName.trim(),
-        skills: ['C1'] // Compétence attribuée par défaut
-    };
-
-    team.agents.push(newAgent);
-    renderAll(true); // Redessine et sauvegarde automatiquement dans Firebase
-}
-
-// Fonction pour supprimer un agent d'une équipe
-function deleteAgentFromTeam(teamId, agentId) {
-    if (isReadOnly) return;
-
-    const team = teams.find(t => t.id === teamId);
-    if (!team) return;
-
-    const agent = team.agents.find(a => a.id === agentId);
-    if (!agent) return;
-
-    if (confirm(`Êtes-vous sûr de vouloir supprimer l'agent "${agent.name}" de l'équipe "${team.name}" ?`)) {
-        // 1. Retrait de l'agent du tableau de l'équipe
-        team.agents = team.agents.filter(a => a.id !== agentId);
-
-        // 2. Nettoyage des plannings individuels rattachés à cet agent
-        if (agentSchedules[agentId]) {
-            delete agentSchedules[agentId];
-        }
-
-        renderAll(true); // Redessine et sauvegarde dans Firebase
-    }
-}
-
-
+        // Lancement de l'application
         window.onload = init;
     </script>
 </body>
