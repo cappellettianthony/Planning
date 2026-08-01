@@ -973,7 +973,7 @@ function loadAppState(data) {
 }
 
 
-
+// générer automatiquement des équipes et des agents fictifs par défaut, puis à initialiser plusieurs structures de données utilisées par l'application.
         function createDefaultTeams() {
             let defaultTeams = [];
             for (let t = 1; t <= 6; t++) {
@@ -1027,6 +1027,7 @@ function loadAppState(data) {
             });
         }
 
+        // met en place un système de présence en ligne en temps réel avec Firebase Realtime Database.
         function setupPresence(user) {
             const userKey = user.uid;
             const myPresenceRef = database.ref(`onlineUsers/${userKey}`);
@@ -1057,6 +1058,7 @@ function loadAppState(data) {
             });
         }
 
+        // gère la connexion d'un utilisateur avec Firebase Authentication à partir d'un formulaire HTML.
         function login() {
             const email = document.getElementById('email').value.trim();
             const password = document.getElementById('password').value;
@@ -1080,6 +1082,7 @@ function loadAppState(data) {
                 });
         }
 
+        // gère la procédure "Mot de passe oublié" avec Firebase Authentication.
         function motDePasseOublie() {
             const email = document.getElementById('email').value.trim();
             const errorEl = document.getElementById('authError');
@@ -1111,12 +1114,14 @@ function loadAppState(data) {
                 });
         }
 
+        // sert à déconnecter l'utilisateur actuellement connecté de l'application.
         function logout() {
             if (confirm("Se déconnecter ?")) {
                 auth.signOut();
             }
         }
 
+        // sert à adapter l'interface utilisateur en fonction des droits de l'utilisateur : Administrateur (isAdmin) Lecture seule (isReadOnly) Elle active ou désactive certains boutons et modifie leur apparence.
         function applyReadOnlyMode() {
             const settingsBtn = document.getElementById('settingsBtn');
             const importBtn = document.getElementById('importBtn');
@@ -1147,10 +1152,12 @@ if (resetAckBtn) {
             });
         }
 
+        // sert à récupérer l'état complet de l'application sous la forme d'un objet JavaScript unique.
         function getAppState() {
             return { teamSchedules, agentSchedules, taskDescriptions, teams, acknowledgedAlerts, skillDefinitions, exclusiveSkillMonitoredGroups, TASKS, settings };
         }
 
+        // est en quelque sorte l'inverse de getAppState() : elle sert à restaurer l'état de l'application à partir de données sauvegardées (par exemple venant de Firebase ou d'un fichier JSON).
         function loadAppState(data) {
             if (!data) return;
             teamSchedules = data.teamSchedules || {};
@@ -1182,6 +1189,7 @@ if (resetAckBtn) {
             settings = data.settings || settings;
         }
 
+        // sert à sauvegarder l'état complet de l'application dans Firebase Realtime Database, tout en effectuant quelques contrôles d'intégrité avant l'enregistrement.
         function saveToFirebase() {
             if (isReadOnly) return;
             try {
@@ -1204,6 +1212,7 @@ if (resetAckBtn) {
             }
         }
 
+        // sert à exporter toutes les données de l'application dans un fichier JSON téléchargeable afin de réaliser une sauvegarde locale.
         function exportData() {
             const dataStr = JSON.stringify(getAppState(), null, 2);
             const blob = new Blob([dataStr], { type: "application/json" });
@@ -1215,6 +1224,7 @@ if (resetAckBtn) {
             URL.revokeObjectURL(url);
         }
 
+        // permet d'importer une sauvegarde JSON de l'application, de recharger toutes les données dans la mémoire de l'application puis de les sauvegarder dans Firebase.
         function importData(event) {
             if (isReadOnly) { alert("Accès lecture seule : Import impossible."); return; }
             const file = event.target.files[0];
@@ -1234,6 +1244,7 @@ if (resetAckBtn) {
             reader.readAsText(file);
         }
 
+        // la fonction d'initialisation de l'application. Elle est généralement appelée au démarrage de la page et met en place tous les éléments nécessaires au fonctionnement de l'interface.
         function init() {
             initYearSelect();
             syncDatePicker();
@@ -1248,6 +1259,7 @@ if (resetAckBtn) {
             });
         }
 
+        // sert à remplir automatiquement une liste déroulante des années disponibles et à conserver l'année actuellement sélectionnée.
         function initYearSelect() {
             const select = document.getElementById('yearSelect');
             const savedValue = select.value || currentYear;
@@ -1261,10 +1273,12 @@ if (resetAckBtn) {
             }
         }
 
+        // sert à s'assurer qu'une année donnée est disponible dans la liste déroulante des années.
         function ensureYearExists(year) {
             if (year > maxYearAvailable) { maxYearAvailable = year + 1; initYearSelect(); }
         }
 
+        // est appelée lorsqu'un utilisateur change l'année sélectionnée dans l'interface. Elle met à jour le contexte temporel de l'application puis rafraîchit l'affichage.
         function changeYear(val) { 
             currentYear = parseInt(val); 
             startDate = new Date(currentYear, 0, 1); 
@@ -1272,6 +1286,7 @@ if (resetAckBtn) {
             renderAll(false); 
         }
 
+        // sert à déplacer la date courante d'un certain nombre de jours, puis à mettre à jour toute l'interface en conséquence.
         function navigateDays(days) { 
             startDate.setDate(startDate.getDate() + days); 
             currentYear = startDate.getFullYear(); 
@@ -1280,7 +1295,8 @@ if (resetAckBtn) {
             syncDatePicker(); 
             renderAll(false); 
         }
-        
+
+        // sert à revenir instantanément à la date du jour, puis à mettre à jour toute l'interface du planning.
         function goToToday() { 
             startDate = new Date(); 
             currentYear = startDate.getFullYear(); 
@@ -1289,7 +1305,8 @@ if (resetAckBtn) {
             syncDatePicker(); 
             renderAll(false); 
         }
-        
+
+        // sert à aller directement à une date choisie par l'utilisateur, sans passer par les boutons de navigation.
         function jumpToDate(dateStr) { 
             if (dateStr) { 
                 startDate = parseDate(dateStr); 
@@ -1300,6 +1317,7 @@ if (resetAckBtn) {
             } 
         }
 
+        // est la fonction centrale de rafraîchissement de l'application. Chaque fois qu'une donnée change (planning, date, équipe, agent, etc.), elle reconstruit l'interface et, si nécessaire, déclenche une sauvegarde.
         function renderAll(save = true) {
             updateDashboard();
             generateHeaders();
@@ -1309,6 +1327,7 @@ if (resetAckBtn) {
             applyReadOnlyMode();
         }
 
+        // sert à générer la liste des dates actuellement visibles dans le planning à partir de la date de départ (startDate).
         function getVisibleDates() {
             const dates = [];
             for (let i = 0; i < DAYS_TO_SHOW; i++) {
@@ -1319,6 +1338,7 @@ if (resetAckBtn) {
             return dates;
         }
 
+        // sert à convertir un objet JavaScript Date en chaîne de caractères au format YYYY-MM-DD, un format très utilisé pour :
         function formatDate(d) {
             const year = d.getFullYear(); 
             const month = String(d.getMonth() + 1).padStart(2, '0'); 
@@ -1326,16 +1346,19 @@ if (resetAckBtn) {
             return `${year}-${month}-${day}`;
         }
 
+        // est l'inverse de votre fonction formatDate(). Elle sert à convertir une chaîne de caractères au format YYYY-MM-DD en objet JavaScript Date.
         function parseDate(dateStr) { 
             const parts = dateStr.split('-'); 
             return new Date(parts[0], parts[1] - 1, parts[2]); 
         }
-        
+
+        // sert à synchroniser le champ de sélection de date de l'interface avec la variable startDate utilisée par l'application.
         function syncDatePicker() { 
             document.getElementById('datePicker').value = formatDate(startDate); 
         }
         
-
+        // construit dynamiquement la ligne d'en-tête du tableau de planning. Elle affiche : 
+        // les colonnes fixes (Équipe / Agent et Compétences) ; le bouton de réduction/agrandissement de la colonne Compétences ; une colonne pour chaque date visible ; un indicateur visuel d'alerte par jour.
         function generateHeaders() {
             const headerTr = document.getElementById('headerDays');
             const table = document.getElementById('planningTable');
@@ -1375,6 +1398,7 @@ if (resetAckBtn) {
             });
         }
 
+        // sert à réduire ou agrandir l'affichage de la colonne "Compétences" dans le tableau de planning.
         function toggleSkillsColumn() {
             const table = document.getElementById('planningTable');
             table.classList.toggle('collapsed-skills');
@@ -1386,6 +1410,7 @@ if (resetAckBtn) {
             }
         }
 
+        // sert à afficher visuellement les compétences d'un agent sous forme de badges colorés dans un conteneur HTML.
         function renderSkillBadges(container, agentSkills) {
             container.innerHTML = '';
             if (!agentSkills || agentSkills.length === 0) {
@@ -1405,12 +1430,15 @@ if (resetAckBtn) {
             });
         }
 
+        // sert à déterminer quelle tâche ou affectation est réellement appliquée à un agent pour une date donnée, en tenant compte des priorités entre le planning individuel et le planning de l'équipe.
         function getEffectiveAgentTask(agent, teamId, dateStr) {
             if (agentSchedules[agent.id] && agentSchedules[agent.id][dateStr] !== undefined) return agentSchedules[agent.id][dateStr];
             if (teamSchedules[teamId] && teamSchedules[teamId][dateStr] !== undefined) return teamSchedules[teamId][dateStr];
             return 'R';
         }
 
+        // sert à compter le nombre de jours où un agent a travaillé alors que son équipe était en repos, sur toute l'année en cours.
+        // Autrement dit, elle calcule le nombre de remplacements, renforts ou jours supplémentaires effectués par l'agent.
         function calculateExtraShiftsCount(agent, teamId) {
             let count = 0;
             const startYearDate = new Date(currentYear, 0, 1);
@@ -1435,6 +1463,8 @@ if (resetAckBtn) {
             return count;
         }
 
+        // sert à afficher une infobulle personnalisée ("tooltip") lorsqu'on laisse la souris suffisamment longtemps sur une cellule.
+        // Elle remplace le comportement standard du title="" du navigateur par une bulle de texte entièrement contrôlée en JavaScript.
         function attachCellHoverEvents(element, description) {
             if (!description || !description.trim()) return;
 
@@ -1464,6 +1494,7 @@ if (resetAckBtn) {
             });
         }
 
+        // Elle calcule tous les indicateurs du planning, détecte les alertes de couverture de compétences, puis construit l'affichage du tableau de bord (dashboard).
         function updateDashboard() {
             const dashboard = document.getElementById('dashboard');
             dashboard.innerHTML = '';
@@ -1585,6 +1616,8 @@ if (resetAckBtn) {
             });
         }
 
+        // fonction principale qui construit tout le tableau du planning : équipes, agents, compétences, affectations, couleurs, alertes visuelles et actions utilisateur.
+        // Elle transforme les données métier (teams, teamSchedules, agentSchedules, TASKS, etc.) en tableau HTML affiché à l'écran.
         function generateTable() {
     const tbody = document.getElementById('tableBody'); 
     tbody.innerHTML = '';
@@ -1707,6 +1740,8 @@ bindCellEvents(cellDiv, false, agent.id, agent.name, dateStr, taskCode, desc);
     });
 }
 
+        // gestionnaire d'interactions sur une cellule du planning. Elle gère à la fois : 
+        // les clics souris (PC), les interactions tactiles (mobile/tablette), l'ouverture de fenêtres de modification, l'ouverture d'une fiche de remplacement selon le type de tâche.
 function bindCellEvents(cellDiv, isTeam, targetId, targetName, dateStr, currentTaskCode, currentDesc) {
     const isRplTask = TASKS[currentTaskCode] && TASKS[currentTaskCode].isReplacement;
 
@@ -1767,7 +1802,9 @@ function bindCellEvents(cellDiv, isTeam, targetId, targetName, dateStr, currentT
 }
 
 
-
+// gère la distinction entre un clic simple et un double-clic sur une cellule du planning. 
+// variante simplifiée de la logique désormais intégrée dans bindCellEvents
+        // Voir pour suppression de la fonction si plus utile. Faire vérification avant suppression
 function handleTaskCellClick(event, isTeam, targetId, targetName, dateStr, currentTaskCode, currentDesc) {
     if (clickTimer) {
         clearTimeout(clickTimer);
@@ -1789,6 +1826,9 @@ function handleTaskCellClick(event, isTeam, targetId, targetName, dateStr, curre
     }
 }
 
+        // sert à ouvrir et préparer la fiche de remplacement (RPL) associée à une cellule du planning.
+        // En pratique, lorsqu'un utilisateur double-clique ou effectue un appui long sur une tâche de type remplacement, cette fonction :
+        // mémorise le contexte (équipe/agent, date) ; initialise les données de remplacement ; charge la liste des agents disponibles ; prépare l'interface ; affiche la fenêtre modale.
 function openReplacementModal(isTeam, targetId, targetName, dateStr) {
     activeRplContext = { isTeam, targetId, targetName, dateStr };
     const sheetKey = `${targetId}_${dateStr}`;
@@ -1827,6 +1867,8 @@ function openReplacementModal(isTeam, targetId, targetName, dateStr) {
     document.getElementById('replacementModal').style.display = 'flex';
 }
 
+        // sert à afficher les statistiques de remplacement d'un agent sélectionné dans la fiche RPL.
+        // Son objectif est d'aider la personne qui gère le remplacement à voir rapidement combien de quarts supplémentaires cet agent a déjà effectués durant l'année, afin d'équilibrer la charge entre les agents.
 function updateRplAgentStats() {
     const agentId = document.getElementById('rplAgentSelect').value;
     const statsEl = document.getElementById('rplAgentStats');
@@ -1848,6 +1890,8 @@ function updateRplAgentStats() {
     }
 }
 
+        // sert à ajouter un agent à la liste des volontaires d'une fiche de remplacement (RPL).
+        // En pratique, lorsqu'un gestionnaire sélectionne un agent dans la liste déroulante de la fenêtre RPL et clique sur "Ajouter", cette fonction enregistre cet agent comme volontaire.
 function addVolunteerToSheet() {
     if (!activeRplContext) return;
     const agentId = document.getElementById('rplAgentSelect').value;
@@ -1870,6 +1914,7 @@ function addVolunteerToSheet() {
     }
 }
 
+        // sert à afficher dans la fenêtre RPL la liste des agents volontaires pour un remplacement, ainsi que leur nombre de remplacements déjà effectués et leur statut de sélection.
 function renderVolunteersList() {
     if (!activeRplContext) return;
     const sheetKey = `${activeRplContext.targetId}_${activeRplContext.dateStr}`;
@@ -1918,6 +1963,8 @@ function renderVolunteersList() {
     });
 }
 
+        // sert à marquer ou démarquer un volontaire comme retenu pour un remplacement (RPL) dans la fiche actuellement ouverte.
+        // Autrement dit : ✅ case cochée → l'agent est ajouté aux volontaires sélectionnés ; ❌ case décochée → l'agent est retiré des volontaires sélectionnés.
 function toggleVolunteerSelection(agentId, isChecked) {
     if (!activeRplContext || isReadOnly) return;
     const sheetKey = `${activeRplContext.targetId}_${activeRplContext.dateStr}`;
@@ -1934,6 +1981,8 @@ function toggleVolunteerSelection(agentId, isChecked) {
     }
 }
 
+        // sert à clôturer ("solder") une fiche de remplacement RPL, l'archiver dans l'historique puis supprimer la fiche active.
+        // C'est la fonction qui transforme une demande de remplacement en un dossier terminé et historisé.
 function validateReplacementSheet() {
     if (isReadOnly || !activeRplContext) return;
     const comment = document.getElementById('rplComment').value.trim();
@@ -1977,11 +2026,14 @@ function validateReplacementSheet() {
     alert("✅ Fiche de remplacement soldée et archivée avec succès !");
 }
 
+        // sert simplement à fermer la fenêtre de gestion des remplacements (RPL) et à nettoyer le contexte actif.
 function closeReplacementModal() {
     document.getElementById('replacementModal').style.display = 'none';
     activeRplContext = null;
 }
 
+        // sert à afficher l'historique des fiches de remplacement (RPL) clôturées dans une fenêtre modale.
+        // En pratique, elle lit le contenu de replacementArchives, construit un tableau HTML puis ouvre la fenêtre d'archives.
 function openArchiveRemplacementModal() {
     const tbody = document.getElementById('archiveRplTableBody');
     tbody.innerHTML = '';
@@ -2005,12 +2057,14 @@ function openArchiveRemplacementModal() {
     document.getElementById('archiveRemplacementModal').style.display = 'flex';
 }
 
+        // rôle très simple : fermer la fenêtre d'affichage des archives de remplacement.
 function closeArchiveRemplacementModal() {
     document.getElementById('archiveRemplacementModal').style.display = 'none';
 }
 
 
-
+        // sert à ouvrir la fenêtre de modification d'une tâche du planning (équipe ou agent), en préchargeant les informations existantes et en affichant toutes les tâches disponibles.
+        // C'est la fonction centrale d'édition des affectations.
         function openTaskModal(isTeam, targetId, targetName, dateStr, currentTaskCode, currentDesc) {
             if (isReadOnly) return;
             activeTaskCellSelection = { isTeam, targetId, targetName, dateStr };
@@ -2044,12 +2098,15 @@ function closeArchiveRemplacementModal() {
             document.getElementById('taskModal').style.display = 'flex';
         }
 
+        // sert à fermer la fenêtre de modification des tâches et à remettre à zéro les variables de contexte utilisées pendant l'édition.
         function closeTaskModal() {
             document.getElementById('taskModal').style.display = 'none';
             activeTaskCellSelection = null;
             selectedTaskCodeInModal = null;
         }
 
+        // fonction de validation/sauvegarde d'une modification de tâche effectuée dans la fenêtre taskModal.
+        // Elle récupère le choix de l'utilisateur, met à jour les données du planning, enregistre éventuellement un commentaire, puis rafraîchit l'application.
         function confirmTaskSelection() {
             if (isReadOnly || !activeTaskCellSelection) return;
 
@@ -2095,12 +2152,19 @@ function closeArchiveRemplacementModal() {
             renderAll(true);
         }
 
+        // sert à convertir une heure au format texte HH:MM en nombre décimal afin de faciliter les calculs de durée ou les comparaisons horaires.
         function timeToDecimal(timeStr) {
             if (!timeStr) return 0; 
             const parts = timeStr.split(':'); 
             return parseInt(parts[0], 10) + (parseInt(parts[1], 10) / 60);
         }
 
+        
+        // est le moteur de contrôle réglementaire et de conformité sociale de votre application. Elle analyse l'ensemble de l'année pour chaque agent et génère automatiquement des alertes concernant :
+        // le repos quotidien minimum de 11 heures ;
+        // le repos hebdomadaire minimum de 35 heures ;
+        // la limitation à 11 jours de travail consécutifs.
+        // Elle alimente ensuite le bandeau d'alertes de l'interface et les notifications.
                 function checkRestAlerts() {
     let generatedAlerts = [];
     const startYearDate = new Date(currentYear, 0, 1);
@@ -2332,6 +2396,7 @@ function closeArchiveRemplacementModal() {
     });
 }
 
+        // sert à vider complètement les archives des alertes acquittées afin de refaire apparaître toutes les anomalies encore présentes dans le planning.
 function resetAcknowledgedAlerts() {
     if (isReadOnly) {
         alert("Accès lecture seule : impossible de vider les archives.");
@@ -2351,7 +2416,7 @@ function resetAcknowledgedAlerts() {
 }
 
 
-
+        // sert à afficher une fenêtre modale de notification lorsqu'une nouvelle alerte est détectée par checkRestAlerts().
         function showNotificationModal(al) {
             const modal = document.getElementById('notificationModal');
             const msg = document.getElementById('notificationMessage');
@@ -2359,10 +2424,12 @@ function resetAcknowledgedAlerts() {
             modal.style.display = 'flex';
         }
 
+        // unique rôle de fermer la fenêtre de notification des alertes.
         function closeNotificationModal() {
             document.getElementById('notificationModal').style.display = 'none';
         }
 
+        // sert à ouvrir la fenêtre d'acquittement d'une alerte, afin qu'un responsable puisse justifier et enregistrer le traitement d'une anomalie détectée par le système.
         function openAckModal(alertId, agentName, date, description) {
             if (isReadOnly) return;
             pendingAckAlert = { alertId, agentName, date, description };
@@ -2371,11 +2438,13 @@ function resetAcknowledgedAlerts() {
             document.getElementById('ackModal').style.display = 'flex';
         }
 
+        // sert à fermer la fenêtre d'acquittement d'une alerte et à réinitialiser le contexte de l'alerte en cours de traitement.
         function closeAckModal() {
             document.getElementById('ackModal').style.display = 'none';
             pendingAckAlert = null;
         }
 
+        // est la fonction de validation d'un acquittement d'alerte. Le code que vous avez fourni correspond à la première partie, qui effectue les contrôles préalables avant l'enregistrement.
         function confirmAckAlert() {
             if (isReadOnly || !pendingAckAlert) return;
             const comment = document.getElementById('ackComment').value.trim();
@@ -2396,6 +2465,7 @@ function resetAcknowledgedAlerts() {
             renderAll(true);
         }
 
+        // sert à ouvrir la fenêtre d'archives des alertes acquittées et à construire le tableau affichant leur historique.
         function openArchiveModal() {
             const tbody = document.getElementById('archiveTableBody');
             tbody.innerHTML = '';
@@ -2418,10 +2488,13 @@ function resetAcknowledgedAlerts() {
             document.getElementById('archiveModal').style.display = 'flex';
         }
 
+        // fermer la fenêtre des archives des alertes acquittées.
         function closeArchiveModal() {
             document.getElementById('archiveModal').style.display = 'none';
         }
 
+        // sert à préparer la modification du roulement d'une équipe et ouvrir une fenêtre de confirmation pour savoir jusqu'à quelle date appliquer cette modification.
+        // Elle ne modifie pas directement le planning. Elle stocke les informations nécessaires puis affiche une modale de répétition.
         function promptTeamRotation(teamId, dateStr, taskCode) {
             if (isReadOnly) return;
             pendingRotation = { teamId, dateStr, taskCode };
@@ -2429,11 +2502,14 @@ function resetAcknowledgedAlerts() {
             document.getElementById('repeatModal').style.display = 'flex';
         }
 
+        // sert à fermer la fenêtre de gestion du roulement d'équipe et à supprimer le changement en attente qui n'a pas encore été validé.
         function closeRepeatModal() {
             document.getElementById('repeatModal').style.display = 'none';
             pendingRotation = null;
         }
 
+        // applique réellement une modification de roulement d'équipe après validation dans la fenêtre repeatModal.
+        // Elle prend la tâche choisie, la fréquence de répétition et la durée, puis met à jour le planning de l'équipe sur toute la période concernée.
         function applyTeamRotation() {
             if (isReadOnly || !pendingRotation) return;
             const { teamId, dateStr, taskCode } = pendingRotation;
@@ -2462,6 +2538,8 @@ function resetAcknowledgedAlerts() {
             renderAll(true);
         }
 
+        // sert à ouvrir la fenêtre de gestion complète d'un agent, en préchargeant toutes ses informations (nom, compétences, options de copie de planning, affectation en masse, etc.).
+        // C'est la fonction centrale d'administration des agents.
         function openAgentModal(agentId) {
             let foundAgent = null;
             teams.forEach(t => {
@@ -2547,6 +2625,7 @@ function resetAcknowledgedAlerts() {
             }
         }
 
+        // sert à enregistrer les modifications effectuées dans la fiche d'un agent (nom et compétences), puis à rafraîchir l'application.
         function saveAgent() {
             if (isReadOnly) return;
             const id = document.getElementById('editAgentId').value;
@@ -2569,6 +2648,8 @@ function resetAcknowledgedAlerts() {
             renderAll(true);
         }
 
+        // permet de copier le planning d'une équipe vers un agent sur une période donnée.
+        // Concrètement, elle prend chaque affectation de l'équipe entre deux dates et crée une affectation individuelle identique pour l'agent sélectionné.
         function applyCopyTeamSchedule() {
             if (isReadOnly) return;
             const agentId = document.getElementById('editAgentId').value;
@@ -2604,6 +2685,7 @@ function resetAcknowledgedAlerts() {
             renderAll(true);
         }
 
+        // permet de copier le planning d'un agent source vers un agent cible sur une période donnée, avec la possibilité d'ajouter un commentaire sur chaque journée copiée.
         function applyCopyAgentSchedule() {
             if (isReadOnly) return;
             const targetAgentId = document.getElementById('editAgentId').value;
@@ -2649,6 +2731,7 @@ function resetAcknowledgedAlerts() {
             renderAll(true);
         }
 
+        // permet de réaliser une affectation de masse sur un agent, soit sur une plage continue de dates, soit selon une récurrence (quotidienne, hebdomadaire, toutes les X semaines) sur plusieurs années.
         function applyBulkAgentTask() {
             if (isReadOnly) return;
             const agentId = document.getElementById('editAgentId').value;
@@ -2707,6 +2790,8 @@ function resetAcknowledgedAlerts() {
             renderAll(true);
         }
 
+        // sert à ouvrir et précharger entièrement la fenêtre de configuration de l'application réservée aux administrateurs.
+        // point d'entrée du module d'administration.
         function openSettings() {
     if (!isAdmin) return;
 
@@ -2739,7 +2824,11 @@ function resetAcknowledgedAlerts() {
     document.getElementById('settingsModal').style.display = 'flex';
 }
 
-
+        // Permet de fermer la fenêtre de paramétrage sans enregistrer
+        function closeSettings() {
+    document.getElementById('settingsModal').style.display = 'none';
+}
+        // afficher dynamiquement la liste des compétences
         function renderSkillsConfig() {
             const container = document.getElementById('skillsConfigContainer');
             container.innerHTML = '';
@@ -2758,6 +2847,7 @@ function resetAcknowledgedAlerts() {
             });
         }
 
+        // sert à ajouter une nouvelle compétence dans la configuration de l'application, puis à rafraîchir l'affichage de la liste des compétences.
         function addSkillRow() {
             skillDefinitions.push({
                 id: `C${skillDefinitions.length + 1}`,
@@ -2768,11 +2858,14 @@ function resetAcknowledgedAlerts() {
             renderSkillsConfig();
         }
 
+        // sert à supprimer une compétence de la liste des compétences configurées, puis à rafraîchir immédiatement l'interface de configuration.
         function removeSkillRow(idx) {
             skillDefinitions.splice(idx, 1);
             renderSkillsConfig();
         }
 
+        // sert à construire l'interface de configuration des groupes de compétences exclusives surveillées (exclusiveSkillMonitoredGroups).
+        // Ces groupes sont ensuite utilisés dans updateDashboard() pour détecter les situations où un seul agent présent maîtrise un ensemble critique de compétences.
         function renderMonitoredSkillsConfig() {
             const container = document.getElementById('monitoredSkillsConfigContainer');
             container.innerHTML = '';
@@ -2796,17 +2889,21 @@ function resetAcknowledgedAlerts() {
             });
         }
 
+        // sert à ajouter un nouveau groupe de compétences surveillées (vide) dans la configuration, puis à rafraîchir l'affichage de l'interface d'administration.
         function addMonitoredSkillGroupRow() {
             if (!exclusiveSkillMonitoredGroups) exclusiveSkillMonitoredGroups = [];
             exclusiveSkillMonitoredGroups.push([]);
             renderMonitoredSkillsConfig();
         }
 
+        // sert à supprimer un groupe de compétences surveillées, puis à reconstruire l'affichage de la configuration.
         function removeMonitoredSkillGroupRow(idx) {
             exclusiveSkillMonitoredGroups.splice(idx, 1);
             renderMonitoredSkillsConfig();
         }
 
+        // sert à générer dynamiquement l'interface de configuration des tâches (TASKS) dans la fenêtre des paramètres.
+        // Elle permet à l'administrateur de visualiser et modifier : le code de la tâche, son libellé ; son type de quart ; ses horaires ; son statut repos ; ses couleurs d'affichage ; sa suppression.
         function renderTasksConfig() {
             const container = document.getElementById('tasksContainer');
             container.innerHTML = '';
@@ -2836,6 +2933,7 @@ function resetAcknowledgedAlerts() {
             });
         }
 
+        // est la nouvelle version dynamique de création d'une ligne de tâche dans le module Paramètres. Contrairement à renderTasksConfig(), elle gère également la propriété isReplacement, indispensable pour votre système de fiches de remplacement (RPL).
         function addTaskRow(code = '', label = '', shift = 'none', start = '00:00', end = '00:00', isRest = false, isReplacement = false, color = '#3498db', text = '#ffffff') {
     const container = document.getElementById('tasksContainer');
     const div = document.createElement('div');
@@ -2861,6 +2959,7 @@ function resetAcknowledgedAlerts() {
     container.appendChild(div);
 }
 
+        // sert à ajouter dynamiquement une ligne de configuration de compétence dans la fenêtre Paramètres, afin de permettre à l'administrateur de créer, modifier ou supprimer des compétences.
 function renderSkillRow(skill = { id: '', name: '', color: '#3498db', min: 0 }) {
     const container = document.getElementById('skillsConfigContainer');
     if (!container) return;
@@ -2880,6 +2979,8 @@ function renderSkillRow(skill = { id: '', name: '', color: '#3498db', min: 0 }) 
     container.appendChild(div);
 }
 
+        // est une version plus moderne et ergonomique de l'affichage des groupes de compétences surveillées. 
+        // Elle permet de créer une ligne représentant un groupe de compétences critiques à surveiller, avec des cases à cocher colorées basées sur les compétences existantes.
 function renderMonitoredGroupRow(group = []) {
     const container = document.getElementById('monitoredSkillsConfigContainer');
     if (!container) return;
@@ -2909,12 +3010,14 @@ function renderMonitoredGroupRow(group = []) {
     container.appendChild(div);
 }
 
-
+        // sert à supprimer une tâche de la configuration des tâches (TASKS), puis à reconstruire l'affichage de la liste dans la fenêtre Paramètres.
         function removeTaskRow(code) {
             delete TASKS[code];
             renderTasksConfig();
         }
 
+        // est le point de validation central de toute la configuration administrateur. 
+        // Elle récupère les données saisies dans la fenêtre Paramètres, reconstruit les structures métier (skillDefinitions, exclusiveSkillMonitoredGroups, TASKS, settings.thresholds), ferme la fenêtre puis recharge l'application.
         function saveSettings() {
     if (isReadOnly || !isAdmin) return;
 
@@ -2989,10 +3092,13 @@ function renderMonitoredGroupRow(group = []) {
             document.getElementById('printModal').style.display = 'flex';
         }
 
+        // sert simplement à fermer la fenêtre d'impression de l'application.
         function closePrintModal() {
             document.getElementById('printModal').style.display = 'none';
         }
 
+        // sert à générer une vue imprimable du planning mensuel complet (équipes + agents), puis à lancer l'impression.
+        // C'est la fonction de production du document papier.
         function generateAndPrintMonth() {
             const month = parseInt(document.getElementById('printMonth').value, 10);
             const year = parseInt(document.getElementById('printYear').value, 10);
