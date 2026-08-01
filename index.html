@@ -1901,9 +1901,31 @@ function canAgentTakeReplacement(agentId, dateStr, targetShiftCode) {
         return false;
     }
 
+    // ------------------------------------------------------------------
+    // Statut éligible élargi :
+    // - en Repos (R / RD / OFF) ou en J le jour du remplacement
+    // - OU en J la veille
+    // - OU en J le lendemain
+    // ------------------------------------------------------------------
     const currentDef = info.taskDef;
-    const isEligibleStatus = currentDef.isRest || currentDef.shift === 'J';
+
+    // Jour J-1 et J+1
+    const prevDateObj = new Date(parseDate(dateStr));
+    prevDateObj.setDate(prevDateObj.getDate() - 1);
+    const nextDateObj = new Date(parseDate(dateStr));
+    nextDateObj.setDate(nextDateObj.getDate() + 1);
+
+    const prevInfo = getAgentInfoOnDate(agentId, formatDate(prevDateObj));
+    const nextInfo = getAgentInfoOnDate(agentId, formatDate(nextDateObj));
+
+    const isRestOrJToday = currentDef.isRest || currentDef.shift === 'J';
+    const isJBefore = prevInfo && prevInfo.taskDef.shift === 'J';
+    const isJAfter = nextInfo && nextInfo.taskDef.shift === 'J';
+
+    const isEligibleStatus = isRestOrJToday || isJBefore || isJAfter;
+
     if (!isEligibleStatus) return false;
+
 
     const targetDef = TASKS[targetShiftCode];
     // Si on affecte un repos, pas de problème de temps de repos
