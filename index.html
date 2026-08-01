@@ -593,7 +593,12 @@
                     <tbody id="archiveTableBody"></tbody>
                 </table>
             </div>
-            <div class="modal-actions"><button class="btn btn-secondary" onclick="closeArchiveModal()">Fermer</button></div>
+            <div class="modal-actions">
+    <button class="btn btn-danger" onclick="resetAcknowledgedAlerts()" id="resetAckBtn">
+        🗑️ Vider les archives d’alertes
+    </button>
+    <button class="btn btn-secondary" onclick="closeArchiveModal()">Fermer</button>
+</div>
         </div>
     </div>
 
@@ -1125,6 +1130,12 @@ function loadAppState(data) {
                 importBtn.disabled = isReadOnly;
                 importBtn.style.opacity = isReadOnly ? '0.6' : '1';
             }
+            
+            const resetAckBtn = document.getElementById('resetAckBtn');
+if (resetAckBtn) {
+    resetAckBtn.disabled = isReadOnly;
+    resetAckBtn.style.opacity = isReadOnly ? '0.5' : '1';
+}
 
             const modalBtns = ['saveAgentBtn', 'bulkApplyBtn', 'copyTeamApplyBtn', 'copyAgentApplyBtn', 'saveSettingsBtn', 'addTaskBtn', 'addSkillBtn', 'addMonitoredSkillBtn', 'applyRotationBtn', 'ackConfirmBtn', 'saveTaskModalBtn', 'clearTaskBtn'];
             modalBtns.forEach(id => {
@@ -2140,7 +2151,7 @@ function closeArchiveRemplacementModal() {
                 currentDate.setDate(currentDate.getDate() + 1);
             }
 
-            // 2. RÈGLE DES 35H DE REPOS HEBDOMADAIRE
+            // 2. RÈGLE DES 35H DE REPOS HEBDOMADAIRE (24h + 11h)
             let sundayIter = new Date(startYearDate);
             while (sundayIter.getDay() !== 0) {
                 sundayIter.setDate(sundayIter.getDate() - 1);
@@ -2209,6 +2220,7 @@ function closeArchiveRemplacementModal() {
                             let prevHas11h = false;
                             let nextHas11h = false;
 
+                            // 11h de repos avant la journée pleine de 24h (fin avant ou à 13h)
                             if (i > 0) {
                                 let prevT = weekDays[i - 1].def;
                                 let finish = prevT.isRest ? 0 : timeToDecimal(prevT.end);
@@ -2222,6 +2234,7 @@ function closeArchiveRemplacementModal() {
                                 if (pSatT.isRest || finish <= 13) prevHas11h = true;
                             }
 
+                            // 11h de repos après la journée pleine de 24h (début à partir de 11h)
                             if (i < 6) {
                                 let nextT = weekDays[i + 1].def;
                                 let start = nextT.isRest ? 24 : timeToDecimal(nextT.start);
@@ -2235,6 +2248,7 @@ function closeArchiveRemplacementModal() {
                                 if (nSunT.isRest || start >= 11) nextHas11h = true;
                             }
 
+                            // Valide si les 11h sont placées AVANT, APRÈS, OU AVANT ET APRÈS (prevHas11h && nextHas11h)
                             if (prevHas11h || nextHas11h) {
                                 valid35h = true;
                                 break;
@@ -2318,6 +2332,23 @@ function closeArchiveRemplacementModal() {
     });
 }
 
+function resetAcknowledgedAlerts() {
+    if (isReadOnly) {
+        alert("Accès lecture seule : impossible de vider les archives.");
+        return;
+    }
+
+    if (!confirm("Êtes-vous sûr de vouloir VIDER TOUTES les alertes acquittées ?\n\nLes défauts de repos qui existent encore réapparaîtront immédiatement.")) {
+        return;
+    }
+
+    acknowledgedAlerts = [];
+    knownAlertKeys.clear();          // pour que les notifications puissent aussi réapparaître
+    saveToFirebase();
+    renderAll(false);                // recalcule les alertes actives
+    closeArchiveModal();
+    alert("✅ Archives des alertes vidées. Les défauts présents sont à nouveau visibles.");
+}
 
 
 
