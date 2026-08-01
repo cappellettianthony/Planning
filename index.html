@@ -2829,6 +2829,55 @@ function closeArchiveRemplacementModal() {
     container.appendChild(div);
 }
 
+function renderSkillRow(skill = { id: '', name: '', color: '#3498db', min: 0 }) {
+    const container = document.getElementById('skillsConfigContainer');
+    if (!container) return;
+
+    const div = document.createElement('div');
+    div.className = 'skill-config-row';
+    div.style.cssText = 'display: grid; grid-template-columns: 60px 1fr 40px 60px 30px; gap: 6px; align-items: center; margin-bottom: 6px;';
+    
+    div.innerHTML = `
+        <input type="text" class="sk-id" value="${skill.id || ''}" placeholder="Code" maxlength="5" style="text-transform:uppercase;">
+        <input type="text" class="sk-name" value="${skill.name || ''}" placeholder="Intitulé compétence">
+        <input type="color" class="sk-color" value="${skill.color || '#3498db'}">
+        <input type="number" class="sk-min" value="${skill.min || 0}" min="0" placeholder="Min">
+        <button class="btn btn-danger" style="padding:2px 5px;" onclick="this.parentElement.remove()">🗑️</button>
+    `;
+    
+    container.appendChild(div);
+}
+
+function renderMonitoredGroupRow(group = []) {
+    const container = document.getElementById('monitoredSkillsConfigContainer');
+    if (!container) return;
+
+    const div = document.createElement('div');
+    div.className = 'monitored-skills-row';
+    div.style.cssText = 'display: flex; align-items: center; gap: 10px; margin-bottom: 6px; padding: 6px; border: 1px solid #e0e0e0; border-radius: 4px; background: #fafafa;';
+
+    // Génération des cases à cocher pour chaque compétence existante
+    let checkboxesHtml = skillDefinitions.map(sk => {
+        const isChecked = group.includes(sk.id) ? 'checked' : '';
+        return `
+            <label style="display: inline-flex; align-items: center; gap: 4px; font-size: 0.8rem; cursor: pointer;">
+                <input type="checkbox" value="${sk.id}" ${isChecked}>
+                <span class="badge" style="background:${sk.color}; color:#fff; padding:2px 5px; border-radius:3px; font-size:0.75rem;">${sk.id}</span>
+            </label>
+        `;
+    }).join(' ');
+
+    div.innerHTML = `
+        <div style="flex: 1; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+            ${checkboxesHtml}
+        </div>
+        <button class="btn btn-danger" style="padding:2px 6px; font-size:0.75rem;" onclick="this.parentElement.remove()">🗑️</button>
+    `;
+
+    container.appendChild(div);
+}
+
+
         function removeTaskRow(code) {
             delete TASKS[code];
             renderTasksConfig();
