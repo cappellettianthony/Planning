@@ -2309,109 +2309,165 @@ function updateRplAgentStats() {
         // En pratique, lorsqu'un gestionnaire sélectionne un agent dans la liste déroulante de la fenêtre RPL et clique sur "Ajouter", cette fonction enregistre cet agent comme volontaire.
 function addVolunteerToSheet() {
     if (!activeRplContext) return;
-    const agentId = document.getElementById('rplAgentSelect').value;
+
+    const select = document.getElementById('rplAgentSelect');
+    if (!select) return;
+
+    const agentId = select.value;
     if (!agentId) {
-        alert("Veuillez sélectionner un agent.");
+        alert('Veuillez sélectionner un agent.');
         return;
     }
 
-    const sheetKey = `${activeRplContext.targetId}_${activeRplContext.dateStr}`;
+    const sheetKey = activeRplContext.targetId + '_' + activeRplContext.dateStr;
+
     if (!replacementSheets[sheetKey]) {
-        replacementSheets[sheetKey] = { volunteers: [], selectedVolunteers: [] };
+        replacementSheets[sheetKey] = {
+            volunteers: [],
+            selectedVolunteers: []
+        };
     }
 
-    if (!replacementSheets[sheetKey].volunteers.includes(agentId)) {
-        replacementSheets[sheetKey].volunteers.push(agentId);
-        saveToFirebase();
-        renderVolunteersList();
-    } else {
-        alert("Cet agent est déjà inscrit sur la fiche.");
+    // Déjà inscrit ?
+    if (replacementSheets[sheetKey].volunteers.indexOf(agentId) !== -1) {
+        alert('Cet agent est déjà inscrit sur la fiche.');
+        return;
     }
+
+    // Ajout
+    replacementSheets[sheetKey].volunteers.push(agentId);
+
+    // Sauvegarde + rafraîchissement
+    if (typeof saveToFirebase === 'function') {
+        saveToFirebase();
+    }
+    renderVolunteersList();
+
+    // Remettre la liste déroulante à vide
+    select.value = '';
+    const statsEl = document.getElementById('rplAgentStats');
+    if (statsEl) statsEl.innerText = '';
 }
+
 
         // sert à afficher dans la fenêtre RPL la liste des agents volontaires pour un remplacement, ainsi que leur nombre de remplacements déjà effectués et leur statut de sélection.
 function renderVolunteersList() {
     if (!activeRplContext) return;
-    const sheetKey = `\( {activeRplContext.targetId}_ \){activeRplContext.dateStr}`;
+
+    const sheetKey = activeRplContext.targetId + '_' + activeRplContext.dateStr;
     const sheet = replacementSheets[sheetKey] || { volunteers: [], selectedVolunteers: [] };
     const container = document.getElementById('rplVolunteersList');
+    if (!container) return;
+
     container.innerHTML = '';
 
-    if (sheet.volunteers.length === 0) {
+    if (!sheet.volunteers || sheet.volunteers.length === 0) {
         container.innerHTML = '<p style="font-size:0.8rem; color:#777; font-style:italic;">Aucun volontaire pour le moment.</p>';
         return;
     }
 
-    // Classement : J / R / H
+    // Classement
     const groups = { J: [], R: [], H: [] };
 
-    sheet.volunteers.forEach(aId => {
+    sheet.volunteers.forEach(function(aId) {
         const info = getAgentInfoOnDate(aId, activeRplContext.dateStr);
         if (!info) return;
 
         const count = calculateExtraShiftsCount(info.agent, info.teamId);
-        const isSelected = (sheet.selectedVolunteers || []).includes(aId);
-        const entry = { aId, info, count, isSelected };
+        const isSelected = (sheet.selectedVolunteers || []).indexOf(aId) !== -1;
+
+        const entry = {
+            aId: aId,
+            info: info,
+            count: count,
+            isSelected: isSelected
+        };
 
         if (info.taskDef.shift === 'J') {
             groups.J.push(entry);
         } else if (info.taskDef.isRest) {
             groups.R.push(entry);
         } else {
-            groups.H.push(entry); // M, A, N, OFF, autres…
+            groups.H.push(entry);
         }
     });
 
-    const renderGroup = (title, color, list) => {
+    // Fonction d’affichage d’un groupe
+    function renderGroup(title, color, list) {
         if (list.length === 0) return;
+
         const header = document.createElement('div');
-        header.style.cssText = `font-weight:bold; font-size:0.8rem; color:${color}; margin:8px 0 4px; padding:2px 4px; background:#f8f9fa; border-left:3px solid ${color};`;
-        header.textContent = `\( {title} ( \){list.length})`;
+        header.style.cssText = 'font-weight:bold; font-size:0.8rem; color:' + color +
+            '; margin:8px 0 4px; padding:2px 4px; background:#f8f9fa; border-left:3px solid ' + color + ';';
+        header.textContent = title + ' (' + list.length + ')';
         container.appendChild(header);
 
-        list.forEach(({ aId, info, count, isSelected }) => {
+        list.forEach(function(entry) {
             const div = document.createElement('div');
             div.style.cssText = 'display:flex; justify-content:space-between; align-items:center; padding:4px 6px; border-bottom:1px solid #ddd;';
 
+            // Case à cocher (seulement pour RE / Admin)
             let checkHtml = '';
             if (!isReadOnly) {
-                checkHtml = `<input type="checkbox" \( {isSelected ? 'checked' : ''} onchange="toggleVolunteerSelection(' \){aId}', this.checked)"> `;
+                checkHtml = '<input type="checkbox" ' +
+                    (entry.isSelected ? 'checked' : '') +
+                    ' onchange="toggleVolunteerSelection(\'' + entry.aId + '\', this.checked)"> ';
             }
 
-            div.innerHTML = `
-                <div>
-                    \( {checkHtml}<strong> \){info.agent.name}</strong>
-                    <span style="font-size:0.75rem; color:#666;">(${count} remplacements) — ${info.taskCode}</span>
-                </div>
-                ${isSelected ? '<span class="badge bg-green">Sélectionné</span>' : ''}
-            `;
+            const left = document.createElement('div');
+            left.innerHTML = checkHtml +
+                '<strong>' + entry.info.agent.name + '</strong> ' +
+                '<span style="font-size:0.75rem; color:#666;">(' + entry.count +
+                ' remplacements) — ' + entry.info.taskCode + '</span>';
+
+            div.appendChild(left);
+
+            if (entry.isSelected) {
+                const badge = document.createElement('span');
+                badge.className = 'badge bg-green';
+                badge.textContent = 'Sélectionné';
+                div.appendChild(badge);
+            }
+
             container.appendChild(div);
         });
-    };
+    }
 
+    // Affichage des 3 groupes
     renderGroup('Agents en J (Journée)', '#27ae60', groups.J);
     renderGroup('Agents en R (Repos)', '#7f8c8d', groups.R);
     renderGroup('Agents en H (autre statut)', '#e67e22', groups.H);
 }
 
 
+
         // sert à marquer ou démarquer un volontaire comme retenu pour un remplacement (RPL) dans la fiche actuellement ouverte.
         // Autrement dit : ✅ case cochée → l'agent est ajouté aux volontaires sélectionnés ; ❌ case décochée → l'agent est retiré des volontaires sélectionnés.
 function toggleVolunteerSelection(agentId, isChecked) {
     if (!activeRplContext || isReadOnly) return;
-    const sheetKey = `${activeRplContext.targetId}_${activeRplContext.dateStr}`;
+
+    const sheetKey = activeRplContext.targetId + '_' + activeRplContext.dateStr;
+
+    if (!replacementSheets[sheetKey]) {
+        replacementSheets[sheetKey] = { volunteers: [], selectedVolunteers: [] };
+    }
     if (!replacementSheets[sheetKey].selectedVolunteers) {
         replacementSheets[sheetKey].selectedVolunteers = [];
     }
 
+    const selected = replacementSheets[sheetKey].selectedVolunteers;
+    const idx = selected.indexOf(agentId);
+
     if (isChecked) {
-        if (!replacementSheets[sheetKey].selectedVolunteers.includes(agentId)) {
-            replacementSheets[sheetKey].selectedVolunteers.push(agentId);
-        }
+        if (idx === -1) selected.push(agentId);
     } else {
-        replacementSheets[sheetKey].selectedVolunteers = replacementSheets[sheetKey].selectedVolunteers.filter(id => id !== agentId);
+        if (idx !== -1) selected.splice(idx, 1);
     }
+
+    // Rafraîchir l’affichage (le badge « Sélectionné »)
+    renderVolunteersList();
 }
+
 
         // sert à clôturer ("solder") une fiche de remplacement RPL, l'archiver dans l'historique puis supprimer la fiche active.
         // C'est la fonction qui transforme une demande de remplacement en un dossier terminé et historisé.
