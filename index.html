@@ -792,11 +792,15 @@
                 <select id="rplAgentSelect" onchange="updateRplAgentStats()"></select>
             </div>
             <p id="rplAgentStats" style="font-size:0.8rem; font-weight:bold; color:#d35400; margin-bottom:8px;"></p>
-            <button class="btn btn-success" style="width:100%;" onclick="addVolunteerToSheet()">Se porter / Inscrire volontaire</button>
+            <div style="display:flex; gap:8px; margin-bottom:8px;">
+                <button class="btn btn-success" style="flex:1;" onclick="addVolunteerToSheet()">Se porter / Inscrire volontaire</button>
+                <button class="btn btn-secondary" style="flex:0 0 auto; font-size:0.8rem;" id="rplShowAllBtn" onclick="toggleRplShowAllAgents()">Voir tous les agents</button>
+            </div>
+            <p id="rplFilterHint" style="font-size:0.75rem; color:#666; margin:0;">Liste filtrée : agents en Repos (R) ou en Journée (J) respectant les 11h de repos.</p>
         </div>
 
         <h3>Liste des Volontaires</h3>
-        <div id="rplVolunteersList" style="max-height: 150px; overflow-y: auto; margin-bottom: 12px; border:1px solid #eee; padding:5px; border-radius:4px;"></div>
+        <div id="rplVolunteersList" style="max-height: 220px; overflow-y: auto; margin-bottom: 12px; border:1px solid #eee; padding:5px; border-radius:4px;"></div>
 
         <!-- Section réservée aux Responsables d'Équipe (RE) / Admins -->
         <div id="rplReSection" style="display:none; background:#eef7fc; border:1px solid #3498db; padding:10px; border-radius:6px;">
@@ -813,6 +817,7 @@
         </div>
     </div>
 </div>
+
 
 <!-- Modale d'Archives des Remplacements -->
 <div class="modal" id="archiveRemplacementModal">
@@ -925,6 +930,7 @@
 let replacementSheets = {};    // Stocke les volontaires pour une fiche
 let replacementArchives = [];  // Stocke l'historique des fiches soldées
 let activeRplContext = null;   // Contexte courant de la fiche ouverte
+let rplShowAllAgents = false; // false = liste filtrée (éligibles), true = tous les agents
 let clickTimer = null;         // Pour distinguer le clic simple du double-clic
 
 let touchTimer = null;         // Timer pour le maintien de 2 secondes (mobile)
@@ -1826,41 +1832,360 @@ function handleTaskCellClick(event, isTeam, targetId, targetName, dateStr, curre
     }
 }
 
-        // sert à ouvrir et préparer la fiche de remplacement (RPL) associée à une cellule du planning.
-        // En pratique, lorsqu'un utilisateur double-clique ou effectue un appui long sur une tâche de type remplacement, cette fonction :
-        // mémorise le contexte (équipe/agent, date) ; initialise les données de remplacement ; charge la liste des agents disponibles ; prépare l'interface ; affiche la fenêtre modale.
-function openReplacementModal(isTeam, targetId, targetName, dateStr) {
-    activeRplContext = { isTeam, targetId, targetName, dateStr };
-    const sheetKey = `${targetId}_${dateStr}`;
-    if (!replacementSheets[sheetKey]) {
-        replacementSheets[sheetKey] = { volunteers: [], selectedVolunteers: [] };
+/**
+ * Détermine le quart à combler pour une fiche RPL.
+ * Priorité : roulement d'équipe du jour (M/A/N/J).
+ */
+function getShiftToFillForRpl(isTeam, targetId, dateStr) {
+    let teamId = null;
+
+    if (isTeam) {
+        teamId = targetId;
+    } else {
+        teams.forEach(t => {
+            if (t.agents.some(a => a.id === targetId)) teamId = t.id;
+        });
     }
 
-    document.getElementById('rplTargetInfo').innerHTML = `Fiche RPL pour : <strong>${targetName}</strong> le <strong>${dateStr}</strong>`;
+    if (teamId && teamSchedules[teamId] && teamSchedules[teamId][dateStr] !== undefined) {
+        const teamCode = teamSchedules[teamId][dateStr];
+        const def = TASKS[teamCode] || TASKS['R'];
+        // On prend le code d'équipe s'il s'agit d'un vrai quart de travail
+        if (def && !def.isRest && def.shift && def.shift !== 'none') {
+            return teamCode; // ex: 'M', 'A', 'N', 'J'
+        }
+    }
 
-    // Alimenter la liste globale de tous les agents dans le menu déroulant
+    // Fallback : si l'agent avait un planning individuel avant RPL (rare), on ne l'a plus.
+    // On retourne null → l'interface indiquera "Quart non déterminé".
+    return null;
+}
+
+/**
+ * Retourne le code tâche effectif d'un agent un jour donné + son teamId.
+ */
+function getAgentInfoOnDate(agentId, dateStr) {
+    let found = null;
+    teams.forEach(t => {
+        const a = t.agents.find(ag => ag.id === agentId);
+        if (a) found = { agent: a, teamId: t.id, teamName: t.name };
+    });
+    if (!found) return null;
+
+    const code = getEffectiveAgentTask(found.agent, found.teamId, dateStr);
+    const def = TASKS[code] || TASKS['R'];
+    return { ...found, taskCode: code, taskDef: def };
+}
+
+/**
+ * Vérifie si un agent peut prendre un quart de remplacement ce jour-là :
+ * - doit être en R (isRest) ou en J
+ * - ne doit pas être l'agent absent lui-même
+ * - respect des 11h de repos avec la veille et le lendemain si on lui affecte le quart cible
+ */
+/**
+ * Vérifie si un agent peut prendre un quart de remplacement ce jour-là.
+ * Contrôles (identiques à checkRestAlerts) :
+ * 1. Statut du jour = Repos (isRest) OU Journée (J)
+ * 2. Ne pas être l'agent absent lui-même
+ * 3. 11 h de repos quotidien (veille + lendemain)
+ * 4. 35 h de repos hebdomadaire (24 h + 11 h)
+ * 5. Maximum 11 jours de travail consécutifs
+ */
+function canAgentTakeReplacement(agentId, dateStr, targetShiftCode) {
+    if (!targetShiftCode || !TASKS[targetShiftCode]) return false;
+
+    const info = getAgentInfoOnDate(agentId, dateStr);
+    if (!info) return false;
+
+    // Ne pas proposer l'agent absent
+    if (activeRplContext && !activeRplContext.isTeam && activeRplContext.targetId === agentId) {
+        return false;
+    }
+
+    const currentDef = info.taskDef;
+    const isEligibleStatus = currentDef.isRest || currentDef.shift === 'J';
+    if (!isEligibleStatus) return false;
+
+    const targetDef = TASKS[targetShiftCode];
+    // Si on affecte un repos, pas de problème de temps de repos
+    if (targetDef.isRest) return true;
+
+    // ------------------------------------------------------------------
+    // Helper local : récupère la tâche "effective" d'un agent un jour donné
+    // en simulant l'affectation du quart cible uniquement pour dateStr
+    // ------------------------------------------------------------------
+    function getSimulatedTask(agent, teamId, dStr) {
+        if (dStr === dateStr) return targetShiftCode;
+        return getEffectiveAgentTask(agent, teamId, dStr);
+    }
+
+    function getSimulatedDef(agent, teamId, dStr) {
+        const code = getSimulatedTask(agent, teamId, dStr);
+        return TASKS[code] || TASKS['R'];
+    }
+
+    // ------------------------------------------------------------------
+    // 1. Contrôle des 11 h de repos (veille + lendemain)
+    // ------------------------------------------------------------------
+    const prevDate = new Date(parseDate(dateStr));
+    prevDate.setDate(prevDate.getDate() - 1);
+    const nextDate = new Date(parseDate(dateStr));
+    nextDate.setDate(nextDate.getDate() + 1);
+
+    const prevDef = getSimulatedDef(info.agent, info.teamId, formatDate(prevDate));
+    const nextDef = getSimulatedDef(info.agent, info.teamId, formatDate(nextDate));
+
+    // 11 h avec la veille
+    if (!prevDef.isRest) {
+        let finishPrev = timeToDecimal(prevDef.end);
+        let startTarget = timeToDecimal(targetDef.start);
+        let restH = 0;
+        if (prevDef.shift === 'N' || finishPrev < timeToDecimal(prevDef.start)) {
+            restH = startTarget - finishPrev;
+        } else {
+            restH = (24 - finishPrev) + startTarget;
+        }
+        if (restH < 11) return false;
+    }
+
+    // 11 h avec le lendemain
+    if (!nextDef.isRest) {
+        let finishTarget = timeToDecimal(targetDef.end);
+        let startNext = timeToDecimal(nextDef.start);
+        let restH = 0;
+        if (targetDef.shift === 'N' || finishTarget < timeToDecimal(targetDef.start)) {
+            restH = startNext - finishTarget;
+        } else {
+            restH = (24 - finishTarget) + startNext;
+        }
+        if (restH < 11) return false;
+    }
+
+    // ------------------------------------------------------------------
+    // 2. Contrôle des 35 h de repos hebdomadaire
+    // (même logique que checkRestAlerts)
+    // ------------------------------------------------------------------
+    const targetDateObj = parseDate(dateStr);
+
+    // Trouver le dimanche de la semaine concernée
+    let sundayOfWeek = new Date(targetDateObj);
+    while (sundayOfWeek.getDay() !== 0) {
+        sundayOfWeek.setDate(sundayOfWeek.getDate() - 1);
+    }
+    const sundayStr = formatDate(sundayOfWeek);
+
+    // Construire les 7 jours de la semaine (simulation)
+    let weekDays = [];
+    for (let i = 0; i < 7; i++) {
+        let d = new Date(sundayOfWeek);
+        d.setDate(d.getDate() + i);
+        let dStr = formatDate(d);
+        let tDef = getSimulatedDef(info.agent, info.teamId, dStr);
+        weekDays.push({ dateStr: dStr, def: tDef });
+    }
+
+    // Cas spécial : semaine M → N (lundi Matin / dimanche suivant Nuit)
+    let monTask = weekDays[1].def;
+    let endSunDate = new Date(sundayOfWeek);
+    endSunDate.setDate(endSunDate.getDate() + 7);
+    let endSunDef = getSimulatedDef(info.agent, info.teamId, formatDate(endSunDate));
+    let isSpecialShiftWeek = (monTask.shift === 'M' && endSunDef.shift === 'N');
+    let valid35h = false;
+
+    if (isSpecialShiftWeek) {
+        let prevSatDate = new Date(sundayOfWeek);
+        prevSatDate.setDate(prevSatDate.getDate() - 1);
+        let prevSatDef = getSimulatedDef(info.agent, info.teamId, formatDate(prevSatDate));
+
+        let sunIsFullRest = weekDays[0].def.isRest;
+        let satFinishTime = prevSatDef.isRest ? 0 : timeToDecimal(prevSatDef.end);
+        let satHas11hRest = prevSatDef.isRest || (satFinishTime <= 13);
+
+        if (prevSatDef.shift !== 'N' && sunIsFullRest && satHas11hRest) {
+            valid35h = true;
+        }
+    }
+
+    if (!valid35h) {
+        for (let i = 0; i < 7; i++) {
+            if (weekDays[i].def.isRest) {
+                // Quart précédent
+                let prevShift = 'none';
+                if (i > 0) {
+                    prevShift = weekDays[i - 1].def.shift;
+                } else {
+                    let pSatDate = new Date(sundayOfWeek);
+                    pSatDate.setDate(pSatDate.getDate() - 1);
+                    let pSatDef = getSimulatedDef(info.agent, info.teamId, formatDate(pSatDate));
+                    prevShift = pSatDef.shift;
+                }
+
+                // Nuit la veille → le jour de repos ne compte pas comme 24 h plein
+                if (prevShift === 'N') continue;
+
+                let prevHas11h = false;
+                let nextHas11h = false;
+
+                // 11 h avant la journée de 24 h (fin ≤ 13 h)
+                if (i > 0) {
+                    let prevT = weekDays[i - 1].def;
+                    let finish = prevT.isRest ? 0 : timeToDecimal(prevT.end);
+                    if (prevT.isRest || finish <= 13) prevHas11h = true;
+                } else {
+                    let pSatDate = new Date(sundayOfWeek);
+                    pSatDate.setDate(pSatDate.getDate() - 1);
+                    let pSatDef = getSimulatedDef(info.agent, info.teamId, formatDate(pSatDate));
+                    let finish = pSatDef.isRest ? 0 : timeToDecimal(pSatDef.end);
+                    if (pSatDef.isRest || finish <= 13) prevHas11h = true;
+                }
+
+                // 11 h après la journée de 24 h (début ≥ 11 h)
+                if (i < 6) {
+                    let nextT = weekDays[i + 1].def;
+                    let start = nextT.isRest ? 24 : timeToDecimal(nextT.start);
+                    if (nextT.isRest || start >= 11) nextHas11h = true;
+                } else {
+                    let nSunDate = new Date(sundayOfWeek);
+                    nSunDate.setDate(nSunDate.getDate() + 7);
+                    let nSunDef = getSimulatedDef(info.agent, info.teamId, formatDate(nSunDate));
+                    let start = nSunDef.isRest ? 24 : timeToDecimal(nSunDef.start);
+                    if (nSunDef.isRest || start >= 11) nextHas11h = true;
+                }
+
+                if (prevHas11h || nextHas11h) {
+                    valid35h = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    if (!valid35h) return false;
+
+    // ------------------------------------------------------------------
+    // 3. Contrôle des 11 jours de travail consécutifs maximum
+    // ------------------------------------------------------------------
+    // On regarde la séquence autour de la date cible
+    let consecutive = 0;
+    let checkDate = new Date(targetDateObj);
+
+    // Remonter jusqu'au premier jour de repos avant la date
+    while (true) {
+        checkDate.setDate(checkDate.getDate() - 1);
+        const dStr = formatDate(checkDate);
+        const def = getSimulatedDef(info.agent, info.teamId, dStr);
+        if (def.isRest) break;
+        consecutive++;
+        // Sécurité anti-boucle infinie
+        if (consecutive > 20) break;
+    }
+
+    // La date cible elle-même compte comme un jour travaillé
+    consecutive++;
+
+    // Continuer vers le futur
+    checkDate = new Date(targetDateObj);
+    while (true) {
+        checkDate.setDate(checkDate.getDate() + 1);
+        const dStr = formatDate(checkDate);
+        const def = getSimulatedDef(info.agent, info.teamId, dStr);
+        if (def.isRest) break;
+        consecutive++;
+        if (consecutive > 20) break;
+    }
+
+    if (consecutive > 11) return false;
+
+    // ------------------------------------------------------------------
+    // Tout est OK
+    // ------------------------------------------------------------------
+    return true;
+}
+
+
+/**
+ * Remplit la liste déroulante des agents (filtrée ou complète).
+ */
+function populateRplAgentSelect(showAll = false) {
     const select = document.getElementById('rplAgentSelect');
     select.innerHTML = '<option value="">-- Sélectionner un agent --</option>';
-    
-    let allAgents = [];
+
+    if (!activeRplContext) return;
+
+    const { dateStr, shiftToFill } = activeRplContext;
+    const allAgents = [];
+
     teams.forEach(t => {
         t.agents.forEach(a => {
             allAgents.push({ id: a.id, name: a.name, teamId: t.id, teamName: t.name, obj: a });
         });
     });
+    allAgents.sort((a, b) => a.name.localeCompare(b.name));
 
-    allAgents.sort((a,b) => a.name.localeCompare(b.name));
     allAgents.forEach(a => {
+        const eligible = shiftToFill ? canAgentTakeReplacement(a.id, dateStr, shiftToFill) : true;
+        if (!showAll && !eligible) return;
+
+        const info = getAgentInfoOnDate(a.id, dateStr);
+        const statusLabel = info ? info.taskCode : '?';
         const opt = document.createElement('option');
         opt.value = a.id;
-        opt.textContent = `${a.name} (${a.teamName})`;
+        opt.textContent = `\( {a.name} ( \){a.teamName}) [\( {statusLabel}] \){eligible ? '' : ' ⚠ non éligible'}`;
+        if (!eligible && showAll) opt.style.color = '#c0392b';
         select.appendChild(opt);
     });
+}
+
+function toggleRplShowAllAgents() {
+    rplShowAllAgents = !rplShowAllAgents;
+    const btn = document.getElementById('rplShowAllBtn');
+    const hint = document.getElementById('rplFilterHint');
+    if (rplShowAllAgents) {
+        btn.textContent = 'Voir agents éligibles';
+        hint.textContent = 'Liste complète affichée (les agents non éligibles sont marqués en rouge).';
+    } else {
+        btn.textContent = 'Voir tous les agents';
+        hint.textContent = 'Liste filtrée : agents en Repos (R) ou en Journée (J) respectant les 11h de repos.';
+    }
+    populateRplAgentSelect(rplShowAllAgents);
+    document.getElementById('rplAgentStats').innerText = '';
+}
+
+        
+        // sert à ouvrir et préparer la fiche de remplacement (RPL) associée à une cellule du planning.
+        // En pratique, lorsqu'un utilisateur double-clique ou effectue un appui long sur une tâche de type remplacement, cette fonction :
+        // mémorise le contexte (équipe/agent, date) ; initialise les données de remplacement ; charge la liste des agents disponibles ; prépare l'interface ; affiche la fenêtre modale.
+        
+function openReplacementModal(isTeam, targetId, targetName, dateStr) {
+    const shiftToFill = getShiftToFillForRpl(isTeam, targetId, dateStr);
+    const shiftLabel = shiftToFill
+        ? `\( {shiftToFill} ( \){(TASKS[shiftToFill] || {}).label || ''})`
+        : 'Quart non déterminé (roulement équipe absent ou en repos)';
+
+    activeRplContext = { isTeam, targetId, targetName, dateStr, shiftToFill };
+    rplShowAllAgents = false;
+
+    const sheetKey = `\( {targetId}_ \){dateStr}`;
+    if (!replacementSheets[sheetKey]) {
+        replacementSheets[sheetKey] = { volunteers: [], selectedVolunteers: [] };
+    }
+
+    document.getElementById('rplTargetInfo').innerHTML = `
+        Fiche RPL pour : <strong>\( {targetName}</strong> le <strong> \){dateStr}</strong><br>
+        <span style="color:#c0392b;">Quart d'absence à combler : <strong>${shiftLabel}</strong></span>
+    `;
+
+    // Bouton + hint
+    const btn = document.getElementById('rplShowAllBtn');
+    const hint = document.getElementById('rplFilterHint');
+    if (btn) btn.textContent = 'Voir tous les agents';
+    if (hint) hint.textContent = 'Liste filtrée : agents en Repos (R) ou en Journée (J) respectant les 11h de repos.';
+
+    populateRplAgentSelect(false);
 
     document.getElementById('rplAgentStats').innerText = '';
     document.getElementById('rplComment').value = '';
-
-    // Afficher la section RE seulement si l'utilisateur n'est pas en lecture seule
     document.getElementById('rplReSection').style.display = !isReadOnly ? 'block' : 'none';
 
     renderVolunteersList();
@@ -1877,18 +2202,24 @@ function updateRplAgentStats() {
         return;
     }
 
-    let foundAgent = null;
-    let foundTeamId = null;
-    teams.forEach(t => {
-        const a = t.agents.find(ag => ag.id === agentId);
-        if (a) { foundAgent = a; foundTeamId = t.id; }
-    });
-
-    if (foundAgent) {
-        const count = calculateExtraShiftsCount(foundAgent, foundTeamId);
-        statsEl.innerText = `Nombre de remplacements déjà réalisés cette année : ${count} quart(s)`;
+    const info = getAgentInfoOnDate(agentId, activeRplContext ? activeRplContext.dateStr : null);
+    if (!info) {
+        statsEl.innerText = '';
+        return;
     }
+
+    const count = calculateExtraShiftsCount(info.agent, info.teamId);
+    const eligible = activeRplContext && activeRplContext.shiftToFill
+        ? canAgentTakeReplacement(agentId, activeRplContext.dateStr, activeRplContext.shiftToFill)
+        : true;
+
+    statsEl.innerHTML = `
+        Statut du jour : <strong>${info.taskCode}</strong> —
+        Remplacements déjà réalisés cette année : <strong>${count}</strong> quart(s)
+        ${eligible ? '' : ' <span style="color:#c0392b;">⚠ Non éligible (repos 11h ou statut incompatible)</span>'}
+    `;
 }
+
 
         // sert à ajouter un agent à la liste des volontaires d'une fiche de remplacement (RPL).
         // En pratique, lorsqu'un gestionnaire sélectionne un agent dans la liste déroulante de la fenêtre RPL et clique sur "Ajouter", cette fonction enregistre cet agent comme volontaire.
@@ -1917,7 +2248,7 @@ function addVolunteerToSheet() {
         // sert à afficher dans la fenêtre RPL la liste des agents volontaires pour un remplacement, ainsi que leur nombre de remplacements déjà effectués et leur statut de sélection.
 function renderVolunteersList() {
     if (!activeRplContext) return;
-    const sheetKey = `${activeRplContext.targetId}_${activeRplContext.dateStr}`;
+    const sheetKey = `\( {activeRplContext.targetId}_ \){activeRplContext.dateStr}`;
     const sheet = replacementSheets[sheetKey] || { volunteers: [], selectedVolunteers: [] };
     const container = document.getElementById('rplVolunteersList');
     container.innerHTML = '';
@@ -1927,41 +2258,58 @@ function renderVolunteersList() {
         return;
     }
 
+    // Classement : J / R / H
+    const groups = { J: [], R: [], H: [] };
+
     sheet.volunteers.forEach(aId => {
-        let agentObj = null;
-        let teamId = null;
-        teams.forEach(t => {
-            const a = t.agents.find(ag => ag.id === aId);
-            if (a) { agentObj = a; teamId = t.id; }
-        });
+        const info = getAgentInfoOnDate(aId, activeRplContext.dateStr);
+        if (!info) return;
 
-        if (!agentObj) return;
-
-        const count = calculateExtraShiftsCount(agentObj, teamId);
+        const count = calculateExtraShiftsCount(info.agent, info.teamId);
         const isSelected = (sheet.selectedVolunteers || []).includes(aId);
+        const entry = { aId, info, count, isSelected };
 
-        const div = document.createElement('div');
-        div.style.display = 'flex';
-        div.style.justifyContent = 'space-between';
-        div.style.alignItems = 'center';
-        div.style.padding = '4px 6px';
-        div.style.borderBottom = '1px solid #ddd';
-
-        let checkHtml = '';
-        if (!isReadOnly) {
-            checkHtml = `<input type="checkbox" ${isSelected ? 'checked' : ''} onchange="toggleVolunteerSelection('${aId}', this.checked)"> `;
+        if (info.taskDef.shift === 'J') {
+            groups.J.push(entry);
+        } else if (info.taskDef.isRest) {
+            groups.R.push(entry);
+        } else {
+            groups.H.push(entry); // M, A, N, OFF, autres…
         }
-
-        div.innerHTML = `
-            <div>
-                ${checkHtml}<strong>${agentObj.name}</strong> 
-                <span style="font-size:0.75rem; color:#666;">(${count} remplacements)</span>
-            </div>
-            ${isSelected ? '<span class="badge bg-green">Sélectionné</span>' : ''}
-        `;
-        container.appendChild(div);
     });
+
+    const renderGroup = (title, color, list) => {
+        if (list.length === 0) return;
+        const header = document.createElement('div');
+        header.style.cssText = `font-weight:bold; font-size:0.8rem; color:${color}; margin:8px 0 4px; padding:2px 4px; background:#f8f9fa; border-left:3px solid ${color};`;
+        header.textContent = `\( {title} ( \){list.length})`;
+        container.appendChild(header);
+
+        list.forEach(({ aId, info, count, isSelected }) => {
+            const div = document.createElement('div');
+            div.style.cssText = 'display:flex; justify-content:space-between; align-items:center; padding:4px 6px; border-bottom:1px solid #ddd;';
+
+            let checkHtml = '';
+            if (!isReadOnly) {
+                checkHtml = `<input type="checkbox" \( {isSelected ? 'checked' : ''} onchange="toggleVolunteerSelection(' \){aId}', this.checked)"> `;
+            }
+
+            div.innerHTML = `
+                <div>
+                    \( {checkHtml}<strong> \){info.agent.name}</strong>
+                    <span style="font-size:0.75rem; color:#666;">(${count} remplacements) — ${info.taskCode}</span>
+                </div>
+                ${isSelected ? '<span class="badge bg-green">Sélectionné</span>' : ''}
+            `;
+            container.appendChild(div);
+        });
+    };
+
+    renderGroup('Agents en J (Journée)', '#27ae60', groups.J);
+    renderGroup('Agents en R (Repos)', '#7f8c8d', groups.R);
+    renderGroup('Agents en H (autre statut)', '#e67e22', groups.H);
 }
+
 
         // sert à marquer ou démarquer un volontaire comme retenu pour un remplacement (RPL) dans la fiche actuellement ouverte.
         // Autrement dit : ✅ case cochée → l'agent est ajouté aux volontaires sélectionnés ; ❌ case décochée → l'agent est retiré des volontaires sélectionnés.
@@ -1991,10 +2339,15 @@ function validateReplacementSheet() {
         return;
     }
 
-    const sheetKey = `${activeRplContext.targetId}_${activeRplContext.dateStr}`;
+    const sheetKey = `\( {activeRplContext.targetId}_ \){activeRplContext.dateStr}`;
     const sheet = replacementSheets[sheetKey] || { volunteers: [], selectedVolunteers: [] };
+    const selected = sheet.selectedVolunteers || [];
 
-    // Formater les noms pour l'archivage
+    if (selected.length === 0) {
+        alert("Aucun volontaire sélectionné. Cochez au moins un agent avant de valider.");
+        return;
+    }
+
     const getAgentName = (id) => {
         let name = id;
         teams.forEach(t => {
@@ -2005,12 +2358,29 @@ function validateReplacementSheet() {
     };
 
     const volunteersNames = (sheet.volunteers || []).map(getAgentName).join(', ') || 'Aucun';
-    const selectedNames = (sheet.selectedVolunteers || []).map(getAgentName).join(', ') || 'Aucun';
+    const selectedNames = selected.map(getAgentName).join(', ') || 'Aucun';
 
-    // Ajout dans l'archive
+    // --- Remplissage automatique du quart sur les agents validés ---
+    const shiftToFill = activeRplContext.shiftToFill;
+    if (shiftToFill && TASKS[shiftToFill]) {
+        selected.forEach(agentId => {
+            if (!agentSchedules[agentId]) agentSchedules[agentId] = {};
+            agentSchedules[agentId][activeRplContext.dateStr] = shiftToFill;
+
+            // Note descriptive (visible au survol)
+            const descKey = `\( {agentId}_ \){activeRplContext.dateStr}`;
+            taskDescriptions[descKey] = `RPL validé – ${comment}`;
+        });
+    } else {
+        // Si le quart n'a pas pu être déterminé, on prévient mais on archive quand même
+        console.warn("Quart à combler non déterminé : pas d'affectation automatique.");
+    }
+
+    // Archivage
     replacementArchives.push({
         dateRpl: activeRplContext.dateStr,
         targetName: activeRplContext.targetName,
+        shiftFilled: shiftToFill || 'N/A',
         volunteers: volunteersNames,
         selected: selectedNames,
         comment: comment,
@@ -2018,13 +2388,13 @@ function validateReplacementSheet() {
         closedAt: formatDate(new Date())
     });
 
-    // Nettoyage de la fiche active
     delete replacementSheets[sheetKey];
 
     closeReplacementModal();
     renderAll(true);
-    alert("✅ Fiche de remplacement soldée et archivée avec succès !");
+    alert("✅ Fiche de remplacement soldée, archivée et quart(s) affecté(s) aux volontaires sélectionnés !");
 }
+
 
         // sert simplement à fermer la fenêtre de gestion des remplacements (RPL) et à nettoyer le contexte actif.
 function closeReplacementModal() {
