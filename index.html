@@ -939,23 +939,37 @@ let touchPreventClick = false;  // Pour éviter d'ouvrir la modale simple après
 
 // Mettre à jour getAppState() :
 function getAppState() {
-    return { teamSchedules, agentSchedules, taskDescriptions, teams, acknowledgedAlerts, skillDefinitions, exclusiveSkillMonitoredGroups, TASKS, settings, replacementSheets, replacementArchives };
+    return {
+        teamSchedules: teamSchedules,
+        agentSchedules: agentSchedules,
+        taskDescriptions: taskDescriptions,
+        teams: teams,
+        acknowledgedAlerts: acknowledgedAlerts,
+        skillDefinitions: skillDefinitions,
+        exclusiveSkillMonitoredGroups: exclusiveSkillMonitoredGroups,
+        TASKS: TASKS,
+        settings: settings,
+        replacementSheets: replacementSheets,
+        replacementArchives: replacementArchives
+    };
 }
+
 
 // Mettre à jour loadAppState() :
 function loadAppState(data) {
     if (!data) return;
+
     teamSchedules = data.teamSchedules || {};
     agentSchedules = data.agentSchedules || {};
     taskDescriptions = data.taskDescriptions || {};
-    
+
     const defaultTeams = createDefaultTeams();
     if (Array.isArray(data.teams) && data.teams.length > 0) {
-        teams = defaultTeams.map(defTeam => {
-            const loadedTeam = data.teams.find(t => t && t.id === defTeam.id);
+        teams = defaultTeams.map(function(defTeam) {
+            const loadedTeam = data.teams.find(function(t) { return t && t.id === defTeam.id; });
             if (loadedTeam) {
                 if (Array.isArray(loadedTeam.agents)) {
-                    loadedTeam.agents.forEach(a => {
+                    loadedTeam.agents.forEach(function(a) {
                         if (!Array.isArray(a.skills)) a.skills = [];
                     });
                 }
@@ -972,11 +986,12 @@ function loadAppState(data) {
     exclusiveSkillMonitoredGroups = data.exclusiveSkillMonitoredGroups || exclusiveSkillMonitoredGroups;
     TASKS = data.TASKS || TASKS;
     settings = data.settings || settings;
-    
-    // Nouveaux états :
+
+    // Important : recharger les fiches RPL
     replacementSheets = data.replacementSheets || {};
     replacementArchives = data.replacementArchives || [];
 }
+
 
 
 // générer automatiquement des équipes et des agents fictifs par défaut, puis à initialiser plusieurs structures de données utilisées par l'application.
@@ -1159,41 +1174,59 @@ if (resetAckBtn) {
         }
 
         // sert à récupérer l'état complet de l'application sous la forme d'un objet JavaScript unique.
-        function getAppState() {
-            return { teamSchedules, agentSchedules, taskDescriptions, teams, acknowledgedAlerts, skillDefinitions, exclusiveSkillMonitoredGroups, TASKS, settings };
-        }
+       function getAppState() {
+    return {
+        teamSchedules: teamSchedules,
+        agentSchedules: agentSchedules,
+        taskDescriptions: taskDescriptions,
+        teams: teams,
+        acknowledgedAlerts: acknowledgedAlerts,
+        skillDefinitions: skillDefinitions,
+        exclusiveSkillMonitoredGroups: exclusiveSkillMonitoredGroups,
+        TASKS: TASKS,
+        settings: settings,
+        replacementSheets: replacementSheets,
+        replacementArchives: replacementArchives
+    };
+}
+
 
         // est en quelque sorte l'inverse de getAppState() : elle sert à restaurer l'état de l'application à partir de données sauvegardées (par exemple venant de Firebase ou d'un fichier JSON).
-        function loadAppState(data) {
-            if (!data) return;
-            teamSchedules = data.teamSchedules || {};
-            agentSchedules = data.agentSchedules || {};
-            taskDescriptions = data.taskDescriptions || {};
-            
-            const defaultTeams = createDefaultTeams();
-            if (Array.isArray(data.teams) && data.teams.length > 0) {
-                teams = defaultTeams.map(defTeam => {
-                    const loadedTeam = data.teams.find(t => t && t.id === defTeam.id);
-                    if (loadedTeam) {
-                        if (Array.isArray(loadedTeam.agents)) {
-                            loadedTeam.agents.forEach(a => {
-                                if (!Array.isArray(a.skills)) a.skills = [];
-                            });
-                        }
-                        return loadedTeam;
-                    }
-                    return defTeam;
-                });
-            } else {
-                teams = defaultTeams;
-            }
+       function loadAppState(data) {
+    if (!data) return;
 
-            acknowledgedAlerts = data.acknowledgedAlerts || [];
-            skillDefinitions = data.skillDefinitions || skillDefinitions;
-            exclusiveSkillMonitoredGroups = data.exclusiveSkillMonitoredGroups || exclusiveSkillMonitoredGroups;
-            TASKS = data.TASKS || TASKS;
-            settings = data.settings || settings;
-        }
+    teamSchedules = data.teamSchedules || {};
+    agentSchedules = data.agentSchedules || {};
+    taskDescriptions = data.taskDescriptions || {};
+
+    const defaultTeams = createDefaultTeams();
+    if (Array.isArray(data.teams) && data.teams.length > 0) {
+        teams = defaultTeams.map(function(defTeam) {
+            const loadedTeam = data.teams.find(function(t) { return t && t.id === defTeam.id; });
+            if (loadedTeam) {
+                if (Array.isArray(loadedTeam.agents)) {
+                    loadedTeam.agents.forEach(function(a) {
+                        if (!Array.isArray(a.skills)) a.skills = [];
+                    });
+                }
+                return loadedTeam;
+            }
+            return defTeam;
+        });
+    } else {
+        teams = defaultTeams;
+    }
+
+    acknowledgedAlerts = data.acknowledgedAlerts || [];
+    skillDefinitions = data.skillDefinitions || skillDefinitions;
+    exclusiveSkillMonitoredGroups = data.exclusiveSkillMonitoredGroups || exclusiveSkillMonitoredGroups;
+    TASKS = data.TASKS || TASKS;
+    settings = data.settings || settings;
+
+    // Important : recharger les fiches RPL
+    replacementSheets = data.replacementSheets || {};
+    replacementArchives = data.replacementArchives || [];
+}
 
         // sert à sauvegarder l'état complet de l'application dans Firebase Realtime Database, tout en effectuant quelques contrôles d'intégrité avant l'enregistrement.
         function saveToFirebase() {
@@ -2316,22 +2349,18 @@ function addVolunteerToSheet() {
         };
     }
 
-    // Déjà inscrit ?
     if (replacementSheets[sheetKey].volunteers.indexOf(agentId) !== -1) {
         alert('Cet agent est déjà inscrit sur la fiche.');
         return;
     }
 
-    // Ajout
     replacementSheets[sheetKey].volunteers.push(agentId);
 
-    // Sauvegarde + rafraîchissement
-    if (typeof saveToFirebase === 'function') {
-        saveToFirebase();
-    }
+    // Sauvegarde immédiate dans Firebase
+    saveToFirebase();
+
     renderVolunteersList();
 
-    // Remettre la liste déroulante à vide
     select.value = '';
     const statsEl = document.getElementById('rplAgentStats');
     if (statsEl) statsEl.innerText = '';
@@ -2432,14 +2461,19 @@ function renderVolunteersList() {
         // sert à marquer ou démarquer un volontaire comme retenu pour un remplacement (RPL) dans la fiche actuellement ouverte.
         // Autrement dit : ✅ case cochée → l'agent est ajouté aux volontaires sélectionnés ; ❌ case décochée → l'agent est retiré des volontaires sélectionnés.
 function toggleVolunteerSelection(agentId, isChecked) {
-    if (!activeRplContext || isReadOnly) return;
+    if (!activeRplContext) return;
+    if (isReadOnly) return;
 
     const sheetKey = activeRplContext.targetId + '_' + activeRplContext.dateStr;
 
     if (!replacementSheets[sheetKey]) {
-        replacementSheets[sheetKey] = { volunteers: [], selectedVolunteers: [] };
+        replacementSheets[sheetKey] = {
+            volunteers: [],
+            selectedVolunteers: []
+        };
     }
-    if (!replacementSheets[sheetKey].selectedVolunteers) {
+
+    if (!Array.isArray(replacementSheets[sheetKey].selectedVolunteers)) {
         replacementSheets[sheetKey].selectedVolunteers = [];
     }
 
@@ -2447,12 +2481,19 @@ function toggleVolunteerSelection(agentId, isChecked) {
     const idx = selected.indexOf(agentId);
 
     if (isChecked) {
-        if (idx === -1) selected.push(agentId);
+        if (idx === -1) {
+            selected.push(agentId);
+        }
     } else {
-        if (idx !== -1) selected.splice(idx, 1);
+        if (idx !== -1) {
+            selected.splice(idx, 1);
+        }
     }
 
-    // Rafraîchir l’affichage (le badge « Sélectionné »)
+    // Sauvegarde immédiate
+    saveToFirebase();
+
+    // Rafraîchir l’affichage (badge « Sélectionné »)
     renderVolunteersList();
 }
 
@@ -2461,47 +2502,67 @@ function toggleVolunteerSelection(agentId, isChecked) {
         // C'est la fonction qui transforme une demande de remplacement en un dossier terminé et historisé.
 function validateReplacementSheet() {
     if (isReadOnly || !activeRplContext) return;
+
     const comment = document.getElementById('rplComment').value.trim();
     if (!comment) {
-        alert("Un commentaire est obligatoire pour solder la fiche.");
+        alert('Un commentaire est obligatoire pour solder la fiche.');
         return;
     }
 
-    const sheetKey = `\( {activeRplContext.targetId}_ \){activeRplContext.dateStr}`;
-    const sheet = replacementSheets[sheetKey] || { volunteers: [], selectedVolunteers: [] };
-    const selected = sheet.selectedVolunteers || [];
+    const sheetKey = activeRplContext.targetId + '_' + activeRplContext.dateStr;
+    const sheet = replacementSheets[sheetKey];
 
+    if (!sheet) {
+        alert('Aucune fiche de remplacement trouvée.');
+        return;
+    }
+
+    // Récupérer les volontaires sélectionnés
+    let selected = Array.isArray(sheet.selectedVolunteers) ? sheet.selectedVolunteers.slice() : [];
+
+    // Sécurité : si personne n’est coché mais qu’il y a des volontaires,
+    // on demande confirmation pour prendre tous les volontaires
     if (selected.length === 0) {
-        alert("Aucun volontaire sélectionné. Cochez au moins un agent avant de valider.");
-        return;
+        if (sheet.volunteers && sheet.volunteers.length > 0) {
+            const ok = confirm(
+                'Aucun volontaire n’est coché.\n\n' +
+                'Voulez-vous valider TOUS les volontaires inscrits ?'
+            );
+            if (ok) {
+                selected = sheet.volunteers.slice();
+            } else {
+                alert('Cochez au moins un volontaire dans la liste avant de valider.');
+                return;
+            }
+        } else {
+            alert('Aucun volontaire sélectionné.');
+            return;
+        }
     }
 
-    const getAgentName = (id) => {
+    // Fonction utilitaire pour récupérer le nom
+    function getAgentName(id) {
         let name = id;
-        teams.forEach(t => {
-            const a = t.agents.find(ag => ag.id === id);
+        teams.forEach(function(t) {
+            const a = t.agents.find(function(ag) { return ag.id === id; });
             if (a) name = a.name;
         });
         return name;
-    };
+    }
 
     const volunteersNames = (sheet.volunteers || []).map(getAgentName).join(', ') || 'Aucun';
     const selectedNames = selected.map(getAgentName).join(', ') || 'Aucun';
 
-    // --- Remplissage automatique du quart sur les agents validés ---
+    // --- Affectation automatique du quart ---
     const shiftToFill = activeRplContext.shiftToFill;
     if (shiftToFill && TASKS[shiftToFill]) {
-        selected.forEach(agentId => {
+        selected.forEach(function(agentId) {
             if (!agentSchedules[agentId]) agentSchedules[agentId] = {};
             agentSchedules[agentId][activeRplContext.dateStr] = shiftToFill;
 
-            // Note descriptive (visible au survol)
-            const descKey = `\( {agentId}_ \){activeRplContext.dateStr}`;
-            taskDescriptions[descKey] = `RPL validé – ${comment}`;
+            const descKey = agentId + '_' + activeRplContext.dateStr;
+            taskDescriptions[descKey] = 'RPL validé – ' + comment;
         });
-    } else {
-        // Si le quart n'a pas pu être déterminé, on prévient mais on archive quand même
-        console.warn("Quart à combler non déterminé : pas d'affectation automatique.");
     }
 
     // Archivage
@@ -2516,11 +2577,12 @@ function validateReplacementSheet() {
         closedAt: formatDate(new Date())
     });
 
+    // Suppression de la fiche active
     delete replacementSheets[sheetKey];
 
     closeReplacementModal();
     renderAll(true);
-    alert("✅ Fiche de remplacement soldée, archivée et quart(s) affecté(s) aux volontaires sélectionnés !");
+    alert('✅ Fiche de remplacement soldée et quart(s) affecté(s) !');
 }
 
 
