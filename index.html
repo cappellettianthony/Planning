@@ -294,11 +294,10 @@
         .checkbox-group { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
         .checkbox-group label { font-weight: normal; display: flex; align-items: center; gap: 5px; cursor: pointer; }
 
-        .task-row { display: grid; grid-template-columns: 50px 110px 100px 75px 75px 55px 35px 35px 30px; gap: 4px; align-items: center; margin-bottom: 6px; font-size: 0.75rem; }
-        .task-row input, .task-row select { padding: 4px; font-size: 0.75rem; }
+       .task-row { display: grid; grid-template-columns: 50px 110px 100px 75px 75px 50px 45px 35px 35px 30px; gap: 4px; align-items: center; margin-bottom: 6px; font-size: 0.75rem; }
         .task-row input[type="color"] { padding: 0; height: 26px; cursor: pointer; }
 
-        .task-header { display: grid; grid-template-columns: 50px 110px 100px 75px 75px 55px 35px 35px 30px; gap: 4px; font-weight: bold; font-size: 0.7rem; color: var(--primary); margin-bottom: 5px; text-align: center; }
+        .task-header { display: grid; grid-template-columns: 50px 110px 100px 75px 75px 50px 45px 35px 35px 30px; gap: 4px; font-weight: bold; font-size: 0.7rem; color: var(--primary); margin-bottom: 5px; text-align: center; }
 
         .skill-config-row { display: grid; grid-template-columns: 60px 1fr 100px 80px 30px; gap: 8px; align-items: center; margin-bottom: 6px; font-size: 0.8rem; }
         .skill-config-row input { padding: 4px; font-size: 0.8rem; }
@@ -759,7 +758,8 @@
             <button class="btn btn-secondary" style="margin-top: 5px; font-size: 0.75rem; margin-bottom: 15px;" onclick="addMonitoredSkillGroupRow()" id="addMonitoredSkillBtn">+ Ajouter une règle de surveillance</button>
 
             <h3>2. Gestion des Tâches</h3>
-            <div class="task-header"><span>Code</span><span>Libellé</span><span>Quart</span><span>Début</span><span>Fin</span><span>Repos?</span><span>Fond</span><span>Texte</span><span></span></div>
+            <div class="task-header"><span>Code</span><span>Libellé</span><span>Quart</span><span>Début</span><span>Fin</span><span>Repos?</span><span>RPL?</span><span>Fond</span><span>Texte</span><span></span></div>
+
             <div id="tasksContainer"></div>
             <button class="btn btn-secondary" style="margin-top: 5px; font-size: 0.75rem;" onclick="addTaskRow()" id="addTaskBtn">+ Ajouter une tâche</button>
             
@@ -911,6 +911,7 @@
             'A':   { label: 'Après-Midi', color: '#e67e22', text: '#ffffff', shift: 'A', start: '14:00', end: '22:00', isRest: false },
             'N':   { label: 'Nuit', color: '#2c3e50', text: '#ffffff', shift: 'N', start: '22:00', end: '06:00', isRest: false },
             'J':   { label: 'Journée', color: '#2ecc71', text: '#ffffff', shift: 'J', start: '08:00', end: '16:00', isRest: false }
+            'RPL': { label: 'Remplacement', color: '#e74c3c', text: '#ffffff', shift: 'none', start: '00:00', end: '00:00', isRest: false, isReplacement: true }
         };
 
         let settings = { thresholds: { M: { orange: 5, green: 7 }, A: { orange: 5, green: 7 }, N: { orange: 3, green: 5 } } };
@@ -1696,15 +1697,17 @@ bindCellEvents(cellDiv, false, agent.id, agent.name, dateStr, taskCode, desc);
 }
 
 function bindCellEvents(cellDiv, isTeam, targetId, targetName, dateStr, currentTaskCode, currentDesc) {
+    const isRplTask = TASKS[currentTaskCode] && TASKS[currentTaskCode].isReplacement;
+
     // --- GESTION DU MAINTIEN DE 3 SECONDES (MOBILE / TOUCH) ---
     cellDiv.ontouchstart = (e) => {
         touchPreventClick = false;
         
-        // Déclenche le chrono de 3 secondes si la tâche est RPL
-        if (currentTaskCode === 'RPL') {
+        // Déclenche le chrono de 3 secondes si la tâche est configurée comme remplacement
+        if (isRplTask) {
             touchTimer = setTimeout(() => {
-                touchPreventClick = true; // Empêche le clic classique au relâchement
-                if (navigator.vibrate) navigator.vibrate(50); // Retour haptique (vibration) si disponible
+                touchPreventClick = true; 
+                if (navigator.vibrate) navigator.vibrate(50);
                 openReplacementModal(isTeam, targetId, targetName, dateStr);
             }, 3000); // 3000 ms = 3 secondes
         }
@@ -1718,7 +1721,6 @@ function bindCellEvents(cellDiv, isTeam, targetId, targetName, dateStr, currentT
     };
 
     cellDiv.ontouchmove = () => {
-        // Si l'utilisateur fait défiler la page (scroll), on annule le maintien
         if (touchTimer) {
             clearTimeout(touchTimer);
             touchTimer = null;
@@ -1727,7 +1729,6 @@ function bindCellEvents(cellDiv, isTeam, targetId, targetName, dateStr, currentT
 
     // --- GESTION DU DOUBLE-CLIC (PC / SOURIS) ---
     cellDiv.onclick = (e) => {
-        // Si la fiche a été ouverte via le maintien de 3s sur mobile, on stoppe l'événement clic
         if (touchPreventClick) {
             touchPreventClick = false;
             return;
@@ -1736,8 +1737,8 @@ function bindCellEvents(cellDiv, isTeam, targetId, targetName, dateStr, currentT
         if (clickTimer) {
             clearTimeout(clickTimer);
             clickTimer = null;
-            // DOUBLE CLIC :
-            if (currentTaskCode === 'RPL') {
+            // DOUBLE CLIC : ouvrir la fiche si tâche configurée comme remplacement
+            if (isRplTask) {
                 openReplacementModal(isTeam, targetId, targetName, dateStr);
             } else if (!isReadOnly) {
                 openTaskModal(isTeam, targetId, targetName, dateStr, currentTaskCode, currentDesc);
@@ -1753,6 +1754,7 @@ function bindCellEvents(cellDiv, isTeam, targetId, targetName, dateStr, currentT
         }
     };
 }
+
 
 
 function handleTaskCellClick(event, isTeam, targetId, targetName, dateStr, currentTaskCode, currentDesc) {
@@ -2674,24 +2676,37 @@ function closeArchiveRemplacementModal() {
         }
 
         function openSettings() {
-            if (!isAdmin) return;
-            renderSkillsConfig();
-            renderMonitoredSkillsConfig();
-            renderTasksConfig();
+    if (!isAdmin) return;
 
-            document.getElementById('th_M_orange').value = settings.thresholds.M.orange;
-            document.getElementById('th_M_green').value = settings.thresholds.M.green;
-            document.getElementById('th_A_orange').value = settings.thresholds.A.orange;
-            document.getElementById('th_A_green').value = settings.thresholds.A.green;
-            document.getElementById('th_N_orange').value = settings.thresholds.N.orange;
-            document.getElementById('th_N_green').value = settings.thresholds.N.green;
+    // Remplissage des compétences
+    const skillsContainer = document.getElementById('skillsConfigContainer');
+    skillsContainer.innerHTML = '';
+    skillDefinitions.forEach(sk => renderSkillRow(sk));
 
-            document.getElementById('settingsModal').style.display = 'flex';
-        }
+    // Remplissage des règles d'exclusivité
+    const monitoredContainer = document.getElementById('monitoredSkillsConfigContainer');
+    monitoredContainer.innerHTML = '';
+    (exclusiveSkillMonitoredGroups || []).forEach(group => renderMonitoredGroupRow(group));
 
-        function closeSettings() {
-            document.getElementById('settingsModal').style.display = 'none';
-        }
+    // Remplissage des Tâches
+    const tasksContainer = document.getElementById('tasksContainer');
+    tasksContainer.innerHTML = '';
+    Object.keys(TASKS).forEach(code => {
+        const t = TASKS[code];
+        addTaskRow(code, t.label, t.shift, t.start, t.end, t.isRest, t.isReplacement, t.color, t.text);
+    });
+
+    // Remplissage des seuils globaux
+    document.getElementById('th_M_orange').value = settings.thresholds.M.orange;
+    document.getElementById('th_M_green').value = settings.thresholds.M.green;
+    document.getElementById('th_A_orange').value = settings.thresholds.A.orange;
+    document.getElementById('th_A_green').value = settings.thresholds.A.green;
+    document.getElementById('th_N_orange').value = settings.thresholds.N.orange;
+    document.getElementById('th_N_green').value = settings.thresholds.N.green;
+
+    document.getElementById('settingsModal').style.display = 'flex';
+}
+
 
         function renderSkillsConfig() {
             const container = document.getElementById('skillsConfigContainer');
@@ -2789,11 +2804,30 @@ function closeArchiveRemplacementModal() {
             });
         }
 
-        function addTaskRow() {
-            const newCode = `T${Object.keys(TASKS).length + 1}`;
-            TASKS[newCode] = { label: 'Nouvelle Tâche', color: '#95a5a6', text: '#ffffff', shift: 'none', start: '08:00', end: '16:00', isRest: false };
-            renderTasksConfig();
-        }
+        function addTaskRow(code = '', label = '', shift = 'none', start = '00:00', end = '00:00', isRest = false, isReplacement = false, color = '#3498db', text = '#ffffff') {
+    const container = document.getElementById('tasksContainer');
+    const div = document.createElement('div');
+    div.className = 'task-row';
+    div.innerHTML = `
+        <input type="text" class="t-code" value="${code}" placeholder="Code" maxlength="5" style="text-transform:uppercase;">
+        <input type="text" class="t-label" value="${label}" placeholder="Libellé">
+        <select class="t-shift">
+            <option value="none" ${shift === 'none' ? 'selected' : ''}>Aucun</option>
+            <option value="M" ${shift === 'M' ? 'selected' : ''}>Matin</option>
+            <option value="A" ${shift === 'A' ? 'selected' : ''}>Après-Midi</option>
+            <option value="N" ${shift === 'N' ? 'selected' : ''}>Nuit</option>
+            <option value="J" ${shift === 'J' ? 'selected' : ''}>Journée</option>
+        </select>
+        <input type="time" class="t-start" value="${start}">
+        <input type="time" class="t-end" value="${end}">
+        <div style="text-align:center;"><input type="checkbox" class="t-rest" ${isRest ? 'checked' : ''} title="Est un repos ?"></div>
+        <div style="text-align:center;"><input type="checkbox" class="t-rpl" ${isReplacement ? 'checked' : ''} title="Déclenche la Fiche de Remplacement ?"></div>
+        <input type="color" class="t-bg" value="${color}">
+        <input type="color" class="t-txt" value="${text}">
+        <button class="btn btn-danger" style="padding:2px 5px;" onclick="this.parentElement.remove()">🗑️</button>
+    `;
+    container.appendChild(div);
+}
 
         function removeTaskRow(code) {
             delete TASKS[code];
@@ -2801,56 +2835,64 @@ function closeArchiveRemplacementModal() {
         }
 
         function saveSettings() {
-            if (!isAdmin) return;
+    if (isReadOnly || !isAdmin) return;
 
-            const newSkills = [];
-            document.querySelectorAll('.skill-config-row').forEach((row, idx) => {
-                newSkills.push({
-                    id: document.getElementById(`sk_id_${idx}`).value.trim(),
-                    name: document.getElementById(`sk_name_${idx}`).value.trim(),
-                    color: document.getElementById(`sk_color_${idx}`).value,
-                    min: parseInt(document.getElementById(`sk_min_${idx}`).value, 10) || 0
-                });
-            });
-            skillDefinitions = newSkills;
-
-            const newMonitoredGroups = [];
-            (exclusiveSkillMonitoredGroups || []).forEach((_, idx) => {
-                const selected = [];
-                document.querySelectorAll(`.monitored-cb-${idx}:checked`).forEach(cb => {
-                    selected.push(cb.value);
-                });
-                if (selected.length > 0) newMonitoredGroups.push(selected);
-            });
-            exclusiveSkillMonitoredGroups = newMonitoredGroups;
-
-            const newTasks = {};
-            document.querySelectorAll('.task-row').forEach((row, idx) => {
-                const code = document.getElementById(`task_code_${idx}`).value.trim();
-                if (code) {
-                    newTasks[code] = {
-                        label: document.getElementById(`task_label_${idx}`).value.trim(),
-                        shift: document.getElementById(`task_shift_${idx}`).value,
-                        start: document.getElementById(`task_start_${idx}`).value,
-                        end: document.getElementById(`task_end_${idx}`).value,
-                        isRest: document.getElementById(`task_rest_${idx}`).checked,
-                        color: document.getElementById(`task_color_${idx}`).value,
-                        text: document.getElementById(`task_text_${idx}`).value
-                    };
-                }
-            });
-            TASKS = newTasks;
-
-            settings.thresholds.M.orange = parseInt(document.getElementById('th_M_orange').value, 10);
-            settings.thresholds.M.green = parseInt(document.getElementById('th_M_green').value, 10);
-            settings.thresholds.A.orange = parseInt(document.getElementById('th_A_orange').value, 10);
-            settings.thresholds.A.green = parseInt(document.getElementById('th_A_green').value, 10);
-            settings.thresholds.N.orange = parseInt(document.getElementById('th_N_orange').value, 10);
-            settings.thresholds.N.green = parseInt(document.getElementById('th_N_green').value, 10);
-
-            closeSettings();
-            renderAll(true);
+    // 1. Sauvegarde des compétences
+    const newSkills = [];
+    document.querySelectorAll('.skill-config-row').forEach(row => {
+        const id = row.querySelector('.sk-id').value.trim().toUpperCase();
+        const name = row.querySelector('.sk-name').value.trim();
+        const color = row.querySelector('.sk-color').value;
+        const min = parseInt(row.querySelector('.sk-min').value) || 0;
+        if (id && name) {
+            newSkills.push({ id, name, color, min });
         }
+    });
+    if (newSkills.length > 0) skillDefinitions = newSkills;
+
+    // 2. Sauvegarde des groupes d'exclusivité
+    const newMonitoredGroups = [];
+    document.querySelectorAll('.monitored-skills-row').forEach(row => {
+        const selected = [];
+        row.querySelectorAll('input[type="checkbox"]:checked').forEach(cb => {
+            selected.push(cb.value);
+        });
+        if (selected.length >= 2) {
+            newMonitoredGroups.push(selected);
+        }
+    });
+    exclusiveSkillMonitoredGroups = newMonitoredGroups;
+
+    // 3. Sauvegarde des tâches (incluant l'option Fiche de Remplacement)
+    const newTasks = {};
+    document.querySelectorAll('.task-row').forEach(row => {
+        const code = row.querySelector('.t-code').value.trim().toUpperCase();
+        const label = row.querySelector('.t-label').value.trim();
+        const shift = row.querySelector('.t-shift').value;
+        const start = row.querySelector('.t-start').value;
+        const end = row.querySelector('.t-end').value;
+        const isRest = row.querySelector('.t-rest').checked;
+        const isReplacement = row.querySelector('.t-rpl').checked;
+        const color = row.querySelector('.t-bg').value;
+        const text = row.querySelector('.t-txt').value;
+
+        if (code && label) {
+            newTasks[code] = { label, shift, start, end, isRest, isReplacement, color, text };
+        }
+    });
+    if (Object.keys(newTasks).length > 0) TASKS = newTasks;
+
+    // 4. Seuils d'effectifs
+    settings.thresholds.M.orange = parseInt(document.getElementById('th_M_orange').value) || 5;
+    settings.thresholds.M.green = parseInt(document.getElementById('th_M_green').value) || 7;
+    settings.thresholds.A.orange = parseInt(document.getElementById('th_A_orange').value) || 5;
+    settings.thresholds.A.green = parseInt(document.getElementById('th_A_green').value) || 7;
+    settings.thresholds.N.orange = parseInt(document.getElementById('th_N_orange').value) || 3;
+    settings.thresholds.N.green = parseInt(document.getElementById('th_N_green').value) || 5;
+
+    document.getElementById('settingsModal').style.display = 'none';
+    renderAll();
+}
 
         function openPrintModal() {
             const printYear = document.getElementById('printYear');
