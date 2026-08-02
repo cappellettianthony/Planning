@@ -955,6 +955,43 @@ let clickTimer = null;         // Pour distinguer le clic simple du double-clic
 let touchTimer = null;         // Timer pour le maintien de 2 secondes (mobile)
 let touchPreventClick = false;  // Pour éviter d'ouvrir la modale simple après un appui long
 
+/**
+ * Convertit une valeur Firebase (tableau, objet indexé, null) en vrai tableau JS.
+ */
+function toArraySafe(val) {
+    if (Array.isArray(val)) return val.slice();
+    if (val && typeof val === 'object') return Object.keys(val).map(function(k) { return val[k]; });
+    return [];
+}
+
+/**
+ * Garantit une structure complète pour une fiche RPL
+ * (Firebase omet les tableaux vides et peut renvoyer des objets indexés).
+ */
+function ensureReplacementSheet(sheetKey) {
+    if (!replacementSheets || typeof replacementSheets !== 'object') {
+        replacementSheets = {};
+    }
+    if (!sheetKey) {
+        return { volunteers: [], selectedVolunteers: [], createdAt: '', createdBy: '' };
+    }
+    if (!replacementSheets[sheetKey] || typeof replacementSheets[sheetKey] !== 'object') {
+        replacementSheets[sheetKey] = {
+            volunteers: [],
+            selectedVolunteers: [],
+            createdAt: (typeof formatDate === 'function') ? formatDate(new Date()) : '',
+            createdBy: currentUser ? currentUser.email : 'inconnu'
+        };
+    }
+    const sheet = replacementSheets[sheetKey];
+    sheet.volunteers = toArraySafe(sheet.volunteers);
+    sheet.selectedVolunteers = toArraySafe(sheet.selectedVolunteers);
+    if (!sheet.createdAt) {
+        sheet.createdAt = (typeof formatDate === 'function') ? formatDate(new Date()) : '';
+    }
+    return sheet;
+}
+
 
 // Mettre à jour getAppState() :
 function getAppState() {
@@ -1013,9 +1050,16 @@ function loadAppState(data) {
     }
     settings = data.settings || settings;
 
-    // Important : recharger les fiches RPL
+    // Important : recharger les fiches RPL + normaliser les tableaux
     replacementSheets = data.replacementSheets || {};
-    replacementArchives = data.replacementArchives || [];
+    if (replacementSheets && typeof replacementSheets === 'object') {
+        Object.keys(replacementSheets).forEach(function(key) {
+            ensureReplacementSheet(key);
+        });
+    } else {
+        replacementSheets = {};
+    }
+    replacementArchives = Array.isArray(data.replacementArchives) ? data.replacementArchives : [];
 }
 
 
@@ -1256,9 +1300,16 @@ if (resetAckBtn) {
     }
     settings = data.settings || settings;
 
-    // Important : recharger les fiches RPL
+    // Important : recharger les fiches RPL + normaliser les tableaux
     replacementSheets = data.replacementSheets || {};
-    replacementArchives = data.replacementArchives || [];
+    if (replacementSheets && typeof replacementSheets === 'object') {
+        Object.keys(replacementSheets).forEach(function(key) {
+            ensureReplacementSheet(key);
+        });
+    } else {
+        replacementSheets = {};
+    }
+    replacementArchives = Array.isArray(data.replacementArchives) ? data.replacementArchives : [];
 }
 
         // sert à sauvegarder l'état complet de l'application dans Firebase Realtime Database, tout en effectuant quelques contrôles d'intégrité avant l'enregistrement.
@@ -2357,27 +2408,20 @@ function openReplacementModal(isTeam, targetId, targetName, dateStr) {
     };
     rplShowAllAgents = false;
 
-    // 4. Initialiser la fiche si besoin (+ date de création)
+    // 4. Initialiser / normaliser la fiche (+ date de création)
     const sheetKey = targetId + '_' + dateStr;
-    if (!replacementSheets[sheetKey]) {
-        replacementSheets[sheetKey] = {
-            volunteers: [],
-            selectedVolunteers: [],
-            createdAt: formatDate(new Date()),
-            createdBy: currentUser ? currentUser.email : 'inconnu'
-        };
+    const wasNewSheet = !replacementSheets[sheetKey];
+    const sheet = ensureReplacementSheet(sheetKey);
+    if (wasNewSheet) {
         // Persister la création même pour un profil restreint
         if (isReadOnly) {
             saveReplacementSheetsToFirebase();
         } else {
             saveToFirebase();
         }
-    } else if (!replacementSheets[sheetKey].createdAt) {
-        // Fiches anciennes sans date → on complète
-        replacementSheets[sheetKey].createdAt = formatDate(new Date());
     }
 
-    const createdAtLabel = replacementSheets[sheetKey].createdAt || '—';
+    const createdAtLabel = sheet.createdAt || '—';
 
     // 5. Afficher le titre (version simple, sans template littéral fragile)
     const infoEl = document.getElementById('rplTargetInfo');
@@ -2466,22 +2510,24 @@ function addVolunteerToSheet() {
     }
 
     const sheetKey = activeRplContext.targetId + '_' + activeRplContext.dateStr;
-
-    if (!replacementSheets[sheetKey]) {
-        replacementSheets[sheetKey] = {
-            volunteers: [],
-            selectedVolunteers: [],
-            createdAt: formatDate(new Date()),
-            createdBy: currentUser ? currentUser.email : 'inconnu'
-        };
+    if (!sheetKey || sheetKey === 'undefined_undefined') {
+        alert('Contexte de fiche invalide. Fermez et rouvrez la fiche.');
+        return;
     }
 
-    if (replacementSheets[sheetKey].volunteers.indexOf(agentId) !== -1) {
+    const sheet = ensureReplacementSheet(sheetKey);
+    // Sécurité supplémentaire (Firebase peut avoir écrasé entre-temps)
+    const volunteers = toArraySafe(sheet.volunteers);
+    sheet.volunteers = volunteers;
+
+    if (volunteers.indexOf(agentId) !== -1) {
         alert('Cet agent est déjà inscrit sur la fiche.');
         return;
     }
 
-    replacementSheets[sheetKey].volunteers.push(agentId);
+    volunteers.push(agentId);
+    sheet.volunteers = volunteers;
+    replacementSheets[sheetKey] = sheet;
 
     // Sauvegarde : RE = état complet, profil restreint = fiches RPL uniquement
     if (isReadOnly) {
@@ -2503,13 +2549,18 @@ function renderVolunteersList() {
     if (!activeRplContext) return;
 
     const sheetKey = activeRplContext.targetId + '_' + activeRplContext.dateStr;
-    const sheet = replacementSheets[sheetKey] || { volunteers: [], selectedVolunteers: [] };
+    const sheet = ensureReplacementSheet(sheetKey);
+    const volunteers = toArraySafe(sheet.volunteers);
+    const selectedVolunteers = toArraySafe(sheet.selectedVolunteers);
+    sheet.volunteers = volunteers;
+    sheet.selectedVolunteers = selectedVolunteers;
+
     const container = document.getElementById('rplVolunteersList');
     if (!container) return;
 
     container.innerHTML = '';
 
-    if (!sheet.volunteers || sheet.volunteers.length === 0) {
+    if (volunteers.length === 0) {
         container.innerHTML = '<p style="font-size:0.8rem; color:#777; font-style:italic;">Aucun volontaire pour le moment.</p>';
         return;
     }
@@ -2517,12 +2568,12 @@ function renderVolunteersList() {
     // Classement
     const groups = { J: [], R: [], H: [] };
 
-    sheet.volunteers.forEach(function(aId) {
+    volunteers.forEach(function(aId) {
         const info = getAgentInfoOnDate(aId, activeRplContext.dateStr);
         if (!info) return;
 
         const count = calculateExtraShiftsCount(info.agent, info.teamId);
-        const isSelected = (sheet.selectedVolunteers || []).indexOf(aId) !== -1;
+        const isSelected = selectedVolunteers.indexOf(aId) !== -1;
 
         const entry = {
             aId: aId,
@@ -2596,19 +2647,9 @@ function toggleVolunteerSelection(agentId, isChecked) {
     if (isReadOnly) return;
 
     const sheetKey = activeRplContext.targetId + '_' + activeRplContext.dateStr;
-
-    if (!replacementSheets[sheetKey]) {
-        replacementSheets[sheetKey] = {
-            volunteers: [],
-            selectedVolunteers: []
-        };
-    }
-
-    if (!Array.isArray(replacementSheets[sheetKey].selectedVolunteers)) {
-        replacementSheets[sheetKey].selectedVolunteers = [];
-    }
-
-    const selected = replacementSheets[sheetKey].selectedVolunteers;
+    const sheet = ensureReplacementSheet(sheetKey);
+    const selected = toArraySafe(sheet.selectedVolunteers);
+    sheet.selectedVolunteers = selected;
     const idx = selected.indexOf(agentId);
 
     if (isChecked) {
@@ -2620,6 +2661,8 @@ function toggleVolunteerSelection(agentId, isChecked) {
             selected.splice(idx, 1);
         }
     }
+    sheet.selectedVolunteers = selected;
+    replacementSheets[sheetKey] = sheet;
 
     // Sauvegarde immédiate
     saveToFirebase();
@@ -2641,26 +2684,22 @@ function validateReplacementSheet() {
     }
 
     const sheetKey = activeRplContext.targetId + '_' + activeRplContext.dateStr;
-    const sheet = replacementSheets[sheetKey];
+    const sheet = ensureReplacementSheet(sheetKey);
 
-    if (!sheet) {
-        alert('Aucune fiche de remplacement trouvée.');
-        return;
-    }
-
-    // Récupérer les volontaires sélectionnés
-    let selected = Array.isArray(sheet.selectedVolunteers) ? sheet.selectedVolunteers.slice() : [];
+    // Récupérer les volontaires sélectionnés (normalisés)
+    let selected = toArraySafe(sheet.selectedVolunteers);
+    const volunteersList = toArraySafe(sheet.volunteers);
 
     // Sécurité : si personne n’est coché mais qu’il y a des volontaires,
     // on demande confirmation pour prendre tous les volontaires
     if (selected.length === 0) {
-        if (sheet.volunteers && sheet.volunteers.length > 0) {
+        if (volunteersList.length > 0) {
             const ok = confirm(
                 'Aucun volontaire n’est coché.\n\n' +
                 'Voulez-vous valider TOUS les volontaires inscrits ?'
             );
             if (ok) {
-                selected = sheet.volunteers.slice();
+                selected = volunteersList.slice();
             } else {
                 alert('Cochez au moins un volontaire dans la liste avant de valider.');
                 return;
@@ -2681,7 +2720,7 @@ function validateReplacementSheet() {
         return name;
     }
 
-    const volunteersNames = (sheet.volunteers || []).map(getAgentName).join(', ') || 'Aucun';
+    const volunteersNames = volunteersList.map(getAgentName).join(', ') || 'Aucun';
     const selectedNames = selected.map(getAgentName).join(', ') || 'Aucun';
 
     // --- Affectation automatique du quart ---
