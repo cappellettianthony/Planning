@@ -151,8 +151,100 @@
             font-weight: bold;
         }
 
-        .table-container { background: var(--card-bg); border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); overflow: auto; max-height: 60vh; }
+        .table-container { background: var(--card-bg); border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); overflow: auto; max-height: 60vh; flex: 1; min-width: 0; }
         table { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 0.85rem; }
+
+        /* Panneau latéral des tâches de remplacement */
+        .planning-layout {
+            display: flex;
+            gap: 12px;
+            align-items: stretch;
+            margin-bottom: 15px;
+        }
+        .rpl-side-panel {
+            width: 280px;
+            min-width: 240px;
+            max-width: 320px;
+            background: var(--card-bg);
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            display: flex;
+            flex-direction: column;
+            max-height: 60vh;
+            overflow: hidden;
+        }
+        .rpl-side-panel-header {
+            padding: 10px 12px;
+            font-weight: bold;
+            font-size: 0.9rem;
+            color: var(--primary);
+            border-bottom: 1px solid var(--border-color);
+            background: #fafbfc;
+            flex-shrink: 0;
+        }
+        .rpl-side-panel-header span.count {
+            font-weight: normal;
+            color: #7f8c8d;
+            font-size: 0.8rem;
+        }
+        .rpl-side-panel-list {
+            overflow-y: auto;
+            flex: 1;
+            padding: 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .rpl-side-item {
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 8px 10px;
+            cursor: pointer;
+            background: #fff;
+            transition: box-shadow 0.15s, transform 0.1s;
+            border-left: 4px solid #e74c3c;
+        }
+        .rpl-side-item:hover {
+            box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+            transform: translateY(-1px);
+        }
+        .rpl-side-item .rpl-date {
+            font-weight: bold;
+            font-size: 0.8rem;
+            color: var(--primary);
+        }
+        .rpl-side-item .rpl-target {
+            font-size: 0.8rem;
+            margin-top: 2px;
+        }
+        .rpl-side-item .rpl-code {
+            display: inline-block;
+            font-size: 0.7rem;
+            font-weight: bold;
+            color: #fff;
+            background: #e74c3c;
+            padding: 1px 6px;
+            border-radius: 3px;
+            margin-top: 4px;
+        }
+        .rpl-side-item .rpl-comment {
+            font-size: 0.72rem;
+            color: #555;
+            margin-top: 4px;
+            line-height: 1.3;
+            word-break: break-word;
+        }
+        .rpl-side-empty {
+            font-size: 0.8rem;
+            color: #999;
+            font-style: italic;
+            padding: 12px 8px;
+            text-align: center;
+        }
+        @media (max-width: 900px) {
+            .planning-layout { flex-direction: column; }
+            .rpl-side-panel { width: 100%; max-width: none; max-height: 220px; }
+        }
         th, td { border-right: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color); padding: 4px; text-align: center; white-space: nowrap; }
         th { background-color: var(--primary); color: white; position: sticky; top: 0; z-index: 10; }
         
@@ -465,16 +557,27 @@
         <div class="dashboard" id="dashboard"></div>
     </details>
 
-    <div class="table-container">
-        <table id="planningTable" class="collapsed-skills">
-            <thead>
-                <tr id="headerDays">
-                    <th class="sticky-col-1">Équipe / Agent</th>
-                    <th class="sticky-col-2">Compétences</th>
-                </tr>
-            </thead>
-            <tbody id="tableBody"></tbody>
-        </table>
+    <div class="planning-layout">
+        <aside class="rpl-side-panel" id="rplSidePanel">
+            <div class="rpl-side-panel-header">
+                📋 Remplacements <span class="count" id="rplSidePanelCount">(0)</span>
+            </div>
+            <div class="rpl-side-panel-list" id="rplSidePanelList">
+                <div class="rpl-side-empty">Aucune tâche de remplacement</div>
+            </div>
+        </aside>
+
+        <div class="table-container">
+            <table id="planningTable" class="collapsed-skills">
+                <thead>
+                    <tr id="headerDays">
+                        <th class="sticky-col-1">Équipe / Agent</th>
+                        <th class="sticky-col-2">Compétences</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody"></tbody>
+            </table>
+        </div>
     </div>
 
     <div id="printSection"></div>
@@ -1457,9 +1560,108 @@ if (resetAckBtn) {
             updateDashboard();
             generateHeaders();
             generateTable();
+            updateRplSidePanel();
             checkRestAlerts();
             if (save && !isReadOnly) saveToFirebase();
             applyReadOnlyMode();
+        }
+
+        /**
+         * Collecte toutes les tâches de type remplacement (équipe + agents),
+         * tri chronologique, affichage dans le panneau latéral avec commentaire.
+         * Interaction : clic / double-clic ouvre la fiche RPL (comme sur le planning).
+         */
+        function updateRplSidePanel() {
+            const listEl = document.getElementById('rplSidePanelList');
+            const countEl = document.getElementById('rplSidePanelCount');
+            if (!listEl) return;
+
+            const items = [];
+
+            // 1. Roulements d'équipe
+            Object.keys(teamSchedules || {}).forEach(function(teamId) {
+                const schedule = teamSchedules[teamId] || {};
+                Object.keys(schedule).forEach(function(dateStr) {
+                    const code = schedule[dateStr];
+                    const def = TASKS[code];
+                    if (!def || !def.isReplacement) return;
+                    const team = (teams || []).find(function(t) { return t.id === teamId; });
+                    const targetName = team ? team.name : teamId;
+                    const descKey = teamId + '_' + dateStr;
+                    items.push({
+                        dateStr: dateStr,
+                        isTeam: true,
+                        targetId: teamId,
+                        targetName: targetName,
+                        code: code,
+                        comment: (taskDescriptions && taskDescriptions[descKey]) ? taskDescriptions[descKey] : '',
+                        color: def.color || '#e74c3c',
+                        textColor: def.text || '#ffffff'
+                    });
+                });
+            });
+
+            // 2. Plannings individuels agents
+            Object.keys(agentSchedules || {}).forEach(function(agentId) {
+                const schedule = agentSchedules[agentId] || {};
+                Object.keys(schedule).forEach(function(dateStr) {
+                    const code = schedule[dateStr];
+                    const def = TASKS[code];
+                    if (!def || !def.isReplacement) return;
+                    let targetName = agentId;
+                    (teams || []).forEach(function(t) {
+                        const a = (t.agents || []).find(function(ag) { return ag.id === agentId; });
+                        if (a) targetName = a.name;
+                    });
+                    const descKey = agentId + '_' + dateStr;
+                    items.push({
+                        dateStr: dateStr,
+                        isTeam: false,
+                        targetId: agentId,
+                        targetName: targetName,
+                        code: code,
+                        comment: (taskDescriptions && taskDescriptions[descKey]) ? taskDescriptions[descKey] : '',
+                        color: def.color || '#e74c3c',
+                        textColor: def.text || '#ffffff'
+                    });
+                });
+            });
+
+            // Tri chronologique (date puis nom)
+            items.sort(function(a, b) {
+                if (a.dateStr < b.dateStr) return -1;
+                if (a.dateStr > b.dateStr) return 1;
+                return (a.targetName || '').localeCompare(b.targetName || '');
+            });
+
+            if (countEl) countEl.textContent = '(' + items.length + ')';
+            listEl.innerHTML = '';
+
+            if (items.length === 0) {
+                listEl.innerHTML = '<div class="rpl-side-empty">Aucune tâche de remplacement</div>';
+                return;
+            }
+
+            items.forEach(function(item) {
+                const div = document.createElement('div');
+                div.className = 'rpl-side-item';
+                div.title = 'Double-clic ou clic pour ouvrir la fiche de remplacement';
+
+                let html = '<div class="rpl-date">' + item.dateStr + '</div>';
+                html += '<div class="rpl-target">' + (item.isTeam ? '👥 ' : '👤 ') + item.targetName + '</div>';
+                html += '<span class="rpl-code" style="background:' + item.color + ';color:' + item.textColor + ';">' + item.code + '</span>';
+                if (item.comment) {
+                    html += '<div class="rpl-comment">' + item.comment.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</div>';
+                }
+                div.innerHTML = html;
+
+                // Même interaction que sur le planning : ouvrir la fiche RPL
+                div.onclick = function() {
+                    openReplacementModal(item.isTeam, item.targetId, item.targetName, item.dateStr);
+                };
+
+                listEl.appendChild(div);
+            });
         }
 
         // sert à générer la liste des dates actuellement visibles dans le planning à partir de la date de départ (startDate).
