@@ -234,6 +234,21 @@
             line-height: 1.3;
             word-break: break-word;
         }
+        .rpl-side-item .rpl-seen-badge {
+            display: inline-block;
+            margin-top: 4px;
+            font-size: 0.68rem;
+            font-weight: bold;
+            color: #1e8449;
+            background: #e8f8f5;
+            border: 1px solid #2ecc71;
+            padding: 1px 6px;
+            border-radius: 10px;
+        }
+        .rpl-side-item.rpl-seen {
+            border-left-color: #2ecc71;
+            background: #f8fffc;
+        }
         .rpl-side-empty {
             font-size: 0.8rem;
             color: #999;
@@ -1076,14 +1091,16 @@ function ensureReplacementSheet(sheetKey) {
         replacementSheets = {};
     }
     if (!sheetKey) {
-        return { volunteers: [], selectedVolunteers: [], createdAt: '', createdBy: '' };
+        return { volunteers: [], selectedVolunteers: [], createdAt: '', createdBy: '', seenByEmails: {}, seenByAgents: {} };
     }
     if (!replacementSheets[sheetKey] || typeof replacementSheets[sheetKey] !== 'object') {
         replacementSheets[sheetKey] = {
             volunteers: [],
             selectedVolunteers: [],
             createdAt: (typeof formatDate === 'function') ? formatDate(new Date()) : '',
-            createdBy: currentUser ? currentUser.email : 'inconnu'
+            createdBy: currentUser ? currentUser.email : 'inconnu',
+            seenByEmails: {},
+            seenByAgents: {}
         };
     }
     const sheet = replacementSheets[sheetKey];
@@ -1092,7 +1109,44 @@ function ensureReplacementSheet(sheetKey) {
     if (!sheet.createdAt) {
         sheet.createdAt = (typeof formatDate === 'function') ? formatDate(new Date()) : '';
     }
+    if (!sheet.seenByEmails || typeof sheet.seenByEmails !== 'object') sheet.seenByEmails = {};
+    if (!sheet.seenByAgents || typeof sheet.seenByAgents !== 'object') sheet.seenByAgents = {};
     return sheet;
+}
+
+/** Agent lié au compte connecté (mémorisé localement après 1er positionnement volontaire) */
+function getMyLinkedAgentId() {
+    try {
+        if (!currentUser || !currentUser.email) return null;
+        return localStorage.getItem('rplLinkedAgentId_' + currentUser.email) || null;
+    } catch (e) { return null; }
+}
+function setMyLinkedAgentId(agentId) {
+    try {
+        if (!currentUser || !currentUser.email || !agentId) return;
+        localStorage.setItem('rplLinkedAgentId_' + currentUser.email, agentId);
+    } catch (e) {}
+}
+
+/** Marque la fiche comme vue par l'utilisateur courant (+ agent lié si connu) */
+function markSheetAsSeen(sheetKey) {
+    if (!sheetKey || !currentUser || !currentUser.email) return;
+    const sheet = ensureReplacementSheet(sheetKey);
+    let changed = false;
+    if (!sheet.seenByEmails[currentUser.email]) {
+        sheet.seenByEmails[currentUser.email] = true;
+        changed = true;
+    }
+    const myAgentId = getMyLinkedAgentId();
+    if (myAgentId && !sheet.seenByAgents[myAgentId]) {
+        sheet.seenByAgents[myAgentId] = true;
+        changed = true;
+    }
+    if (changed) {
+        replacementSheets[sheetKey] = sheet;
+        if (isReadOnly) saveReplacementSheetsToFirebase();
+        else saveToFirebase();
+    }
 }
 
 
@@ -1644,20 +1698,39 @@ if (resetAckBtn) {
 
             items.forEach(function(item) {
                 const div = document.createElement('div');
-                div.className = 'rpl-side-item';
-                div.title = 'Double-clic ou clic pour ouvrir la fiche de remplacement';
+                const sheetKey = item.targetId + '_' + item.dateStr;
+                const sheet = (replacementSheets && replacementSheets[sheetKey]) ? ensureReplacementSheet(sheetKey) : null;
+                const iHaveSeen = !!(currentUser && currentUser.email && sheet && sheet.seenByEmails && sheet.seenByEmails[currentUser.email]);
+
+                div.className = 'rpl-side-item' + (iHaveSeen ? ' rpl-seen' : '');
+                div.title = 'Clic : aller à la date — Double-clic : ouvrir la fiche';
 
                 let html = '<div class="rpl-date">' + item.dateStr + '</div>';
                 html += '<div class="rpl-target">' + (item.isTeam ? '👥 ' : '👤 ') + item.targetName + '</div>';
                 html += '<span class="rpl-code" style="background:' + item.color + ';color:' + item.textColor + ';">' + item.code + '</span>';
+                if (iHaveSeen) {
+                    html += ' <span class="rpl-seen-badge">👁 Vu</span>';
+                }
                 if (item.comment) {
                     html += '<div class="rpl-comment">' + item.comment.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</div>';
                 }
                 div.innerHTML = html;
 
-                // Même interaction que sur le planning : ouvrir la fiche RPL
+                // Clic simple = navigation date ; double-clic = ouvrir fiche RPL
                 div.onclick = function() {
-                    openReplacementModal(item.isTeam, item.targetId, item.targetName, item.dateStr);
+                    if (clickTimer) {
+                        clearTimeout(clickTimer);
+                        clickTimer = null;
+                        openReplacementModal(item.isTeam, item.targetId, item.targetName, item.dateStr);
+                    } else {
+                        clickTimer = setTimeout(function() {
+                            clickTimer = null;
+                            // Navigation du planning vers la date du remplacement
+                            jumpToDate(item.dateStr);
+                            const dp = document.getElementById('datePicker');
+                            if (dp) dp.value = item.dateStr;
+                        }, 250);
+                    }
                 };
 
                 listEl.appendChild(div);
@@ -2489,7 +2562,6 @@ function populateRplAgentSelect(showAll) {
     const select = document.getElementById('rplAgentSelect');
     if (!select) return;
 
-    // Vider la liste
     select.innerHTML = '';
     const emptyOpt = document.createElement('option');
     emptyOpt.value = '';
@@ -2500,8 +2572,10 @@ function populateRplAgentSelect(showAll) {
 
     const dateStr = activeRplContext.dateStr;
     const shiftToFill = activeRplContext.shiftToFill;
+    const sheetKey = activeRplContext.targetId + '_' + activeRplContext.dateStr;
+    const sheet = ensureReplacementSheet(sheetKey);
+    const seenByAgents = sheet.seenByAgents || {};
 
-    // Récupérer tous les agents
     const allAgents = [];
     teams.forEach(function(t) {
         t.agents.forEach(function(a) {
@@ -2514,22 +2588,18 @@ function populateRplAgentSelect(showAll) {
         });
     });
 
-    // Trier par nom
     allAgents.sort(function(a, b) {
         return a.name.localeCompare(b.name);
     });
 
     allAgents.forEach(function(a) {
-        // Vérifier l’éligibilité (si la fonction existe)
         let eligible = true;
         if (shiftToFill && typeof canAgentTakeReplacement === 'function') {
             eligible = canAgentTakeReplacement(a.id, dateStr, shiftToFill);
         }
 
-        // Mode filtré : on n’affiche que les éligibles
         if (!showAll && !eligible) return;
 
-        // Statut du jour
         let statusLabel = '?';
         const info = getAgentInfoOnDate(a.id, dateStr);
         if (info) statusLabel = info.taskCode;
@@ -2537,8 +2607,11 @@ function populateRplAgentSelect(showAll) {
         const opt = document.createElement('option');
         opt.value = a.id;
 
-        // Texte de l’option (sans template littéral)
         let text = a.name + ' (' + a.teamName + ') [' + statusLabel + ']';
+        // Indication "Vu" visible par tous si cet agent a ouvert la fiche
+        if (seenByAgents[a.id]) {
+            text += ' 👁 Vu';
+        }
         if (!eligible && showAll) {
             text += ' ⚠ non éligible';
             opt.style.color = '#c0392b';
@@ -2615,17 +2688,17 @@ function openReplacementModal(isTeam, targetId, targetName, dateStr) {
     const wasNewSheet = !replacementSheets[sheetKey];
     const sheet = ensureReplacementSheet(sheetKey);
     if (wasNewSheet) {
-        // Persister la création même pour un profil restreint
-        if (isReadOnly) {
-            saveReplacementSheetsToFirebase();
-        } else {
-            saveToFirebase();
-        }
+        if (isReadOnly) saveReplacementSheetsToFirebase();
+        else saveToFirebase();
     }
+
+    // Marquer comme vue par l'utilisateur connecté (panneau perso + agents liés visibles par tous)
+    markSheetAsSeen(sheetKey);
+    if (typeof updateRplSidePanel === 'function') updateRplSidePanel();
 
     const createdAtLabel = sheet.createdAt || '—';
 
-    // 5. Afficher le titre (version simple, sans template littéral fragile)
+    // 5. Afficher le titre
     const infoEl = document.getElementById('rplTargetInfo');
     if (infoEl) {
         infoEl.innerHTML =
@@ -2640,7 +2713,7 @@ function openReplacementModal(isTeam, targetId, targetName, dateStr) {
     if (btn) btn.textContent = 'Voir tous les agents';
     if (hint) hint.textContent = 'Liste filtrée : agents en Repos (R) ou en Journée (J) respectant les temps de repos.';
 
-    // 7. Remplir la liste déroulante
+    // 7. Remplir la liste déroulante (avec indication 👁 Vu si agent a ouvert la fiche)
     if (typeof populateRplAgentSelect === 'function') {
         populateRplAgentSelect(false);
     }
@@ -2673,6 +2746,30 @@ function updateRplAgentStats() {
     if (!agentId) {
         statsEl.innerText = '';
         return;
+    }
+
+    // Profil agent : sélection = identification → lie le compte et marque "Vu" pour tous
+    if (isReadOnly && activeRplContext && currentUser && currentUser.email) {
+        setMyLinkedAgentId(agentId);
+        const sheetKey = activeRplContext.targetId + '_' + activeRplContext.dateStr;
+        const sheet = ensureReplacementSheet(sheetKey);
+        let changed = false;
+        if (!sheet.seenByEmails[currentUser.email]) {
+            sheet.seenByEmails[currentUser.email] = true;
+            changed = true;
+        }
+        if (!sheet.seenByAgents[agentId]) {
+            sheet.seenByAgents[agentId] = true;
+            changed = true;
+        }
+        if (changed) {
+            replacementSheets[sheetKey] = sheet;
+            saveReplacementSheetsToFirebase();
+            populateRplAgentSelect(rplShowAllAgents);
+            const sel = document.getElementById('rplAgentSelect');
+            if (sel) sel.value = agentId;
+            if (typeof updateRplSidePanel === 'function') updateRplSidePanel();
+        }
     }
 
     const info = getAgentInfoOnDate(agentId, activeRplContext ? activeRplContext.dateStr : null);
@@ -2718,7 +2815,6 @@ function addVolunteerToSheet() {
     }
 
     const sheet = ensureReplacementSheet(sheetKey);
-    // Sécurité supplémentaire (Firebase peut avoir écrasé entre-temps)
     const volunteers = toArraySafe(sheet.volunteers);
     sheet.volunteers = volunteers;
 
@@ -2729,9 +2825,16 @@ function addVolunteerToSheet() {
 
     volunteers.push(agentId);
     sheet.volunteers = volunteers;
+
+    // Lier ce compte à cet agent + marquer "Vu" pour tous les utilisateurs
+    setMyLinkedAgentId(agentId);
+    if (currentUser && currentUser.email) {
+        sheet.seenByEmails[currentUser.email] = true;
+    }
+    sheet.seenByAgents[agentId] = true;
+
     replacementSheets[sheetKey] = sheet;
 
-    // Sauvegarde : RE = état complet, profil restreint = fiches RPL uniquement
     if (isReadOnly) {
         saveReplacementSheetsToFirebase();
     } else {
@@ -2739,10 +2842,47 @@ function addVolunteerToSheet() {
     }
 
     renderVolunteersList();
+    populateRplAgentSelect(rplShowAllAgents);
+    if (typeof updateRplSidePanel === 'function') updateRplSidePanel();
 
     select.value = '';
     const statsEl = document.getElementById('rplAgentStats');
     if (statsEl) statsEl.innerText = '';
+}
+
+/** Retire un volontaire de la fiche RPL */
+function removeVolunteerFromSheet(agentId) {
+    if (!activeRplContext || !agentId) return;
+
+    const sheetKey = activeRplContext.targetId + '_' + activeRplContext.dateStr;
+    const sheet = ensureReplacementSheet(sheetKey);
+    const volunteers = toArraySafe(sheet.volunteers);
+    const selected = toArraySafe(sheet.selectedVolunteers);
+
+    // Agent (lecture seule) : peut uniquement se retirer lui-même (agent lié)
+    if (isReadOnly) {
+        const myId = getMyLinkedAgentId();
+        if (!myId || myId !== agentId) {
+            alert("Vous ne pouvez retirer que votre propre inscription (agent lié à votre compte).");
+            return;
+        }
+    }
+
+    const idx = volunteers.indexOf(agentId);
+    if (idx === -1) return;
+    volunteers.splice(idx, 1);
+    sheet.volunteers = volunteers;
+
+    const sidx = selected.indexOf(agentId);
+    if (sidx !== -1) selected.splice(sidx, 1);
+    sheet.selectedVolunteers = selected;
+
+    replacementSheets[sheetKey] = sheet;
+
+    if (isReadOnly) saveReplacementSheetsToFirebase();
+    else saveToFirebase();
+
+    renderVolunteersList();
 }
 
 
@@ -2805,7 +2945,7 @@ function renderVolunteersList() {
 
         list.forEach(function(entry) {
             const div = document.createElement('div');
-            div.style.cssText = 'display:flex; justify-content:space-between; align-items:center; padding:4px 6px; border-bottom:1px solid #ddd;';
+            div.style.cssText = 'display:flex; justify-content:space-between; align-items:center; padding:4px 6px; border-bottom:1px solid #ddd; gap:6px;';
 
             // Case à cocher (seulement pour RE / Admin)
             let checkHtml = '';
@@ -2816,6 +2956,7 @@ function renderVolunteersList() {
             }
 
             const left = document.createElement('div');
+            left.style.cssText = 'flex:1; min-width:0;';
             left.innerHTML = checkHtml +
                 '<strong>' + entry.info.agent.name + '</strong> ' +
                 '<span style="font-size:0.75rem; color:#666;">(' + entry.count +
@@ -2823,13 +2964,35 @@ function renderVolunteersList() {
 
             div.appendChild(left);
 
+            const right = document.createElement('div');
+            right.style.cssText = 'display:flex; align-items:center; gap:4px; flex-shrink:0;';
+
             if (entry.isSelected) {
                 const badge = document.createElement('span');
                 badge.className = 'badge bg-green';
                 badge.textContent = 'Sélectionné';
-                div.appendChild(badge);
+                right.appendChild(badge);
             }
 
+            // Suppression : RE = tous ; agent = uniquement lui-même (agent lié)
+            const myId = getMyLinkedAgentId();
+            const canRemove = !isReadOnly || (myId && myId === entry.aId);
+            if (canRemove) {
+                const rmBtn = document.createElement('button');
+                rmBtn.className = 'btn btn-danger';
+                rmBtn.style.cssText = 'padding:1px 6px; font-size:0.7rem;';
+                rmBtn.title = 'Retirer de la liste des volontaires';
+                rmBtn.textContent = '✕';
+                rmBtn.onclick = function(e) {
+                    e.stopPropagation();
+                    if (confirm('Retirer ' + entry.info.agent.name + ' des volontaires ?')) {
+                        removeVolunteerFromSheet(entry.aId);
+                    }
+                };
+                right.appendChild(rmBtn);
+            }
+
+            div.appendChild(right);
             container.appendChild(div);
         });
     }
