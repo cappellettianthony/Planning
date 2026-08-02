@@ -2573,6 +2573,67 @@ function validateReplacementSheet() {
             taskDescriptions[descKey] = 'RPL validé – ' + comment;
         });
     }
+    
+    // ------------------------------------------------------------------
+    // Conversion de la tâche de remplacement sur la cible (agent / équipe)
+    // RPC → CA | RPF → F | RPR → RC | RPA → RPA (message)
+    // ------------------------------------------------------------------
+    const targetId = activeRplContext.targetId;
+    const dateStr = activeRplContext.dateStr;
+    const isTeam = activeRplContext.isTeam;
+
+    // Récupérer le code actuel sur la cellule cible
+    let currentTargetCode = null;
+    if (isTeam) {
+        if (teamSchedules[targetId] && teamSchedules[targetId][dateStr] !== undefined) {
+            currentTargetCode = teamSchedules[targetId][dateStr];
+        }
+    } else {
+        if (agentSchedules[targetId] && agentSchedules[targetId][dateStr] !== undefined) {
+            currentTargetCode = agentSchedules[targetId][dateStr];
+        }
+        // Si pas de planning individuel, on regarde le roulement d'équipe
+        if (!currentTargetCode) {
+            let teamId = null;
+            teams.forEach(function(t) {
+                if (t.agents.some(function(a) { return a.id === targetId; })) teamId = t.id;
+            });
+            if (teamId && teamSchedules[teamId] && teamSchedules[teamId][dateStr] !== undefined) {
+                currentTargetCode = teamSchedules[teamId][dateStr];
+            }
+        }
+    }
+
+    // Table de conversion
+    const conversionMap = {
+        'RPCa': 'CA',
+        'RPFo': 'F',
+        'RPRc': 'RC',
+        'RPHp': 'HP',
+        'RPA': 'RPA'   // reste inchangé
+    };
+
+    let rpaMessage = false;
+
+    if (currentTargetCode && conversionMap.hasOwnProperty(currentTargetCode)) {
+        const newCode = conversionMap[currentTargetCode];
+
+        if (currentTargetCode === 'RPA') {
+            rpaMessage = true;   // on laisse RPA, on affichera un message
+        } else {
+            // Écrire le nouveau code sur la cible
+            if (isTeam) {
+                if (!teamSchedules[targetId]) teamSchedules[targetId] = {};
+                teamSchedules[targetId][dateStr] = newCode;
+            } else {
+                if (!agentSchedules[targetId]) agentSchedules[targetId] = {};
+                agentSchedules[targetId][dateStr] = newCode;
+            }
+        }
+    }
+
+    // Message spécifique RPA (affiché après le succès)
+    // (on le stocke pour l'afficher plus bas)
 
     // Archivage
     replacementArchives.push({
@@ -2591,7 +2652,11 @@ function validateReplacementSheet() {
 
     closeReplacementModal();
     renderAll(true);
-    alert('✅ Fiche de remplacement soldée et quart(s) affecté(s) !');
+    let finalMsg = '✅ Fiche de remplacement soldée et quart(s) affecté(s) !';
+    if (rpaMessage) {
+        finalMsg += '\n\n⚠️ Tâche RPA détectée : pensez à changer le motif du remplacement.';
+    }
+    alert(finalMsg);
 }
 
 
