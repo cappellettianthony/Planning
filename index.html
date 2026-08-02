@@ -828,11 +828,12 @@
                 <thead>
                     <tr>
                         <th>Date RPL</th>
+                        <th>Créée le</th>
                         <th>Cible (Agent/Équipe)</th>
                         <th>Volontaires déclarés</th>
                         <th>Sélectionné(s)</th>
                         <th>Commentaire</th>
-                        <th>Solder par / le</th>
+                        <th>Soldé par / le</th>
                     </tr>
                 </thead>
                 <tbody id="archiveRplTableBody"></tbody>
@@ -1280,6 +1281,18 @@ if (resetAckBtn) {
                 planningRef.set(getAppState());
             } catch(e) {
                 console.error("Erreur de sauvegarde Firebase : ", e);
+            }
+        }
+
+        /**
+         * Sauvegarde limitée autorisée aux profils lecture seule :
+         * uniquement les fiches de remplacement (volontaires).
+         */
+        function saveReplacementSheetsToFirebase() {
+            try {
+                planningRef.child('replacementSheets').set(replacementSheets || {});
+            } catch (e) {
+                console.error("Erreur de sauvegarde des fiches RPL : ", e);
             }
         }
 
@@ -1731,16 +1744,15 @@ if (resetAckBtn) {
             const desc = taskDescriptions[descKey] || '';
 
             const cellDiv = document.createElement('div');
-            cellDiv.className = `task-cell ${isReadOnly ? 'task-cell-disabled' : ''} ${desc ? 'has-desc-indicator' : ''}`;
+            const isRplTeamCell = taskDef.isReplacement;
+            // Lecture seule : cellules RPL cliquables (double-clic / appui long), le reste désactivé
+            cellDiv.className = `task-cell ${(isReadOnly && !isRplTeamCell) ? 'task-cell-disabled' : ''} ${desc ? 'has-desc-indicator' : ''}`;
             cellDiv.style.backgroundColor = taskDef.color;
             cellDiv.style.color = taskDef.text;
             cellDiv.innerText = currentVal;
 
-            if (!isReadOnly) {
-                
-// Clics et événements tactiles sur cellule d'équipe
-bindCellEvents(cellDiv, true, team.id, team.name, dateStr, currentVal, desc);
-
+            if (!isReadOnly || isRplTeamCell) {
+                bindCellEvents(cellDiv, true, team.id, team.name, dateStr, currentVal, desc);
             }
             attachCellHoverEvents(cellDiv, desc);
 
@@ -1790,15 +1802,14 @@ bindCellEvents(cellDiv, true, team.id, team.name, dateStr, currentVal, desc);
 
                 const td = document.createElement('td');
                 const cellDiv = document.createElement('div');
-                cellDiv.className = `task-cell ${isReadOnly ? 'task-cell-disabled' : ''} ${desc ? 'has-desc-indicator' : ''}`;
+                const isRplAgentCell = taskDef.isReplacement;
+                cellDiv.className = `task-cell ${(isReadOnly && !isRplAgentCell) ? 'task-cell-disabled' : ''} ${desc ? 'has-desc-indicator' : ''}`;
                 cellDiv.style.backgroundColor = taskDef.color;
                 cellDiv.style.color = taskDef.text;
                 cellDiv.innerText = taskCode;
 
-                if (!isReadOnly) {
-                    // Clics et événements tactiles sur cellule agent
-bindCellEvents(cellDiv, false, agent.id, agent.name, dateStr, taskCode, desc);
-
+                if (!isReadOnly || isRplAgentCell) {
+                    bindCellEvents(cellDiv, false, agent.id, agent.name, dateStr, taskCode, desc);
                 }
                 attachCellHoverEvents(cellDiv, desc);
 
@@ -1926,10 +1937,20 @@ function getShiftToFillForRpl(isTeam, targetId, dateStr) {
     return null;
 }
 
+/** Libellé court d'équipe : "Équipe 1" / team_1 → EQ1 */
+function getTeamShortLabel(team) {
+    if (!team) return '?';
+    const fromName = (team.name || '').match(/(\d+)/);
+    if (fromName) return 'EQ' + fromName[1];
+    const fromId = (team.id || '').match(/(\d+)/);
+    if (fromId) return 'EQ' + fromId[1];
+    return team.name || team.id || '?';
+}
+
 /**
- * Construit un commentaire listant les agents disponibles pour un remplacement,
- * en réutilisant exactement les contrôles de canAgentTakeReplacement
- * (statut R/J, 11h, 35h, max 11 jours consécutifs).
+ * Construit un commentaire listant les ÉQUIPES disponibles pour un remplacement
+ * (mêmes contrôles que canAgentTakeReplacement : statut R/J, 11h, 35h, max 11 jours).
+ * Format : "Quart à combler : M (Matin) | Équipes dispo : EQ2, EQ4"
  */
 function buildRplAvailabilityComment(isTeam, targetId, dateStr) {
     const shiftToFill = getShiftToFillForRpl(isTeam, targetId, dateStr);
@@ -1941,7 +1962,6 @@ function buildRplAvailabilityComment(isTeam, targetId, dateStr) {
         return 'Quart à combler : non déterminé (pas de roulement M/A/N/J sur l\'équipe ce jour).';
     }
 
-    // Contexte temporaire pour que canAgentTakeReplacement exclue correctement la cible
     const prevContext = activeRplContext;
     activeRplContext = {
         isTeam: isTeam,
@@ -1951,32 +1971,26 @@ function buildRplAvailabilityComment(isTeam, targetId, dateStr) {
         shiftToFill: shiftToFill
     };
 
-    const byTeam = {};
+    const availableTeams = [];
     teams.forEach(function(t) {
-        t.agents.forEach(function(a) {
-            // Exclure l'agent cible lui-même (cas agent)
-            if (!isTeam && a.id === targetId) return;
-            // Exclure les agents de l'équipe cible (cas équipe entière en RPL)
-            if (isTeam && t.id === targetId) return;
+        if (isTeam && t.id === targetId) return;
 
-            if (canAgentTakeReplacement(a.id, dateStr, shiftToFill)) {
-                if (!byTeam[t.name]) byTeam[t.name] = [];
-                byTeam[t.name].push(a.name);
-            }
+        const hasEligibleAgent = t.agents.some(function(a) {
+            if (!isTeam && a.id === targetId) return false;
+            return canAgentTakeReplacement(a.id, dateStr, shiftToFill);
         });
+
+        if (hasEligibleAgent) {
+            availableTeams.push(getTeamShortLabel(t));
+        }
     });
 
     activeRplContext = prevContext;
 
-    const teamNames = Object.keys(byTeam);
-    if (teamNames.length === 0) {
-        return 'Quart à combler : ' + shiftLabel + ' | Aucun agent disponible (contrôles de repos).';
+    if (availableTeams.length === 0) {
+        return 'Quart à combler : ' + shiftLabel + ' | Aucune équipe disponible.';
     }
-
-    const parts = teamNames.map(function(name) {
-        return name + ' : ' + byTeam[name].join(', ');
-    });
-    return 'Quart à combler : ' + shiftLabel + ' | Dispo → ' + parts.join(' | ');
+    return 'Quart à combler : ' + shiftLabel + ' | Équipes dispo : ' + availableTeams.join(', ');
 }
 
 /** Retourne les infos d’un agent un jour donné */
@@ -2343,18 +2357,35 @@ function openReplacementModal(isTeam, targetId, targetName, dateStr) {
     };
     rplShowAllAgents = false;
 
-    // 4. Initialiser la fiche si besoin
+    // 4. Initialiser la fiche si besoin (+ date de création)
     const sheetKey = targetId + '_' + dateStr;
     if (!replacementSheets[sheetKey]) {
-        replacementSheets[sheetKey] = { volunteers: [], selectedVolunteers: [] };
+        replacementSheets[sheetKey] = {
+            volunteers: [],
+            selectedVolunteers: [],
+            createdAt: formatDate(new Date()),
+            createdBy: currentUser ? currentUser.email : 'inconnu'
+        };
+        // Persister la création même pour un profil restreint
+        if (isReadOnly) {
+            saveReplacementSheetsToFirebase();
+        } else {
+            saveToFirebase();
+        }
+    } else if (!replacementSheets[sheetKey].createdAt) {
+        // Fiches anciennes sans date → on complète
+        replacementSheets[sheetKey].createdAt = formatDate(new Date());
     }
+
+    const createdAtLabel = replacementSheets[sheetKey].createdAt || '—';
 
     // 5. Afficher le titre (version simple, sans template littéral fragile)
     const infoEl = document.getElementById('rplTargetInfo');
     if (infoEl) {
         infoEl.innerHTML =
             'Fiche RPL pour : <strong>' + targetName + '</strong> le <strong>' + dateStr + '</strong><br>' +
-            '<span style="color:#c0392b;">Quart d\'absence à combler : <strong>' + shiftLabel + '</strong></span>';
+            '<span style="color:#c0392b;">Quart d\'absence à combler : <strong>' + shiftLabel + '</strong></span><br>' +
+            '<span style="color:#7f8c8d; font-size:0.8rem;">Fiche créée le : <strong>' + createdAtLabel + '</strong></span>';
     }
 
     // 6. Réinitialiser le bouton "Voir tous / éligibles"
@@ -2439,7 +2470,9 @@ function addVolunteerToSheet() {
     if (!replacementSheets[sheetKey]) {
         replacementSheets[sheetKey] = {
             volunteers: [],
-            selectedVolunteers: []
+            selectedVolunteers: [],
+            createdAt: formatDate(new Date()),
+            createdBy: currentUser ? currentUser.email : 'inconnu'
         };
     }
 
@@ -2450,8 +2483,12 @@ function addVolunteerToSheet() {
 
     replacementSheets[sheetKey].volunteers.push(agentId);
 
-    // Sauvegarde immédiate dans Firebase
-    saveToFirebase();
+    // Sauvegarde : RE = état complet, profil restreint = fiches RPL uniquement
+    if (isReadOnly) {
+        saveReplacementSheetsToFirebase();
+    } else {
+        saveToFirebase();
+    }
 
     renderVolunteersList();
 
@@ -2720,9 +2757,11 @@ function validateReplacementSheet() {
     // Message spécifique RPA (affiché après le succès)
     // (on le stocke pour l'afficher plus bas)
 
-    // Archivage
+    // Archivage (inclut la date de création de la fiche)
+    const sheetCreatedAt = (sheet && sheet.createdAt) ? sheet.createdAt : '—';
     replacementArchives.push({
         dateRpl: activeRplContext.dateStr,
+        createdAt: sheetCreatedAt,
         targetName: activeRplContext.targetName,
         shiftFilled: shiftToFill || 'N/A',
         volunteers: volunteersNames,
@@ -2758,17 +2797,18 @@ function openArchiveRemplacementModal() {
     tbody.innerHTML = '';
 
     if (replacementArchives.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">Aucune archive de remplacement disponible.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">Aucune archive de remplacement disponible.</td></tr>';
     } else {
         replacementArchives.forEach(arch => {
             const tr = document.createElement('tr');
             tr.innerHTML = `
-                <td>${arch.dateRpl}</td>
-                <td>${arch.targetName}</td>
-                <td>${arch.volunteers}</td>
-                <td><strong>${arch.selected}</strong></td>
-                <td>${arch.comment}</td>
-                <td>${arch.closedBy}<br><small>${arch.closedAt}</small></td>
+                <td>${arch.dateRpl || ''}</td>
+                <td>${arch.createdAt || '—'}</td>
+                <td>${arch.targetName || ''}</td>
+                <td>${arch.volunteers || ''}</td>
+                <td><strong>${arch.selected || ''}</strong></td>
+                <td>${arch.comment || ''}</td>
+                <td>${arch.closedBy || ''}<br><small>${arch.closedAt || ''}</small></td>
             `;
             tbody.appendChild(tr);
         });
@@ -2808,6 +2848,7 @@ function exportRplArchivesToExcel() {
 
     const headers = [
         'Date RPL',
+        'Créée le',
         'Cible (Agent/Équipe)',
         'Volontaires déclarés',
         'Sélectionné(s)',
@@ -2819,6 +2860,7 @@ function exportRplArchivesToExcel() {
     const rows = replacementArchives.map(arch => {
         return [
             arch.dateRpl || '',
+            arch.createdAt || '',
             arch.targetName || '',
             arch.volunteers || '',
             arch.selected || '',
