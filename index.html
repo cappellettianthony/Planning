@@ -869,7 +869,7 @@
 
         const ADMIN_EMAILS = [
             "cappellettianthony@gmail.com",
-            "Admin@planning.com"
+            "admin@planning.com"
         ];
 
         const RE_EMAILS = [
@@ -928,7 +928,21 @@
             'RPL': { label: 'Remplacement', color: '#e74c3c', text: '#ffffff', shift: 'none', start: '00:00', end: '00:00', isRest: false, isReplacement: true }
         };
 
+        // Ordre explicite des tâches (Firebase ne préserve pas l'ordre des clés d'objet)
+        let taskOrder = Object.keys(TASKS);
+
         let settings = { thresholds: { M: { orange: 5, green: 7 }, A: { orange: 5, green: 7 }, N: { orange: 3, green: 5 } } };
+
+        /** Retourne les codes de tâches dans l'ordre personnalisé */
+        function getOrderedTaskCodes() {
+            const codes = Array.isArray(taskOrder) ? taskOrder.slice() : [];
+            // Ajouter les codes présents dans TASKS mais absents de taskOrder
+            Object.keys(TASKS).forEach(function(code) {
+                if (codes.indexOf(code) === -1) codes.push(code);
+            });
+            // Retirer les codes qui n'existent plus dans TASKS
+            return codes.filter(function(code) { return TASKS[code] !== undefined; });
+        }
 
 // À ajouter dans les déclarations de variables globales
 let replacementSheets = {};    // Stocke les volontaires pour une fiche
@@ -952,6 +966,7 @@ function getAppState() {
         skillDefinitions: skillDefinitions,
         exclusiveSkillMonitoredGroups: exclusiveSkillMonitoredGroups,
         TASKS: TASKS,
+        taskOrder: getOrderedTaskCodes(),
         settings: settings,
         replacementSheets: replacementSheets,
         replacementArchives: replacementArchives
@@ -989,6 +1004,12 @@ function loadAppState(data) {
     skillDefinitions = data.skillDefinitions || skillDefinitions;
     exclusiveSkillMonitoredGroups = data.exclusiveSkillMonitoredGroups || exclusiveSkillMonitoredGroups;
     TASKS = data.TASKS || TASKS;
+    // Restaurer l'ordre personnalisé des tâches
+    if (Array.isArray(data.taskOrder) && data.taskOrder.length > 0) {
+        taskOrder = data.taskOrder;
+    } else {
+        taskOrder = Object.keys(TASKS);
+    }
     settings = data.settings || settings;
 
     // Important : recharger les fiches RPL
@@ -1188,6 +1209,7 @@ if (resetAckBtn) {
         skillDefinitions: skillDefinitions,
         exclusiveSkillMonitoredGroups: exclusiveSkillMonitoredGroups,
         TASKS: TASKS,
+        taskOrder: getOrderedTaskCodes(),
         settings: settings,
         replacementSheets: replacementSheets,
         replacementArchives: replacementArchives
@@ -1225,6 +1247,12 @@ if (resetAckBtn) {
     skillDefinitions = data.skillDefinitions || skillDefinitions;
     exclusiveSkillMonitoredGroups = data.exclusiveSkillMonitoredGroups || exclusiveSkillMonitoredGroups;
     TASKS = data.TASKS || TASKS;
+    // Restaurer l'ordre personnalisé des tâches
+    if (Array.isArray(data.taskOrder) && data.taskOrder.length > 0) {
+        taskOrder = data.taskOrder;
+    } else {
+        taskOrder = Object.keys(TASKS);
+    }
     settings = data.settings || settings;
 
     // Important : recharger les fiches RPL
@@ -2804,7 +2832,7 @@ function purgeReplacementArchives() {
 
             const grid = document.getElementById('taskPickerGrid');
             grid.innerHTML = '';
-            Object.keys(TASKS).forEach(code => {
+            getOrderedTaskCodes().forEach(code => {
                 const task = TASKS[code];
                 const btn = document.createElement('div');
                 btn.className = `task-picker-btn ${code === selectedTaskCodeInModal ? 'selected' : ''}`;
@@ -3312,7 +3340,7 @@ function resetAcknowledgedAlerts() {
 
             const bulkTaskSel = document.getElementById('bulkAgentTask');
             bulkTaskSel.innerHTML = '';
-            Object.keys(TASKS).forEach(code => {
+            getOrderedTaskCodes().forEach(code => {
                 const opt = document.createElement('option');
                 opt.value = code;
                 opt.innerText = `${code} - ${TASKS[code].label}`;
@@ -3532,10 +3560,10 @@ function resetAcknowledgedAlerts() {
     monitoredContainer.innerHTML = '';
     (exclusiveSkillMonitoredGroups || []).forEach(group => renderMonitoredGroupRow(group));
 
-    // Remplissage des Tâches
+    // Remplissage des Tâches (dans l'ordre personnalisé)
     const tasksContainer = document.getElementById('tasksContainer');
     tasksContainer.innerHTML = '';
-    Object.keys(TASKS).forEach(code => {
+    getOrderedTaskCodes().forEach(code => {
         const t = TASKS[code];
         addTaskRow(code, t.label, t.shift, t.start, t.end, t.isRest, t.isReplacement, t.color, t.text);
     });
@@ -3635,7 +3663,7 @@ function resetAcknowledgedAlerts() {
             const container = document.getElementById('tasksContainer');
             container.innerHTML = '';
 
-            Object.keys(TASKS).forEach((code, idx) => {
+            getOrderedTaskCodes().forEach((code, idx) => {
                 const t = TASKS[code];
                 const row = document.createElement('div');
                 row.className = 'task-row';
@@ -3794,8 +3822,9 @@ function renderMonitoredGroupRow(group = []) {
     });
     exclusiveSkillMonitoredGroups = newMonitoredGroups;
 
-    // 3. Sauvegarde des tâches (incluant l'option Fiche de Remplacement)
+    // 3. Sauvegarde des tâches (incluant l'option Fiche de Remplacement) + ordre
     const newTasks = {};
+    const newOrder = [];
     document.querySelectorAll('.task-row').forEach(row => {
         const code = row.querySelector('.t-code').value.trim().toUpperCase();
         const label = row.querySelector('.t-label').value.trim();
@@ -3809,9 +3838,13 @@ function renderMonitoredGroupRow(group = []) {
 
         if (code && label) {
             newTasks[code] = { label, shift, start, end, isRest, isReplacement, color, text };
+            newOrder.push(code);
         }
     });
-    if (Object.keys(newTasks).length > 0) TASKS = newTasks;
+    if (Object.keys(newTasks).length > 0) {
+        TASKS = newTasks;
+        taskOrder = newOrder;
+    }
 
     // 4. Seuils d'effectifs
     settings.thresholds.M.orange = parseInt(document.getElementById('th_M_orange').value) || 5;
