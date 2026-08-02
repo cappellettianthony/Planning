@@ -885,6 +885,18 @@
             <div class="form-group"><label>Matin (Or / Vert)</label><div style="display:flex; gap:10px;"><input type="number" id="th_M_orange" value="5"><input type="number" id="th_M_green" value="7"></div></div>
             <div class="form-group"><label>Après-midi (Or / Vert)</label><div style="display:flex; gap:10px;"><input type="number" id="th_A_orange" value="5"><input type="number" id="th_A_green" value="7"></div></div>
             <div class="form-group"><label>Nuit (Or / Vert)</label><div style="display:flex; gap:10px;"><input type="number" id="th_N_orange" value="3"><input type="number" id="th_N_green" value="5"></div></div>
+
+            <h3>4. Liaison Agents ↔ Adresses e-mail</h3>
+            <p style="font-size: 0.75rem; color: #666; margin-bottom: 8px;">
+                Associez chaque agent à l'adresse e-mail de connexion. Sert notamment à l'indication « Vu » sur les fiches de remplacement.
+            </p>
+            <div style="max-height: 220px; overflow-y: auto; border: 1px solid #e0e0e0; border-radius: 6px; padding: 8px; margin-bottom: 12px;">
+                <div style="display:grid; grid-template-columns: 1fr 1.2fr; gap:6px; font-weight:bold; font-size:0.75rem; color:var(--primary); margin-bottom:6px;">
+                    <span>Agent</span><span>Adresse e-mail</span>
+                </div>
+                <div id="agentEmailLinksContainer"></div>
+            </div>
+
             <div class="modal-actions">
                 <button class="btn btn-secondary" onclick="closeSettings()">Annuler</button>
                 <button class="btn" onclick="saveSettings()" id="saveSettingsBtn">Enregistrer Tout</button>
@@ -1057,6 +1069,9 @@
 
         let settings = { thresholds: { M: { orange: 5, green: 7 }, A: { orange: 5, green: 7 }, N: { orange: 3, green: 5 } } };
 
+        // Liaison agentId → adresse e-mail (paramétrage admin)
+        let agentEmailLinks = {};
+
         /** Retourne les codes de tâches dans l'ordre personnalisé */
         function getOrderedTaskCodes() {
             const codes = Array.isArray(taskOrder) ? taskOrder.slice() : [];
@@ -1119,12 +1134,28 @@ function ensureReplacementSheet(sheetKey) {
     return sheet;
 }
 
-/** Agent lié au compte connecté (mémorisé localement après 1er positionnement volontaire) */
+/** Retourne les agentIds liés à une adresse e-mail (paramétrage) */
+function getAgentIdsForEmail(email) {
+    if (!email) return [];
+    const e = String(email).trim().toLowerCase();
+    const ids = [];
+    Object.keys(agentEmailLinks || {}).forEach(function(agentId) {
+        const linked = (agentEmailLinks[agentId] || '').trim().toLowerCase();
+        if (linked && linked === e) ids.push(agentId);
+    });
+    return ids;
+}
+
+/** Agent principal lié au compte (paramétrage, sinon localStorage) */
 function getMyLinkedAgentId() {
-    try {
-        if (!currentUser || !currentUser.email) return null;
-        return localStorage.getItem('rplLinkedAgentId_' + currentUser.email) || null;
-    } catch (e) { return null; }
+    if (currentUser && currentUser.email) {
+        const fromParam = getAgentIdsForEmail(currentUser.email);
+        if (fromParam.length > 0) return fromParam[0];
+        try {
+            return localStorage.getItem('rplLinkedAgentId_' + currentUser.email) || null;
+        } catch (e) { return null; }
+    }
+    return null;
 }
 function setMyLinkedAgentId(agentId) {
     try {
@@ -1133,7 +1164,22 @@ function setMyLinkedAgentId(agentId) {
     } catch (e) {}
 }
 
-/** Marque la fiche comme vue par l'utilisateur courant (+ agent lié si connu) */
+/** Tous les agentIds du compte connecté (paramétrage + fallback local) */
+function getMyAgentIds() {
+    const ids = [];
+    if (currentUser && currentUser.email) {
+        getAgentIdsForEmail(currentUser.email).forEach(function(id) {
+            if (ids.indexOf(id) === -1) ids.push(id);
+        });
+        try {
+            const localId = localStorage.getItem('rplLinkedAgentId_' + currentUser.email);
+            if (localId && ids.indexOf(localId) === -1) ids.push(localId);
+        } catch (e) {}
+    }
+    return ids;
+}
+
+/** Marque la fiche comme vue par l'utilisateur courant (+ agents liés visibles par tous) */
 function markSheetAsSeen(sheetKey) {
     if (!sheetKey || !currentUser || !currentUser.email) return;
     const sheet = ensureReplacementSheet(sheetKey);
@@ -1142,11 +1188,12 @@ function markSheetAsSeen(sheetKey) {
         sheet.seenByEmails[currentUser.email] = true;
         changed = true;
     }
-    const myAgentId = getMyLinkedAgentId();
-    if (myAgentId && !sheet.seenByAgents[myAgentId]) {
-        sheet.seenByAgents[myAgentId] = true;
-        changed = true;
-    }
+    getMyAgentIds().forEach(function(agentId) {
+        if (agentId && !sheet.seenByAgents[agentId]) {
+            sheet.seenByAgents[agentId] = true;
+            changed = true;
+        }
+    });
     if (changed) {
         replacementSheets[sheetKey] = sheet;
         if (isReadOnly) saveReplacementSheetsToFirebase();
@@ -1168,6 +1215,7 @@ function getAppState() {
         TASKS: TASKS,
         taskOrder: getOrderedTaskCodes(),
         settings: settings,
+        agentEmailLinks: agentEmailLinks,
         replacementSheets: replacementSheets,
         replacementArchives: replacementArchives
     };
@@ -1211,6 +1259,7 @@ function loadAppState(data) {
         taskOrder = Object.keys(TASKS);
     }
     settings = data.settings || settings;
+    agentEmailLinks = data.agentEmailLinks || agentEmailLinks || {};
 
     // Important : recharger les fiches RPL + normaliser les tableaux
     replacementSheets = data.replacementSheets || {};
@@ -1418,6 +1467,7 @@ if (resetAckBtn) {
         TASKS: TASKS,
         taskOrder: getOrderedTaskCodes(),
         settings: settings,
+        agentEmailLinks: agentEmailLinks,
         replacementSheets: replacementSheets,
         replacementArchives: replacementArchives
     };
@@ -1461,6 +1511,7 @@ if (resetAckBtn) {
         taskOrder = Object.keys(TASKS);
     }
     settings = data.settings || settings;
+    agentEmailLinks = data.agentEmailLinks || agentEmailLinks || {};
 
     // Important : recharger les fiches RPL + normaliser les tableaux
     replacementSheets = data.replacementSheets || {};
@@ -2864,10 +2915,10 @@ function removeVolunteerFromSheet(agentId) {
     const volunteers = toArraySafe(sheet.volunteers);
     const selected = toArraySafe(sheet.selectedVolunteers);
 
-    // Agent (lecture seule) : peut uniquement se retirer lui-même (agent lié)
+    // Agent (lecture seule) : peut uniquement se retirer lui-même (agents liés à son e-mail)
     if (isReadOnly) {
-        const myId = getMyLinkedAgentId();
-        if (!myId || myId !== agentId) {
+        const myIds = getMyAgentIds();
+        if (myIds.indexOf(agentId) === -1) {
             alert("Vous ne pouvez retirer que votre propre inscription (agent lié à votre compte).");
             return;
         }
@@ -2979,9 +3030,9 @@ function renderVolunteersList() {
                 right.appendChild(badge);
             }
 
-            // Suppression : RE = tous ; agent = uniquement lui-même (agent lié)
-            const myId = getMyLinkedAgentId();
-            const canRemove = !isReadOnly || (myId && myId === entry.aId);
+            // Suppression : RE = tous ; agent = uniquement lui-même (e-mail lié)
+            const myIds = getMyAgentIds();
+            const canRemove = !isReadOnly || (myIds.indexOf(entry.aId) !== -1);
             if (canRemove) {
                 const rmBtn = document.createElement('button');
                 rmBtn.className = 'btn btn-danger';
@@ -4102,7 +4153,43 @@ function resetAcknowledgedAlerts() {
     document.getElementById('th_N_orange').value = settings.thresholds.N.orange;
     document.getElementById('th_N_green').value = settings.thresholds.N.green;
 
+    // Liaison agents ↔ e-mails
+    renderAgentEmailLinksConfig();
+
     document.getElementById('settingsModal').style.display = 'flex';
+}
+
+/** Affiche le tableau de liaison agent ↔ e-mail dans les paramètres */
+function renderAgentEmailLinksConfig() {
+    const container = document.getElementById('agentEmailLinksContainer');
+    if (!container) return;
+    container.innerHTML = '';
+
+    const rows = [];
+    (teams || []).forEach(function(t) {
+        (t.agents || []).forEach(function(a) {
+            rows.push({ id: a.id, name: a.name, teamName: t.name });
+        });
+    });
+    rows.sort(function(a, b) {
+        return (a.teamName + a.name).localeCompare(b.teamName + b.name);
+    });
+
+    if (rows.length === 0) {
+        container.innerHTML = '<p style="font-size:0.8rem;color:#999;">Aucun agent défini.</p>';
+        return;
+    }
+
+    rows.forEach(function(r) {
+        const email = (agentEmailLinks && agentEmailLinks[r.id]) ? agentEmailLinks[r.id] : '';
+        const div = document.createElement('div');
+        div.className = 'agent-email-row';
+        div.style.cssText = 'display:grid; grid-template-columns: 1fr 1.2fr; gap:6px; align-items:center; margin-bottom:4px; font-size:0.8rem;';
+        div.innerHTML =
+            '<span title="' + r.id + '"><strong>' + r.name + '</strong> <span style="color:#888;font-size:0.72rem;">(' + r.teamName + ')</span></span>' +
+            '<input type="email" class="agent-email-input" data-agent-id="' + r.id + '" value="' + email.replace(/"/g, '&quot;') + '" placeholder="ex: agent@entreprise.com" style="width:100%; padding:4px 6px; border:1px solid #ccc; border-radius:4px;">';
+        container.appendChild(div);
+    });
 }
 
         // Permet de fermer la fenêtre de paramétrage sans enregistrer
@@ -4379,6 +4466,17 @@ function renderMonitoredGroupRow(group = []) {
     settings.thresholds.A.green = parseInt(document.getElementById('th_A_green').value) || 7;
     settings.thresholds.N.orange = parseInt(document.getElementById('th_N_orange').value) || 3;
     settings.thresholds.N.green = parseInt(document.getElementById('th_N_green').value) || 5;
+
+    // 5. Liaisons agent ↔ e-mail
+    const newLinks = {};
+    document.querySelectorAll('.agent-email-input').forEach(function(input) {
+        const agentId = input.getAttribute('data-agent-id');
+        const email = (input.value || '').trim();
+        if (agentId && email) {
+            newLinks[agentId] = email;
+        }
+    });
+    agentEmailLinks = newLinks;
 
     document.getElementById('settingsModal').style.display = 'none';
     renderAll();
