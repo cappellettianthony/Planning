@@ -1103,6 +1103,40 @@ function toArraySafe(val) {
 }
 
 /**
+ * Firebase interdit . # $ [ ] / dans les clés.
+ * On encode les e-mails pour les utiliser comme clés, ou on préfère des tableaux.
+ */
+function emailKeyEncode(email) {
+    return String(email || '').replace(/[.#$\[\]\/]/g, '_');
+}
+
+/** Normalise seenByEmails en tableau d'e-mails (compatible ancien format objet) */
+function normalizeSeenByEmails(val) {
+    if (Array.isArray(val)) return val.filter(Boolean).map(String);
+    if (val && typeof val === 'object') {
+        // Ancien format { "user@mail.com": true } ou { "user_mail_com": true }
+        return Object.keys(val).filter(function(k) { return val[k]; });
+    }
+    return [];
+}
+
+/** Normalise seenByAgents en objet { agentId: true } */
+function normalizeSeenByAgents(val) {
+    const out = {};
+    if (!val) return out;
+    if (Array.isArray(val)) {
+        val.forEach(function(id) { if (id) out[id] = true; });
+        return out;
+    }
+    if (typeof val === 'object') {
+        Object.keys(val).forEach(function(k) {
+            if (val[k]) out[k] = true;
+        });
+    }
+    return out;
+}
+
+/**
  * Garantit une structure complète pour une fiche RPL
  * (Firebase omet les tableaux vides et peut renvoyer des objets indexés).
  */
@@ -1111,7 +1145,7 @@ function ensureReplacementSheet(sheetKey) {
         replacementSheets = {};
     }
     if (!sheetKey) {
-        return { volunteers: [], selectedVolunteers: [], createdAt: '', createdBy: '', seenByEmails: {}, seenByAgents: {} };
+        return { volunteers: [], selectedVolunteers: [], createdAt: '', createdBy: '', seenByEmails: [], seenByAgents: {} };
     }
     if (!replacementSheets[sheetKey] || typeof replacementSheets[sheetKey] !== 'object') {
         replacementSheets[sheetKey] = {
@@ -1119,7 +1153,7 @@ function ensureReplacementSheet(sheetKey) {
             selectedVolunteers: [],
             createdAt: (typeof formatDate === 'function') ? formatDate(new Date()) : '',
             createdBy: currentUser ? currentUser.email : 'inconnu',
-            seenByEmails: {},
+            seenByEmails: [],
             seenByAgents: {}
         };
     }
@@ -1129,8 +1163,9 @@ function ensureReplacementSheet(sheetKey) {
     if (!sheet.createdAt) {
         sheet.createdAt = (typeof formatDate === 'function') ? formatDate(new Date()) : '';
     }
-    if (!sheet.seenByEmails || typeof sheet.seenByEmails !== 'object') sheet.seenByEmails = {};
-    if (!sheet.seenByAgents || typeof sheet.seenByAgents !== 'object') sheet.seenByAgents = {};
+    // Toujours des tableaux / objets propres (persistance Firebase)
+    sheet.seenByEmails = normalizeSeenByEmails(sheet.seenByEmails);
+    sheet.seenByAgents = normalizeSeenByAgents(sheet.seenByAgents);
     return sheet;
 }
 
@@ -1182,22 +1217,47 @@ function getMyAgentIds() {
 /** Marque la fiche comme vue par l'utilisateur courant (+ agents liés visibles par tous) */
 function markSheetAsSeen(sheetKey) {
     if (!sheetKey || !currentUser || !currentUser.email) return;
+    if (!planningRef) {
+        console.error('markSheetAsSeen: planningRef indisponible (Firebase non initialisé)');
+        return;
+    }
     const sheet = ensureReplacementSheet(sheetKey);
     let changed = false;
-    if (!sheet.seenByEmails[currentUser.email]) {
-        sheet.seenByEmails[currentUser.email] = true;
+    const email = currentUser.email;
+    const emails = normalizeSeenByEmails(sheet.seenByEmails);
+    if (emails.indexOf(email) === -1) {
+        emails.push(email);
         changed = true;
     }
+    sheet.seenByEmails = emails;
+
+    const agents = normalizeSeenByAgents(sheet.seenByAgents);
     getMyAgentIds().forEach(function(agentId) {
-        if (agentId && !sheet.seenByAgents[agentId]) {
-            sheet.seenByAgents[agentId] = true;
+        if (agentId && !agents[agentId]) {
+            agents[agentId] = true;
             changed = true;
         }
     });
+    sheet.seenByAgents = agents;
+
     if (changed) {
         replacementSheets[sheetKey] = sheet;
-        if (isReadOnly) saveReplacementSheetsToFirebase();
-        else saveToFirebase();
+        // Écriture ciblée sur la fiche (évite d'écraser le reste et persiste mieux)
+        planningRef.child('replacementSheets/' + sheetKey).update({
+            seenByEmails: sheet.seenByEmails,
+            seenByAgents: sheet.seenByAgents,
+            volunteers: sheet.volunteers || [],
+            selectedVolunteers: sheet.selectedVolunteers || [],
+            createdAt: sheet.createdAt || '',
+            createdBy: sheet.createdBy || ''
+        }).then(function() {
+            console.log('Fiche RPL marquée vue et sauvegardée:', sheetKey);
+        }).catch(function(err) {
+            console.error('Erreur sauvegarde Vu RPL:', err);
+            // Fallback : tentative sauvegarde globale si droits RE
+            if (!isReadOnly) saveToFirebase();
+            else saveReplacementSheetsToFirebase();
+        });
     }
 }
 
@@ -1528,6 +1588,10 @@ if (resetAckBtn) {
         // sert à sauvegarder l'état complet de l'application dans Firebase Realtime Database, tout en effectuant quelques contrôles d'intégrité avant l'enregistrement.
         function saveToFirebase() {
             if (isReadOnly) return;
+            if (!planningRef) {
+                console.error("saveToFirebase: Firebase non initialisé (planningRef null)");
+                return;
+            }
             try {
                 if (!teams || teams.length < 7) {
                     const defaultTeams = createDefaultTeams();
@@ -1542,7 +1606,13 @@ if (resetAckBtn) {
                     }
                 });
 
-                planningRef.set(getAppState());
+                const state = getAppState();
+                planningRef.set(state).then(function() {
+                    console.log('Sauvegarde Firebase OK');
+                }).catch(function(err) {
+                    console.error("Erreur de sauvegarde Firebase : ", err);
+                    alert("Erreur de sauvegarde Firebase.\nVérifiez les droits d'écriture (règles Firebase) et votre connexion.\n" + (err && err.message ? err.message : ''));
+                });
             } catch(e) {
                 console.error("Erreur de sauvegarde Firebase : ", e);
             }
@@ -1550,11 +1620,20 @@ if (resetAckBtn) {
 
         /**
          * Sauvegarde limitée autorisée aux profils lecture seule :
-         * uniquement les fiches de remplacement (volontaires).
+         * uniquement les fiches de remplacement (volontaires / vu).
          */
         function saveReplacementSheetsToFirebase() {
+            if (!planningRef) {
+                console.error("saveReplacementSheetsToFirebase: Firebase non initialisé");
+                return;
+            }
             try {
-                planningRef.child('replacementSheets').set(replacementSheets || {});
+                planningRef.child('replacementSheets').set(replacementSheets || {}).then(function() {
+                    console.log('Sauvegarde fiches RPL OK');
+                }).catch(function(err) {
+                    console.error("Erreur de sauvegarde des fiches RPL : ", err);
+                    alert("Impossible d'enregistrer la fiche RPL (droits Firebase ou connexion).\n" + (err && err.message ? err.message : ''));
+                });
             } catch (e) {
                 console.error("Erreur de sauvegarde des fiches RPL : ", e);
             }
@@ -1756,7 +1835,8 @@ if (resetAckBtn) {
                 const div = document.createElement('div');
                 const sheetKey = item.targetId + '_' + item.dateStr;
                 const sheet = (replacementSheets && replacementSheets[sheetKey]) ? ensureReplacementSheet(sheetKey) : null;
-                const iHaveSeen = !!(currentUser && currentUser.email && sheet && sheet.seenByEmails && sheet.seenByEmails[currentUser.email]);
+                const seenEmails = sheet ? normalizeSeenByEmails(sheet.seenByEmails) : [];
+                const iHaveSeen = !!(currentUser && currentUser.email && seenEmails.indexOf(currentUser.email) !== -1);
 
                 div.className = 'rpl-side-item' + (iHaveSeen ? ' rpl-seen' : '');
                 div.title = 'Clic : aller à la date — Double-clic : ouvrir la fiche';
@@ -2809,18 +2889,22 @@ function updateRplAgentStats() {
         setMyLinkedAgentId(agentId);
         const sheetKey = activeRplContext.targetId + '_' + activeRplContext.dateStr;
         const sheet = ensureReplacementSheet(sheetKey);
+        const emails = normalizeSeenByEmails(sheet.seenByEmails);
+        const agents = normalizeSeenByAgents(sheet.seenByAgents);
         let changed = false;
-        if (!sheet.seenByEmails[currentUser.email]) {
-            sheet.seenByEmails[currentUser.email] = true;
+        if (emails.indexOf(currentUser.email) === -1) {
+            emails.push(currentUser.email);
             changed = true;
         }
-        if (!sheet.seenByAgents[agentId]) {
-            sheet.seenByAgents[agentId] = true;
+        if (!agents[agentId]) {
+            agents[agentId] = true;
             changed = true;
         }
+        sheet.seenByEmails = emails;
+        sheet.seenByAgents = agents;
         if (changed) {
             replacementSheets[sheetKey] = sheet;
-            saveReplacementSheetsToFirebase();
+            markSheetAsSeen(sheetKey);
             populateRplAgentSelect(rplShowAllAgents);
             const sel = document.getElementById('rplAgentSelect');
             if (sel) sel.value = agentId;
@@ -2884,10 +2968,14 @@ function addVolunteerToSheet() {
 
     // Lier ce compte à cet agent + marquer "Vu" pour tous les utilisateurs
     setMyLinkedAgentId(agentId);
-    if (currentUser && currentUser.email) {
-        sheet.seenByEmails[currentUser.email] = true;
+    const emails = normalizeSeenByEmails(sheet.seenByEmails);
+    if (currentUser && currentUser.email && emails.indexOf(currentUser.email) === -1) {
+        emails.push(currentUser.email);
     }
-    sheet.seenByAgents[agentId] = true;
+    sheet.seenByEmails = emails;
+    const agentsMap = normalizeSeenByAgents(sheet.seenByAgents);
+    agentsMap[agentId] = true;
+    sheet.seenByAgents = agentsMap;
 
     replacementSheets[sheetKey] = sheet;
 
