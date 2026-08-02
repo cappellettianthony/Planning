@@ -869,7 +869,7 @@
 
         const ADMIN_EMAILS = [
             "cappellettianthony@gmail.com",
-            "admin@planning.com"
+            "anthony.cappelletti@edf.fr"
         ];
 
         const RE_EMAILS = [
@@ -1926,6 +1926,59 @@ function getShiftToFillForRpl(isTeam, targetId, dateStr) {
     return null;
 }
 
+/**
+ * Construit un commentaire listant les agents disponibles pour un remplacement,
+ * en réutilisant exactement les contrôles de canAgentTakeReplacement
+ * (statut R/J, 11h, 35h, max 11 jours consécutifs).
+ */
+function buildRplAvailabilityComment(isTeam, targetId, dateStr) {
+    const shiftToFill = getShiftToFillForRpl(isTeam, targetId, dateStr);
+    const shiftLabel = (shiftToFill && TASKS[shiftToFill])
+        ? (shiftToFill + ' (' + TASKS[shiftToFill].label + ')')
+        : 'non déterminé';
+
+    if (!shiftToFill) {
+        return 'Quart à combler : non déterminé (pas de roulement M/A/N/J sur l\'équipe ce jour).';
+    }
+
+    // Contexte temporaire pour que canAgentTakeReplacement exclue correctement la cible
+    const prevContext = activeRplContext;
+    activeRplContext = {
+        isTeam: isTeam,
+        targetId: targetId,
+        targetName: '',
+        dateStr: dateStr,
+        shiftToFill: shiftToFill
+    };
+
+    const byTeam = {};
+    teams.forEach(function(t) {
+        t.agents.forEach(function(a) {
+            // Exclure l'agent cible lui-même (cas agent)
+            if (!isTeam && a.id === targetId) return;
+            // Exclure les agents de l'équipe cible (cas équipe entière en RPL)
+            if (isTeam && t.id === targetId) return;
+
+            if (canAgentTakeReplacement(a.id, dateStr, shiftToFill)) {
+                if (!byTeam[t.name]) byTeam[t.name] = [];
+                byTeam[t.name].push(a.name);
+            }
+        });
+    });
+
+    activeRplContext = prevContext;
+
+    const teamNames = Object.keys(byTeam);
+    if (teamNames.length === 0) {
+        return 'Quart à combler : ' + shiftLabel + ' | Aucun agent disponible (contrôles de repos).';
+    }
+
+    const parts = teamNames.map(function(name) {
+        return name + ' : ' + byTeam[name].join(', ');
+    });
+    return 'Quart à combler : ' + shiftLabel + ' | Dispo → ' + parts.join(' | ');
+}
+
 /** Retourne les infos d’un agent un jour donné */
 function getAgentInfoOnDate(agentId, dateStr) {
     let found = null;
@@ -2846,9 +2899,25 @@ function purgeReplacementArchives() {
                     document.querySelectorAll('.task-picker-btn').forEach(b => b.classList.remove('selected'));
                     btn.classList.add('selected');
                     selectedTaskCodeInModal = code;
+
+                    // Si tâche de type remplacement : préremplir le commentaire avec les agents disponibles
+                    if (task.isReplacement && activeTaskCellSelection) {
+                        const autoComment = buildRplAvailabilityComment(
+                            activeTaskCellSelection.isTeam,
+                            activeTaskCellSelection.targetId,
+                            activeTaskCellSelection.dateStr
+                        );
+                        document.getElementById('taskModalDescription').value = autoComment;
+                    }
                 };
                 grid.appendChild(btn);
             });
+
+            // Si la tâche déjà sélectionnée est un remplacement et qu'il n'y a pas encore de description
+            const currentTaskDef = TASKS[selectedTaskCodeInModal];
+            if (currentTaskDef && currentTaskDef.isReplacement && !(currentDesc && currentDesc.trim())) {
+                document.getElementById('taskModalDescription').value = buildRplAvailabilityComment(isTeam, targetId, dateStr);
+            }
 
             document.getElementById('taskModal').style.display = 'flex';
         }
@@ -2866,8 +2935,14 @@ function purgeReplacementArchives() {
             if (isReadOnly || !activeTaskCellSelection) return;
 
             const { isTeam, targetId, dateStr } = activeTaskCellSelection;
-            const descValue = document.getElementById('taskModalDescription').value.trim();
+            let descValue = document.getElementById('taskModalDescription').value.trim();
             const descKey = `${targetId}_${dateStr}`;
+
+            // Si tâche de type remplacement et description vide → générer automatiquement
+            const selectedDef = TASKS[selectedTaskCodeInModal];
+            if (selectedDef && selectedDef.isReplacement && !descValue) {
+                descValue = buildRplAvailabilityComment(isTeam, targetId, dateStr);
+            }
 
             if (isTeam) {
                 promptTeamRotation(targetId, dateStr, selectedTaskCodeInModal);
