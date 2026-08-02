@@ -294,10 +294,10 @@
         .checkbox-group { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
         .checkbox-group label { font-weight: normal; display: flex; align-items: center; gap: 5px; cursor: pointer; }
 
-       .task-row { display: grid; grid-template-columns: 50px 110px 100px 75px 75px 50px 45px 35px 35px 30px; gap: 4px; align-items: center; margin-bottom: 6px; font-size: 0.75rem; }
+       .task-row { display: grid; grid-template-columns: 50px 110px 100px 75px 75px 50px 45px 35px 35px 70px; gap: 4px; align-items: center; margin-bottom: 6px; font-size: 0.75rem; }
         .task-row input[type="color"] { padding: 0; height: 26px; cursor: pointer; }
 
-        .task-header { display: grid; grid-template-columns: 50px 110px 100px 75px 75px 50px 45px 35px 35px 30px; gap: 4px; font-weight: bold; font-size: 0.7rem; color: var(--primary); margin-bottom: 5px; text-align: center; }
+        .task-header { display: grid; grid-template-columns: 50px 110px 100px 75px 75px 50px 45px 35px 35px 70px; gap: 4px; font-weight: bold; font-size: 0.7rem; color: var(--primary); margin-bottom: 5px; text-align: center; }
 
         .skill-config-row { display: grid; grid-template-columns: 60px 1fr 100px 80px 30px; gap: 8px; align-items: center; margin-bottom: 6px; font-size: 0.8rem; }
         .skill-config-row input { padding: 4px; font-size: 0.8rem; }
@@ -763,7 +763,7 @@
             <button class="btn btn-secondary" style="margin-top: 5px; font-size: 0.75rem; margin-bottom: 15px;" onclick="addMonitoredSkillGroupRow()" id="addMonitoredSkillBtn">+ Ajouter une règle de surveillance</button>
 
             <h3>2. Gestion des Tâches</h3>
-            <div class="task-header"><span>Code</span><span>Libellé</span><span>Quart</span><span>Début</span><span>Fin</span><span>Repos?</span><span>RPL?</span><span>Fond</span><span>Texte</span><span></span></div>
+            <div class="task-header"><span>Code</span><span>Libellé</span><span>Quart</span><span>Début</span><span>Fin</span><span>Repos?</span><span>RPL?</span><span>Fond</span><span>Texte</span><span>Ordre</span></div>
 
             <div id="tasksContainer"></div>
             <button class="btn btn-secondary" style="margin-top: 5px; font-size: 0.75rem;" onclick="addTaskRow()" id="addTaskBtn">+ Ajouter une tâche</button>
@@ -838,7 +838,11 @@
                 <tbody id="archiveRplTableBody"></tbody>
             </table>
         </div>
-        <div class="modal-actions">
+        <div class="modal-actions" style="justify-content: space-between;">
+            <div style="display:flex; gap:8px;">
+                <button class="btn btn-success" id="exportRplArchivesBtn" onclick="exportRplArchivesToExcel()" style="display:none;">📥 Export Excel</button>
+                <button class="btn btn-danger" id="purgeRplArchivesBtn" onclick="purgeReplacementArchives()" style="display:none;">🗑️ Purger les archives</button>
+            </div>
             <button class="btn btn-secondary" onclick="closeArchiveRemplacementModal()">Fermer</button>
         </div>
     </div>
@@ -865,7 +869,7 @@
 
         const ADMIN_EMAILS = [
             "cappellettianthony@gmail.com",
-            "anthony.cappelletti@edf.fr"
+            "Admin@planning.com"
         ];
 
         const RE_EMAILS = [
@@ -2688,12 +2692,101 @@ function openArchiveRemplacementModal() {
             tbody.appendChild(tr);
         });
     }
+
+    // Boutons réservés aux RE (pas lecture seule)
+    const exportBtn = document.getElementById('exportRplArchivesBtn');
+    const purgeBtn = document.getElementById('purgeRplArchivesBtn');
+    if (exportBtn && purgeBtn) {
+        const show = !isReadOnly;
+        exportBtn.style.display = show ? 'inline-block' : 'none';
+        purgeBtn.style.display = show ? 'inline-block' : 'none';
+    }
+
     document.getElementById('archiveRemplacementModal').style.display = 'flex';
 }
 
         // rôle très simple : fermer la fenêtre d'affichage des archives de remplacement.
 function closeArchiveRemplacementModal() {
     document.getElementById('archiveRemplacementModal').style.display = 'none';
+}
+
+/**
+ * Export des archives RPL au format CSV (ouvert parfaitement par Excel).
+ * Accessible uniquement aux RE.
+ */
+function exportRplArchivesToExcel() {
+    if (isReadOnly) {
+        alert("Accès réservé aux Responsables d'Équipe.");
+        return;
+    }
+
+    if (!replacementArchives || replacementArchives.length === 0) {
+        alert("Aucune archive de remplacement à exporter.");
+        return;
+    }
+
+    const headers = [
+        'Date RPL',
+        'Cible (Agent/Équipe)',
+        'Volontaires déclarés',
+        'Sélectionné(s)',
+        'Commentaire',
+        'Soldé par',
+        'Date de solde'
+    ];
+
+    const rows = replacementArchives.map(arch => {
+        return [
+            arch.dateRpl || '',
+            arch.targetName || '',
+            arch.volunteers || '',
+            arch.selected || '',
+            arch.comment || '',
+            arch.closedBy || '',
+            arch.closedAt || ''
+        ].map(val => {
+            const str = String(val).replace(/"/g, '""');
+            return `"${str}"`;
+        }).join(';');
+    });
+
+    // BOM UTF-8 + séparateur point-virgule (Excel FR)
+    const csvContent = '\uFEFF' + headers.join(';') + '\n' + rows.join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `archives_remplacements_${formatDate(new Date())}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+/**
+ * Vide complètement le tableau des archives de remplacement.
+ * Accessible uniquement aux RE. Demande confirmation.
+ */
+function purgeReplacementArchives() {
+    if (isReadOnly) {
+        alert("Accès réservé aux Responsables d'Équipe.");
+        return;
+    }
+
+    if (!replacementArchives || replacementArchives.length === 0) {
+        alert("Les archives sont déjà vides.");
+        return;
+    }
+
+    if (!confirm("Êtes-vous sûr de vouloir PURGER TOUTES les archives de remplacement ?\n\nCette action est irréversible.")) {
+        return;
+    }
+
+    replacementArchives = [];
+    saveToFirebase();
+    openArchiveRemplacementModal();
+    alert("✅ Archives de remplacement vidées.");
 }
 
 
@@ -3588,9 +3681,29 @@ function resetAcknowledgedAlerts() {
         <div style="text-align:center;"><input type="checkbox" class="t-rpl" ${isReplacement ? 'checked' : ''} title="Déclenche la Fiche de Remplacement ?"></div>
         <input type="color" class="t-bg" value="${color}">
         <input type="color" class="t-txt" value="${text}">
-        <button class="btn btn-danger" style="padding:2px 5px;" onclick="this.parentElement.remove()">🗑️</button>
+        <div style="display:flex; gap:2px; justify-content:center;">
+            <button type="button" class="btn btn-secondary" style="padding:1px 4px; font-size:0.7rem;" title="Monter" onclick="moveTaskRow(this, -1)">↑</button>
+            <button type="button" class="btn btn-secondary" style="padding:1px 4px; font-size:0.7rem;" title="Descendre" onclick="moveTaskRow(this, 1)">↓</button>
+            <button type="button" class="btn btn-danger" style="padding:1px 4px; font-size:0.7rem;" onclick="this.closest('.task-row').remove()">🗑️</button>
+        </div>
     `;
     container.appendChild(div);
+}
+
+/**
+ * Déplace une ligne de tâche vers le haut (direction = -1) ou vers le bas (direction = 1).
+ * L'ordre est ensuite conservé à la sauvegarde car saveSettings lit les lignes dans l'ordre du DOM.
+ */
+function moveTaskRow(btn, direction) {
+    const row = btn.closest('.task-row');
+    const container = document.getElementById('tasksContainer');
+    if (!row || !container) return;
+
+    if (direction === -1 && row.previousElementSibling) {
+        container.insertBefore(row, row.previousElementSibling);
+    } else if (direction === 1 && row.nextElementSibling) {
+        container.insertBefore(row.nextElementSibling, row);
+    }
 }
 
         // sert à ajouter dynamiquement une ligne de configuration de compétence dans la fenêtre Paramètres, afin de permettre à l'administrateur de créer, modifier ou supprimer des compétences.
