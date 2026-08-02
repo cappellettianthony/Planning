@@ -5,11 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gestionnaire de Planning Annuel Opérationnel</title>
     
-    <!-- SDK Firebase Compatibles -->
-    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-
     <style>
         :root {
             --bg-color: #f4f6f9;
@@ -968,6 +963,11 @@
 </div>
 
 
+    <!-- SDK Firebase (chargés juste avant le code applicatif) -->
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+
     <script>
         // INITIALISATION FIREBASE
         const firebaseConfig = {
@@ -979,12 +979,17 @@
             messagingSenderId: "1041775212789",
             appId: "1:1041775212789:web:d5dda0744a9e3105a92dbc"
         };
-        
-        firebase.initializeApp(firebaseConfig);
-        const database = firebase.database();
-        const planningRef = database.ref('planningData');
-        const presenceRef = database.ref('onlineUsers');
-        const auth = firebase.auth();
+
+        if (typeof firebase === 'undefined') {
+            console.error('Firebase SDK non chargé. Vérifiez votre connexion Internet et l\'accès à https://www.gstatic.com');
+            alert('Erreur : Firebase n\'a pas pu être chargé.\nVérifiez votre connexion Internet puis rechargez la page.');
+        } else {
+            firebase.initializeApp(firebaseConfig);
+        }
+        const database = (typeof firebase !== 'undefined') ? firebase.database() : null;
+        const planningRef = database ? database.ref('planningData') : null;
+        const presenceRef = database ? database.ref('onlineUsers') : null;
+        const auth = (typeof firebase !== 'undefined') ? firebase.auth() : null;
 
         const ADMIN_EMAILS = [
             "cappellettianthony@gmail.com",
