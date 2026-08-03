@@ -1019,7 +1019,7 @@
         const auth = (typeof firebase !== 'undefined') ? firebase.auth() : null;
 
         const ADMIN_EMAILS = [
-            "cappellettianthony@gmail.com",
+            "admin.planning@entreprise.fr",
             "anthony.cappelletti@edf.fr"
         ];
 
@@ -1196,40 +1196,25 @@ function getAgentIdsForEmail(email) {
     return ids;
 }
 
-/** Agent principal lié au compte (paramétrage, sinon localStorage) */
-function getMyLinkedAgentId() {
-    if (currentUser && currentUser.email) {
-        const fromParam = getAgentIdsForEmail(currentUser.email);
-        if (fromParam.length > 0) return fromParam[0];
-        try {
-            return localStorage.getItem('rplLinkedAgentId_' + currentUser.email) || null;
-        } catch (e) { return null; }
-    }
-    return null;
-}
-function setMyLinkedAgentId(agentId) {
-    try {
-        if (!currentUser || !currentUser.email || !agentId) return;
-        localStorage.setItem('rplLinkedAgentId_' + currentUser.email, agentId);
-    } catch (e) {}
-}
-
-/** Tous les agentIds du compte connecté (paramétrage + fallback local) */
+/**
+ * Agents liés UNIQUEMENT via le tableau de paramétrage e-mail.
+ * (Plus de localStorage : évite un "Vu" erroné après sélection d'un autre agent.)
+ */
 function getMyAgentIds() {
-    const ids = [];
-    if (currentUser && currentUser.email) {
-        getAgentIdsForEmail(currentUser.email).forEach(function(id) {
-            if (ids.indexOf(id) === -1) ids.push(id);
-        });
-        try {
-            const localId = localStorage.getItem('rplLinkedAgentId_' + currentUser.email);
-            if (localId && ids.indexOf(localId) === -1) ids.push(localId);
-        } catch (e) {}
-    }
-    return ids;
+    if (!currentUser || !currentUser.email) return [];
+    return getAgentIdsForEmail(currentUser.email);
 }
 
-/** Marque la fiche comme vue par l'utilisateur courant (+ agents liés visibles par tous) */
+function getMyLinkedAgentId() {
+    const ids = getMyAgentIds();
+    return ids.length > 0 ? ids[0] : null;
+}
+
+/**
+ * À l'ouverture d'une fiche :
+ * - e-mail connecté (badge panneau personnel)
+ * - "Vu" liste agents uniquement pour les agents liés à cet e-mail (paramétrage)
+ */
 function markSheetAsSeen(sheetKey) {
     if (!sheetKey || !currentUser || !currentUser.email) return;
     if (!planningRef) {
@@ -1257,7 +1242,6 @@ function markSheetAsSeen(sheetKey) {
 
     if (changed) {
         replacementSheets[sheetKey] = sheet;
-        // Écriture ciblée sur la fiche (évite d'écraser le reste et persiste mieux)
         planningRef.child('replacementSheets/' + sheetKey).update({
             seenByEmails: sheet.seenByEmails,
             seenByAgents: sheet.seenByAgents,
@@ -1269,11 +1253,36 @@ function markSheetAsSeen(sheetKey) {
             console.log('Fiche RPL marquée vue et sauvegardée:', sheetKey);
         }).catch(function(err) {
             console.error('Erreur sauvegarde Vu RPL:', err);
-            // Fallback : tentative sauvegarde globale si droits RE
             if (!isReadOnly) saveToFirebase();
             else saveReplacementSheetsToFirebase();
         });
     }
+}
+
+/**
+ * Marque un agent comme "Vu" sur cette fiche uniquement
+ * (ex. proposé comme volontaire par un RE ou un autre utilisateur).
+ */
+function markAgentSeenOnSheet(sheetKey, agentId) {
+    if (!sheetKey || !agentId) return;
+    const sheet = ensureReplacementSheet(sheetKey);
+    const agents = normalizeSeenByAgents(sheet.seenByAgents);
+    if (agents[agentId]) return;
+    agents[agentId] = true;
+    sheet.seenByAgents = agents;
+    replacementSheets[sheetKey] = sheet;
+    if (!planningRef) {
+        if (isReadOnly) saveReplacementSheetsToFirebase();
+        else saveToFirebase();
+        return;
+    }
+    planningRef.child('replacementSheets/' + sheetKey).update({
+        seenByAgents: sheet.seenByAgents
+    }).catch(function(err) {
+        console.error('Erreur markAgentSeenOnSheet:', err);
+        if (isReadOnly) saveReplacementSheetsToFirebase();
+        else saveToFirebase();
+    });
 }
 
 
@@ -1748,7 +1757,9 @@ if (resetAckBtn) {
             ensureYearExists(currentYear); 
             document.getElementById('yearSelect').value = currentYear; 
             syncDatePicker(); 
-            renderAll(false); 
+            renderAll(false);
+            // Amène le planning sur la colonne du jour
+            scrollToDateInPlanning(formatDate(now));
         }
 
         // sert à aller au mois de la date choisie.
@@ -1760,8 +1771,25 @@ if (resetAckBtn) {
                 ensureYearExists(currentYear); 
                 document.getElementById('yearSelect').value = currentYear; 
                 syncDatePicker();
-                renderAll(false); 
+                renderAll(false);
+                scrollToDateInPlanning(dateStr);
             } 
+        }
+
+        /** Fait défiler le planning horizontalement jusqu'à la colonne de la date (YYYY-MM-DD) */
+        function scrollToDateInPlanning(dateStr) {
+            if (!dateStr) return;
+            setTimeout(function() {
+                const container = document.querySelector('.table-container');
+                const th = document.querySelector('th[data-date="' + dateStr + '"]');
+                if (!container || !th) return;
+                // Centrer approximativement la colonne dans la zone visible
+                const stickyOffset = 350; // colonnes fixes Équipe + Compétences
+                const targetLeft = th.offsetLeft - stickyOffset;
+                container.scrollLeft = Math.max(0, targetLeft);
+                // Sur mobile, s'assurer que le tableau est bien visible
+                th.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+            }, 50);
         }
 
         /** Libellé du mois affiché (ex: août 2026) */
@@ -1868,7 +1896,8 @@ if (resetAckBtn) {
                 const iHaveSeen = !!(currentUser && currentUser.email && seenEmails.indexOf(currentUser.email) !== -1);
 
                 div.className = 'rpl-side-item' + (iHaveSeen ? ' rpl-seen' : '');
-                div.title = 'Clic : aller à la date — Double-clic : ouvrir la fiche';
+                div.title = 'Clic : aller à la date — Double-clic / Appui long 2 s : ouvrir la fiche';
+                div.style.touchAction = 'manipulation';
 
                 let html = '<div class="rpl-date">' + formatDateStrDisplay(item.dateStr) + '</div>';
                 html += '<div class="rpl-target">' + (item.isTeam ? '👥 ' : '👤 ') + item.targetName + '</div>';
@@ -1881,8 +1910,42 @@ if (resetAckBtn) {
                 }
                 div.innerHTML = html;
 
+                // Appui long 2 s (mobile) → ouvrir fiche RPL
+                let sideTouchTimer = null;
+                let sideLongPress = false;
+                div.ontouchstart = function(e) {
+                    sideLongPress = false;
+                    sideTouchTimer = setTimeout(function() {
+                        sideLongPress = true;
+                        if (navigator.vibrate) navigator.vibrate(50);
+                        openReplacementModal(item.isTeam, item.targetId, item.targetName, item.dateStr);
+                    }, 2000);
+                };
+                div.ontouchend = function() {
+                    if (sideTouchTimer) {
+                        clearTimeout(sideTouchTimer);
+                        sideTouchTimer = null;
+                    }
+                };
+                div.ontouchmove = function() {
+                    if (sideTouchTimer) {
+                        clearTimeout(sideTouchTimer);
+                        sideTouchTimer = null;
+                    }
+                };
+                div.ontouchcancel = function() {
+                    if (sideTouchTimer) {
+                        clearTimeout(sideTouchTimer);
+                        sideTouchTimer = null;
+                    }
+                };
+
                 // Clic simple = navigation date ; double-clic = ouvrir fiche RPL
                 div.onclick = function() {
+                    if (sideLongPress) {
+                        sideLongPress = false;
+                        return;
+                    }
                     if (clickTimer) {
                         clearTimeout(clickTimer);
                         clickTimer = null;
@@ -1890,7 +1953,6 @@ if (resetAckBtn) {
                     } else {
                         clickTimer = setTimeout(function() {
                             clickTimer = null;
-                            // Navigation du planning vers la date du remplacement
                             jumpToDate(item.dateStr);
                             const dp = document.getElementById('datePicker');
                             if (dp) dp.value = item.dateStr;
@@ -1988,8 +2050,16 @@ if (resetAckBtn) {
                     badgeHtml = `<span class="header-date-badge ${colorClass}">${label}</span>`;
                 }
 
+                th.setAttribute('data-date', dateStr);
                 th.innerHTML = `${dayName}<br>${displayDate}${badgeHtml}`;
                 th.title = displayDate;
+                // Mise en évidence du jour actuel
+                const todayStr = formatDate(new Date());
+                if (dateStr === todayStr) {
+                    th.style.outline = '2px solid #f1c40f';
+                    th.style.outlineOffset = '-2px';
+                    th.style.backgroundColor = '#2c3e50';
+                }
                 headerTr.appendChild(th);
             });
         }
@@ -2343,13 +2413,13 @@ function bindCellEvents(cellDiv, isTeam, targetId, targetName, dateStr, currentT
     cellDiv.ontouchstart = (e) => {
         touchPreventClick = false;
         
-        // Déclenche le chrono de 2 secondes si la tâche est configurée comme remplacement
+        // Déclenche le chrono de 3 secondes si la tâche est configurée comme remplacement
         if (isRplTask) {
             touchTimer = setTimeout(() => {
                 touchPreventClick = true; 
                 if (navigator.vibrate) navigator.vibrate(50);
                 openReplacementModal(isTeam, targetId, targetName, dateStr);
-            }, 2000); // 2000 ms = 2 secondes
+            }, 2000); // 2000 ms = 3 secondes
         }
     };
 
@@ -2934,33 +3004,8 @@ function updateRplAgentStats() {
         return;
     }
 
-    // Profil agent : sélection = identification → lie le compte et marque "Vu" pour tous
-    if (isReadOnly && activeRplContext && currentUser && currentUser.email) {
-        setMyLinkedAgentId(agentId);
-        const sheetKey = activeRplContext.targetId + '_' + activeRplContext.dateStr;
-        const sheet = ensureReplacementSheet(sheetKey);
-        const emails = normalizeSeenByEmails(sheet.seenByEmails);
-        const agents = normalizeSeenByAgents(sheet.seenByAgents);
-        let changed = false;
-        if (emails.indexOf(currentUser.email) === -1) {
-            emails.push(currentUser.email);
-            changed = true;
-        }
-        if (!agents[agentId]) {
-            agents[agentId] = true;
-            changed = true;
-        }
-        sheet.seenByEmails = emails;
-        sheet.seenByAgents = agents;
-        if (changed) {
-            replacementSheets[sheetKey] = sheet;
-            markSheetAsSeen(sheetKey);
-            populateRplAgentSelect(rplShowAllAgents);
-            const sel = document.getElementById('rplAgentSelect');
-            if (sel) sel.value = agentId;
-            if (typeof updateRplSidePanel === 'function') updateRplSidePanel();
-        }
-    }
+    // La simple sélection dans la liste ne marque plus "Vu"
+    // (le "Vu" à l'ouverture = agents liés e-mail ; le "Vu" volontaire = à l'inscription)
 
     const info = getAgentInfoOnDate(agentId, activeRplContext ? activeRplContext.dateStr : null);
     if (!info) {
@@ -3015,19 +3060,15 @@ function addVolunteerToSheet() {
 
     volunteers.push(agentId);
     sheet.volunteers = volunteers;
-
-    // Lier ce compte à cet agent + marquer "Vu" pour tous les utilisateurs
-    setMyLinkedAgentId(agentId);
-    const emails = normalizeSeenByEmails(sheet.seenByEmails);
-    if (currentUser && currentUser.email && emails.indexOf(currentUser.email) === -1) {
-        emails.push(currentUser.email);
-    }
-    sheet.seenByEmails = emails;
-    const agentsMap = normalizeSeenByAgents(sheet.seenByAgents);
-    agentsMap[agentId] = true;
-    sheet.seenByAgents = agentsMap;
-
     replacementSheets[sheetKey] = sheet;
+
+    // La personne proposée / volontaire est considérée comme ayant "vu" CETTE fiche
+    markAgentSeenOnSheet(sheetKey, agentId);
+
+    // L'utilisateur connecté (son e-mail) a aussi consulté / agi sur cette fiche
+    if (currentUser && currentUser.email) {
+        markSheetAsSeen(sheetKey);
+    }
 
     if (isReadOnly) {
         saveReplacementSheetsToFirebase();
