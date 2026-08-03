@@ -151,7 +151,7 @@
             border-radius: 8px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.05);
             overflow: auto; /* défilement vertical + horizontal */
-            max-height: calc(100vh - 220px);
+            max-height: calc(100vh - 255px);
             flex: 1;
             min-width: 0;
         }
@@ -180,7 +180,7 @@
             box-shadow: 0 2px 4px rgba(0,0,0,0.05);
             display: flex;
             flex-direction: column;
-            max-height: calc(100vh - 220px);
+            max-height: calc(100vh - 255px);
             overflow: hidden;
         }
         .rpl-side-panel-header {
@@ -1019,7 +1019,7 @@
         const auth = (typeof firebase !== 'undefined') ? firebase.auth() : null;
 
         const ADMIN_EMAILS = [
-            "admin@entreprise.fr",
+            "cappellettianthony@gmail.com",
             "anthony.cappelletti@edf.fr"
         ];
 
@@ -3372,6 +3372,16 @@ function validateReplacementSheet() {
     // Suppression de la fiche active
     delete replacementSheets[sheetKey];
 
+    // Contexte pour l'e-mail (avant fermeture)
+    const emailContext = {
+        selectedIds: selected.slice(),
+        selectedNames: selectedNames,
+        targetName: activeRplContext.targetName,
+        dateStr: activeRplContext.dateStr,
+        shiftToFill: shiftToFill || '',
+        comment: comment
+    };
+
     closeReplacementModal();
     renderAll(true);
     let finalMsg = '✅ Fiche de remplacement soldée et quart(s) affecté(s) !';
@@ -3379,6 +3389,78 @@ function validateReplacementSheet() {
         finalMsg += '\n\n⚠️ Tâche RPA détectée : pensez à changer le motif du remplacement.';
     }
     alert(finalMsg);
+
+    // Proposition d'envoi d'e-mail (fin de procédure)
+    proposeNotifyReplacementByEmail(emailContext);
+}
+
+/**
+ * Propose d'ouvrir Outlook Web pour prévenir le(s) agent(s) validé(s).
+ * Utilise les e-mails du tableau de paramétrage agentEmailLinks.
+ */
+function proposeNotifyReplacementByEmail(ctx) {
+    if (!ctx || !ctx.selectedIds || ctx.selectedIds.length === 0) return;
+
+    const emails = [];
+    const missing = [];
+    ctx.selectedIds.forEach(function(agentId) {
+        const email = (agentEmailLinks && agentEmailLinks[agentId]) ? String(agentEmailLinks[agentId]).trim() : '';
+        if (email) {
+            if (emails.indexOf(email) === -1) emails.push(email);
+        } else {
+            let name = agentId;
+            (teams || []).forEach(function(t) {
+                const a = (t.agents || []).find(function(ag) { return ag.id === agentId; });
+                if (a) name = a.name;
+            });
+            missing.push(name);
+        }
+    });
+
+    if (emails.length === 0) {
+        alert(
+            'Aucun e-mail trouvé pour le(s) agent(s) sélectionné(s).\n' +
+            'Renseignez les adresses dans Paramétrage → Liaison Agents ↔ e-mail.\n' +
+            (missing.length ? 'Sans e-mail : ' + missing.join(', ') : '')
+        );
+        return;
+    }
+
+    let msg = 'Voulez-vous envoyer un e-mail pour prévenir le(s) agent(s) validé(s) ?\n\n';
+    msg += 'Destinataire(s) : ' + emails.join(', ');
+    if (missing.length) {
+        msg += '\n\n⚠️ Sans e-mail paramétré (non inclus) : ' + missing.join(', ');
+    }
+    msg += '\n\nOui = ouvrir Outlook Web pour rédiger le message.';
+
+    if (!confirm(msg)) return;
+
+    const dateLabel = formatDateStrDisplay(ctx.dateStr);
+    const shiftLabel = (ctx.shiftToFill && TASKS[ctx.shiftToFill])
+        ? (ctx.shiftToFill + ' – ' + TASKS[ctx.shiftToFill].label)
+        : (ctx.shiftToFill || 'quart');
+
+    const subject = 'Remplacement validé – ' + dateLabel + ' – ' + (ctx.targetName || '');
+    const body =
+        'Bonjour,\n\n' +
+        'Votre candidature pour le remplacement concernant ' + (ctx.targetName || '') +
+        ' le ' + dateLabel +
+        ' (quart : ' + shiftLabel + ') a été validée.\n\n' +
+        'Commentaire : ' + (ctx.comment || '—') + '\n\n' +
+        'Agent(s) retenu(s) : ' + (ctx.selectedNames || '') + '\n\n' +
+        'Cordialement';
+
+    openOutlookWebCompose(emails, subject, body);
+}
+
+/** Ouvre la composition Outlook Web (nouvelle fenêtre) */
+function openOutlookWebCompose(toEmails, subject, body) {
+    const to = (toEmails || []).join(';');
+    const url = 'https://outlook.office.com/mail/deeplink/compose' +
+        '?to=' + encodeURIComponent(to) +
+        '&subject=' + encodeURIComponent(subject || '') +
+        '&body=' + encodeURIComponent(body || '');
+    window.open(url, '_blank');
 }
 
 
