@@ -909,13 +909,14 @@
             <div class="form-group"><label>Après-midi (Or / Vert)</label><div style="display:flex; gap:10px;"><input type="number" id="th_A_orange" value="5"><input type="number" id="th_A_green" value="7"></div></div>
             <div class="form-group"><label>Nuit (Or / Vert)</label><div style="display:flex; gap:10px;"><input type="number" id="th_N_orange" value="3"><input type="number" id="th_N_green" value="5"></div></div>
 
-            <h3>4. Liaison Agents ↔ Adresses e-mail</h3>
+            <h3>4. Liaison Agents ↔ E-mail & Rôles</h3>
             <p style="font-size: 0.75rem; color: #666; margin-bottom: 8px;">
-                Associez chaque agent à l'adresse e-mail de connexion. Sert notamment à l'indication « Vu » sur les fiches de remplacement.
+                Associez chaque agent à l'adresse e-mail de connexion et définissez les rôles (Admin / RE).
+                Au moins un rôle <strong>Admin</strong> est obligatoire pour pouvoir enregistrer.
             </p>
-            <div style="max-height: 220px; overflow-y: auto; border: 1px solid #e0e0e0; border-radius: 6px; padding: 8px; margin-bottom: 12px;">
-                <div style="display:grid; grid-template-columns: 1fr 1.2fr; gap:6px; font-weight:bold; font-size:0.75rem; color:var(--primary); margin-bottom:6px;">
-                    <span>Agent</span><span>Adresse e-mail</span>
+            <div style="max-height: 260px; overflow-y: auto; border: 1px solid #e0e0e0; border-radius: 6px; padding: 8px; margin-bottom: 12px;">
+                <div style="display:grid; grid-template-columns: 1.2fr 1.4fr 52px 52px; gap:6px; font-weight:bold; font-size:0.75rem; color:var(--primary); margin-bottom:6px; align-items:center;">
+                    <span>Agent</span><span>Adresse e-mail</span><span style="text-align:center;">Admin</span><span style="text-align:center;">RE</span>
                 </div>
                 <div id="agentEmailLinksContainer"></div>
             </div>
@@ -1026,21 +1027,10 @@
         const presenceRef = database ? database.ref('onlineUsers') : null;
         const auth = (typeof firebase !== 'undefined') ? firebase.auth() : null;
 
-        const ADMIN_EMAILS = [
-            "admin.planning@ent.fr",
+        // Admin de secours (Anthony Cappelletti) — uniquement si les rôles paramétrés ne couvrent pas encore le compte
+        const BOOTSTRAP_ADMIN_EMAILS = [
+            "cappellettianthony@gmail.com",
             "anthony.cappelletti@edf.fr"
-        ];
-
-        const RE_EMAILS = [
-            ...ADMIN_EMAILS,
-            "mustapha.iberrakene@edf.fr",
-            "re4@planning-ps.com",
-            "re5@planning-ps.com",
-            "re6@planning-ps.com",
-            "re7@planning-ps.com",
-            "re8@planning-ps.com",
-            "re9@planning-ps.com",
-            "re10@planning-ps.com"
         ];
 
         let currentUser = null;
@@ -1094,6 +1084,8 @@
 
         // Liaison agentId → adresse e-mail (paramétrage admin)
         let agentEmailLinks = {};
+        // Rôles par agent : { agentId: { isAdmin: bool, isRE: bool } }
+        let agentRoles = {};
 
         /** Retourne les codes de tâches dans l'ordre personnalisé */
         function getOrderedTaskCodes() {
@@ -1204,6 +1196,49 @@ function getAgentIdsForEmail(email) {
     return ids;
 }
 
+function isBootstrapAdminEmail(email) {
+    if (!email) return false;
+    const e = String(email).trim().toLowerCase();
+    if (BOOTSTRAP_ADMIN_EMAILS.indexOf(e) !== -1) return true;
+    // Secours : e-mail contenant "cappelletti"
+    if (e.indexOf('cappelletti') !== -1) return true;
+    return false;
+}
+
+/** Recalcule isAdmin / isReadOnly à partir du paramétrage (+ secours Anthony Cappelletti) */
+function refreshUserRoles() {
+    if (!currentUser || !currentUser.email) {
+        isAdmin = false;
+        isReadOnly = true;
+        return;
+    }
+    const email = currentUser.email;
+    let admin = isBootstrapAdminEmail(email);
+    let re = false;
+
+    getAgentIdsForEmail(email).forEach(function(agentId) {
+        const role = (agentRoles && agentRoles[agentId]) ? agentRoles[agentId] : {};
+        if (role.isAdmin) admin = true;
+        if (role.isRE) re = true;
+    });
+
+    // Admin implique aussi les droits d'écriture RE
+    isAdmin = admin;
+    isReadOnly = !admin && !re;
+    updateUserStatusDisplay();
+}
+
+function updateUserStatusDisplay() {
+    const el = document.getElementById('userStatus');
+    if (!el || !currentUser) return;
+    el.innerHTML =
+        'Connecté en tant que : <strong>' + currentUser.email + '</strong> ' +
+        '<span style="color:' + (isAdmin ? '#8e44ad' : (isReadOnly ? '#e67e22' : '#2ecc71')) + ';">' +
+        '(' + (isAdmin ? 'ADMIN' : (isReadOnly ? 'Lecture seule' : 'RE - Modification')) + ')' +
+        '</span>';
+    el.style.display = 'flex';
+}
+
 /**
  * Agents liés UNIQUEMENT via le tableau de paramétrage e-mail.
  * (Plus de localStorage : évite un "Vu" erroné après sélection d'un autre agent.)
@@ -1308,6 +1343,7 @@ function getAppState() {
         taskOrder: getOrderedTaskCodes(),
         settings: settings,
         agentEmailLinks: agentEmailLinks,
+        agentRoles: agentRoles,
         replacementSheets: replacementSheets,
         replacementArchives: replacementArchives
     };
@@ -1352,6 +1388,7 @@ function loadAppState(data) {
     }
     settings = data.settings || settings;
     agentEmailLinks = data.agentEmailLinks || agentEmailLinks || {};
+    agentRoles = data.agentRoles || agentRoles || {};
 
     // Important : recharger les fiches RPL + normaliser les tableaux
     replacementSheets = data.replacementSheets || {};
@@ -1363,6 +1400,9 @@ function loadAppState(data) {
         replacementSheets = {};
     }
     replacementArchives = Array.isArray(data.replacementArchives) ? data.replacementArchives : [];
+
+    // Recalcul des droits après chargement des rôles / e-mails
+    if (typeof refreshUserRoles === 'function') refreshUserRoles();
 }
 
 
@@ -1394,17 +1434,9 @@ function loadAppState(data) {
             auth.onAuthStateChanged((user) => {
                 currentUser = user;
                 if (user) {
-                    isReadOnly = !RE_EMAILS.includes(user.email);
-                    isAdmin = ADMIN_EMAILS.includes(user.email);
-
+                    refreshUserRoles();
                     document.getElementById('authModal').style.display = 'none';
-                    document.getElementById('userStatus').innerHTML = `
-                        Connecté en tant que : <strong>${user.email}</strong> 
-                        <span style="color:${isAdmin ? '#8e44ad' : (isReadOnly ? '#e67e22' : '#2ecc71')};">
-                            (${isAdmin ? 'ADMIN' : (isReadOnly ? 'Lecture seule' : 'RE - Modification')})
-                        </span>
-                    `;
-                    document.getElementById('userStatus').style.display = 'flex';
+                    updateUserStatusDisplay();
                     document.getElementById('logoutBtn').style.display = 'inline-block';
                     
                     setupPresence(user);
@@ -1560,6 +1592,7 @@ if (resetAckBtn) {
         taskOrder: getOrderedTaskCodes(),
         settings: settings,
         agentEmailLinks: agentEmailLinks,
+        agentRoles: agentRoles,
         replacementSheets: replacementSheets,
         replacementArchives: replacementArchives
     };
@@ -1604,6 +1637,7 @@ if (resetAckBtn) {
     }
     settings = data.settings || settings;
     agentEmailLinks = data.agentEmailLinks || agentEmailLinks || {};
+    agentRoles = data.agentRoles || agentRoles || {};
 
     // Important : recharger les fiches RPL + normaliser les tableaux
     replacementSheets = data.replacementSheets || {};
@@ -1615,6 +1649,9 @@ if (resetAckBtn) {
         replacementSheets = {};
     }
     replacementArchives = Array.isArray(data.replacementArchives) ? data.replacementArchives : [];
+
+    // Recalcul des droits après chargement des rôles / e-mails
+    if (typeof refreshUserRoles === 'function') refreshUserRoles();
 }
 
         // sert à sauvegarder l'état complet de l'application dans Firebase Realtime Database, tout en effectuant quelques contrôles d'intégrité avant l'enregistrement.
@@ -2433,17 +2470,17 @@ if (resetAckBtn) {
 function bindCellEvents(cellDiv, isTeam, targetId, targetName, dateStr, currentTaskCode, currentDesc) {
     const isRplTask = TASKS[currentTaskCode] && TASKS[currentTaskCode].isReplacement;
 
-    // --- GESTION DU MAINTIEN DE 2 SECONDES (MOBILE / TOUCH) ---
+    // --- GESTION DU MAINTIEN DE 3 SECONDES (MOBILE / TOUCH) ---
     cellDiv.ontouchstart = (e) => {
         touchPreventClick = false;
         
-        // Déclenche le chrono de 2 secondes si la tâche est configurée comme remplacement
+        // Déclenche le chrono de 3 secondes si la tâche est configurée comme remplacement
         if (isRplTask) {
             touchTimer = setTimeout(() => {
                 touchPreventClick = true; 
                 if (navigator.vibrate) navigator.vibrate(50);
                 openReplacementModal(isTeam, targetId, targetName, dateStr);
-            }, 2000); // 2000 ms = 2 secondes
+            }, 2000); // 2000 ms = 3 secondes
         }
     };
 
@@ -4467,12 +4504,17 @@ function renderAgentEmailLinksConfig() {
 
     rows.forEach(function(r) {
         const email = (agentEmailLinks && agentEmailLinks[r.id]) ? agentEmailLinks[r.id] : '';
+        const role = (agentRoles && agentRoles[r.id]) ? agentRoles[r.id] : {};
+        const isAdminRole = !!role.isAdmin;
+        const isRERole = !!role.isRE;
         const div = document.createElement('div');
         div.className = 'agent-email-row';
-        div.style.cssText = 'display:grid; grid-template-columns: 1fr 1.2fr; gap:6px; align-items:center; margin-bottom:4px; font-size:0.8rem;';
+        div.style.cssText = 'display:grid; grid-template-columns: 1.2fr 1.4fr 52px 52px; gap:6px; align-items:center; margin-bottom:4px; font-size:0.8rem;';
         div.innerHTML =
             '<span title="' + r.id + '"><strong>' + r.name + '</strong> <span style="color:#888;font-size:0.72rem;">(' + r.teamName + ')</span></span>' +
-            '<input type="email" class="agent-email-input" data-agent-id="' + r.id + '" value="' + email.replace(/"/g, '&quot;') + '" placeholder="ex: agent@entreprise.com" style="width:100%; padding:4px 6px; border:1px solid #ccc; border-radius:4px;">';
+            '<input type="email" class="agent-email-input" data-agent-id="' + r.id + '" value="' + email.replace(/"/g, '&quot;') + '" placeholder="ex: agent@entreprise.com" style="width:100%; padding:4px 6px; border:1px solid #ccc; border-radius:4px;">' +
+            '<div style="text-align:center;"><input type="checkbox" class="agent-role-admin" data-agent-id="' + r.id + '" ' + (isAdminRole ? 'checked' : '') + ' title="Administrateur"></div>' +
+            '<div style="text-align:center;"><input type="checkbox" class="agent-role-re" data-agent-id="' + r.id + '" ' + (isRERole ? 'checked' : '') + ' title="Responsable d\'Équipe"></div>';
         container.appendChild(div);
     });
 }
@@ -4752,18 +4794,44 @@ function renderMonitoredGroupRow(group = []) {
     settings.thresholds.N.orange = parseInt(document.getElementById('th_N_orange').value) || 3;
     settings.thresholds.N.green = parseInt(document.getElementById('th_N_green').value) || 5;
 
-    // 5. Liaisons agent ↔ e-mail
+    // 5. Liaisons agent ↔ e-mail + rôles
     const newLinks = {};
-    document.querySelectorAll('.agent-email-input').forEach(function(input) {
-        const agentId = input.getAttribute('data-agent-id');
-        const email = (input.value || '').trim();
-        if (agentId && email) {
-            newLinks[agentId] = email;
+    const newRoles = {};
+    let adminCount = 0;
+
+    document.querySelectorAll('.agent-email-row').forEach(function(row) {
+        const emailInput = row.querySelector('.agent-email-input');
+        if (!emailInput) return;
+        const agentId = emailInput.getAttribute('data-agent-id');
+        if (!agentId) return;
+        const email = (emailInput.value || '').trim();
+        if (email) newLinks[agentId] = email;
+
+        const adminCb = row.querySelector('.agent-role-admin');
+        const reCb = row.querySelector('.agent-role-re');
+        const isAdminRole = !!(adminCb && adminCb.checked);
+        const isRERole = !!(reCb && reCb.checked);
+        if (isAdminRole || isRERole) {
+            newRoles[agentId] = { isAdmin: isAdminRole, isRE: isRERole };
         }
+        if (isAdminRole) adminCount++;
     });
+
+    // Sécurité : au moins un Admin doit être attribué
+    if (adminCount === 0) {
+        alert(
+            'Enregistrement impossible : aucun rôle Admin n\'est attribué.\n\n' +
+            'Cochez au moins une case « Admin » (de préférence liée à une adresse e-mail).'
+        );
+        return;
+    }
+
     agentEmailLinks = newLinks;
+    agentRoles = newRoles;
 
     document.getElementById('settingsModal').style.display = 'none';
+    refreshUserRoles();
+    applyReadOnlyMode();
     renderAll();
 }
 
