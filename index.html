@@ -157,10 +157,20 @@
         }
         #planningTable th {
             white-space: normal;
-            min-width: 52px;
-            font-size: 0.7rem;
-            line-height: 1.2;
+            min-width: 48px;
+            font-size: 0.82rem;
+            font-weight: 700;
+            line-height: 1.25;
             vertical-align: bottom;
+            padding: 6px 4px;
+        }
+        #planningTable th.th-today {
+            outline: 3px solid #f1c40f !important;
+            outline-offset: -3px;
+            box-shadow: inset 0 0 0 2px #f39c12, 0 0 8px rgba(241, 196, 15, 0.85);
+            background: #1a252f !important;
+            color: #f1c40f !important;
+            z-index: 16;
         }
         /* Cellule agent sans tâche individuelle = roulement hérité (non affiché) */
         .task-cell-inherited {
@@ -544,13 +554,19 @@
             <label for="yearSelect">Année :</label>
             <select id="yearSelect" onchange="changeYear(this.value)"></select>
 
+            <label for="viewModeSelect">Affichage :</label>
+            <select id="viewModeSelect" onchange="setPlanningViewMode(this.value)" title="Mois ou année complète">
+                <option value="month">Mois</option>
+                <option value="year">Année</option>
+            </select>
+
             <button class="btn btn-purple" onclick="openArchiveRemplacementModal()" id="archiveRplBtn">📋 Archives Remplacements</button>
 
-            <button class="btn btn-secondary" onclick="navigateMonths(-1)" title="Mois précédent">◄ Mois</button>
+            <button class="btn btn-secondary" id="btnPrevMonth" onclick="navigateMonths(-1)" title="Mois précédent (surveillance &amp; planning si mode mois)">◄ Mois</button>
             <span id="currentMonthLabel" style="font-weight:bold; min-width:110px; text-align:center;"></span>
-            <button class="btn btn-secondary" onclick="navigateMonths(1)" title="Mois suivant">Mois ►</button>
-            <button class="btn" onclick="goToToday()">Aujourd'hui</button>
-            <input type="date" id="datePicker" onchange="jumpToDate(this.value)" title="Aller au mois de cette date">
+            <button class="btn btn-secondary" id="btnNextMonth" onclick="navigateMonths(1)" title="Mois suivant (surveillance &amp; planning si mode mois)">Mois ►</button>
+            <button class="btn" onclick="goToToday()" title="Amener la date du jour en première colonne">Aujourd'hui</button>
+            <input type="date" id="datePicker" onchange="jumpToDate(this.value)" title="Aller à cette date">
         </div>
 
         <div style="display:flex; gap:8px; flex-wrap: wrap;">
@@ -585,7 +601,8 @@
     <details class="dashboard-wrapper" id="dashboardWrapper">
         <summary>
             <span>📊 Surveillance des effectifs & compétences</span>
-            <span style="font-size: 0.75rem; color: #7f8c8d; font-weight: normal;">Cliquez pour afficher / masquer</span>
+            <span id="dashboardMonthLabel" style="font-size: 0.8rem; color: #2980b9; font-weight: bold; margin-left: 8px;"></span>
+            <span style="font-size: 0.75rem; color: #7f8c8d; font-weight: normal; margin-left: auto;">Cliquez pour afficher / masquer</span>
         </summary>
         <div class="dashboard" id="dashboard"></div>
     </details>
@@ -1040,8 +1057,10 @@
         let currentYear = new Date().getFullYear();
         let minYearAvailable = currentYear - 1;
         let maxYearAvailable = currentYear + 3;
-        // startDate définit le mois affiché (1er jour du mois en pratique)
-        let startDate = new Date(currentYear, new Date().getMonth(), 1); 
+        // startDate définit le mois de référence (planning en mode mois + surveillance effectifs)
+        let startDate = new Date(currentYear, new Date().getMonth(), 1);
+        // Mode d'affichage du planning : 'month' | 'year'
+        let planningViewMode = 'month'; 
 
         let pendingRotation = null;
         let pendingAckAlert = null;
@@ -1784,17 +1803,53 @@ if (resetAckBtn) {
             renderAll(false); 
         }
 
-        /** Navigation mois par mois */
+        /** Change le mode d'affichage planning (mois / année) */
+        function setPlanningViewMode(mode) {
+            planningViewMode = (mode === 'year') ? 'year' : 'month';
+            const sel = document.getElementById('viewModeSelect');
+            if (sel) sel.value = planningViewMode;
+            updateMonthNavUI();
+            renderAll(false);
+        }
+
+        /** En mode année, les boutons mois pilotent la surveillance (pas le planning) */
+        function updateMonthNavUI() {
+            const prev = document.getElementById('btnPrevMonth');
+            const next = document.getElementById('btnNextMonth');
+            if (planningViewMode === 'year') {
+                if (prev) {
+                    prev.title = 'Mois précédent (surveillance effectifs & compétences uniquement)';
+                    prev.style.opacity = '1';
+                }
+                if (next) {
+                    next.title = 'Mois suivant (surveillance effectifs & compétences uniquement)';
+                    next.style.opacity = '1';
+                }
+            } else {
+                if (prev) prev.title = 'Mois précédent';
+                if (next) next.title = 'Mois suivant';
+            }
+        }
+
+        /** Navigation mois par mois (planning si mode mois ; toujours la surveillance) */
         function navigateMonths(delta) {
+            const prevYear = startDate.getFullYear();
             startDate = new Date(startDate.getFullYear(), startDate.getMonth() + delta, 1);
             currentYear = startDate.getFullYear();
             ensureYearExists(currentYear);
             document.getElementById('yearSelect').value = currentYear;
             syncDatePicker();
-            renderAll(false);
+            if (planningViewMode === 'year' && startDate.getFullYear() === prevYear) {
+                // Mode année : le planning ne change pas, seulement surveillance + libellés
+                updateCurrentMonthLabel();
+                updateDashboard();
+                applyReadOnlyMode();
+            } else {
+                renderAll(false);
+            }
         }
 
-        // sert à revenir instantanément au mois du jour.
+        // Aujourd'hui : date du jour en première colonne + encadrement visible
         function goToToday() { 
             const now = new Date();
             startDate = new Date(now.getFullYear(), now.getMonth(), 1); 
@@ -1803,11 +1858,9 @@ if (resetAckBtn) {
             document.getElementById('yearSelect').value = currentYear; 
             syncDatePicker(); 
             renderAll(false);
-            // Amène le planning sur la colonne du jour
-            scrollToDateInPlanning(formatDate(now));
+            scrollToDateInPlanning(formatDate(now), true);
         }
 
-        // sert à aller au mois de la date choisie.
         function jumpToDate(dateStr) { 
             if (dateStr) { 
                 const d = parseDate(dateStr); 
@@ -1817,36 +1870,46 @@ if (resetAckBtn) {
                 document.getElementById('yearSelect').value = currentYear; 
                 syncDatePicker();
                 renderAll(false);
-                scrollToDateInPlanning(dateStr);
+                scrollToDateInPlanning(dateStr, true);
             } 
         }
 
-        /** Fait défiler le planning horizontalement jusqu'à la colonne de la date (YYYY-MM-DD) */
-        function scrollToDateInPlanning(dateStr) {
+        /**
+         * Défilement horizontal vers une date.
+         * alignFirst = true → colonne collée juste après les colonnes fixes (première visible)
+         */
+        function scrollToDateInPlanning(dateStr, alignFirst) {
             if (!dateStr) return;
             setTimeout(function() {
                 const container = document.querySelector('.table-container');
                 const th = document.querySelector('th[data-date="' + dateStr + '"]');
                 if (!container || !th) return;
-                // Centrer approximativement la colonne dans la zone visible
-                const stickyOffset = 350; // colonnes fixes Équipe + Compétences
-                const targetLeft = th.offsetLeft - stickyOffset;
-                container.scrollLeft = Math.max(0, targetLeft);
-                // Sur mobile, s'assurer que le tableau est bien visible
-                th.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
-            }, 50);
+                const sticky1 = document.querySelector('th.sticky-col-1');
+                const sticky2 = document.querySelector('th.sticky-col-2');
+                const stickyOffset = (sticky1 ? sticky1.offsetWidth : 180) + (sticky2 ? sticky2.offsetWidth : 170);
+                if (alignFirst) {
+                    container.scrollLeft = Math.max(0, th.offsetLeft - stickyOffset);
+                } else {
+                    container.scrollLeft = Math.max(0, th.offsetLeft - stickyOffset - 40);
+                }
+            }, 80);
         }
 
-        /** Libellé du mois affiché (ex: août 2026) */
+        /** Libellé du mois de référence (nav + surveillance) */
         function updateCurrentMonthLabel() {
             const el = document.getElementById('currentMonthLabel');
             if (!el) return;
             const label = startDate.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
             el.textContent = label.charAt(0).toUpperCase() + label.slice(1);
+            const dashLabel = document.getElementById('dashboardMonthLabel');
+            if (dashLabel) {
+                dashLabel.textContent = '— ' + el.textContent;
+            }
         }
 
         // est la fonction centrale de rafraîchissement de l'application. Chaque fois qu'une donnée change (planning, date, équipe, agent, etc.), elle reconstruit l'interface et, si nécessaire, déclenche une sauvegarde.
         function renderAll(save = true) {
+            updateMonthNavUI();
             updateCurrentMonthLabel();
             updateDashboard();
             generateHeaders();
@@ -2009,8 +2072,30 @@ if (resetAckBtn) {
             });
         }
 
-        // Dates visibles = tous les jours du mois de startDate
+        // Dates visibles sur le planning (mois ou année selon le mode)
         function getVisibleDates() {
+            if (planningViewMode === 'year') {
+                const year = currentYear;
+                const dates = [];
+                const start = new Date(year, 0, 1);
+                const end = new Date(year, 11, 31);
+                for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+                    dates.push(new Date(d.getFullYear(), d.getMonth(), d.getDate()));
+                }
+                return dates;
+            }
+            const year = startDate.getFullYear();
+            const month = startDate.getMonth();
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+            const dates = [];
+            for (let day = 1; day <= daysInMonth; day++) {
+                dates.push(new Date(year, month, day));
+            }
+            return dates;
+        }
+
+        // Dates pour la surveillance effectifs / compétences : toujours le mois de startDate
+        function getDashboardDates() {
             const year = startDate.getFullYear();
             const month = startDate.getMonth();
             const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -2029,13 +2114,12 @@ if (resetAckBtn) {
             return `${year}-${month}-${day}`;
         }
 
-        // Format d'affichage jour/mois/année (ex: 03/08/2026)
+        // Format d'affichage en-têtes planning : jour/mois (ex: 03/08)
         function formatDateDisplay(d) {
             if (!d || isNaN(d.getTime())) return '';
             const day = String(d.getDate()).padStart(2, '0');
             const month = String(d.getMonth() + 1).padStart(2, '0');
-            const year = d.getFullYear();
-            return `${day}/${month}/${year}`;
+            return `${day}/${month}`;
         }
 
         // Affiche une date stockée YYYY-MM-DD en jj/mm/aaaa
@@ -2097,13 +2181,11 @@ if (resetAckBtn) {
 
                 th.setAttribute('data-date', dateStr);
                 th.innerHTML = `${dayName}<br>${displayDate}${badgeHtml}`;
-                th.title = displayDate;
-                // Mise en évidence du jour actuel
+                th.title = formatDateStrDisplay(dateStr);
+                // Mise en évidence du jour actuel (très visible)
                 const todayStr = formatDate(new Date());
                 if (dateStr === todayStr) {
-                    th.style.outline = '2px solid #f1c40f';
-                    th.style.outlineOffset = '-2px';
-                    th.style.backgroundColor = '#2c3e50';
+                    th.classList.add('th-today');
                 }
                 headerTr.appendChild(th);
             });
@@ -2209,8 +2291,10 @@ if (resetAckBtn) {
         function updateDashboard() {
             const dashboard = document.getElementById('dashboard');
             dashboard.innerHTML = '';
-            const dates = getVisibleDates();
+            // Surveillance toujours mois par mois (indépendant du mode année du planning)
+            const dates = getDashboardDates();
             dailyAlertColors = {};
+            updateCurrentMonthLabel();
 
             const shifts = [
                 { id: 'M', name: 'Matin' },
