@@ -162,6 +162,14 @@
             line-height: 1.2;
             vertical-align: bottom;
         }
+        /* Cellule agent sans tâche individuelle = roulement hérité (non affiché) */
+        .task-cell-inherited {
+            background: transparent !important;
+            min-height: 22px;
+        }
+        .task-cell-inherited:hover {
+            background: rgba(52, 152, 219, 0.08) !important;
+        }
         table { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 0.85rem; }
 
         /* Panneau latéral des tâches de remplacement */
@@ -1019,7 +1027,7 @@
         const auth = (typeof firebase !== 'undefined') ? firebase.auth() : null;
 
         const ADMIN_EMAILS = [
-            "admin.planning@entreprise.fr",
+            "admin.planning@ent.fr",
             "anthony.cappelletti@edf.fr"
         ];
 
@@ -2142,7 +2150,7 @@ if (resetAckBtn) {
                     tooltip.style.display = 'block';
                     tooltip.style.left = (e.clientX + 10) + 'px';
                     tooltip.style.top = (e.clientY + 10) + 'px';
-                }, 1000);
+                }, 500);
             });
 
             element.addEventListener('mousemove', (e) => {
@@ -2377,23 +2385,39 @@ if (resetAckBtn) {
 
             dates.forEach(d => {
                 const dateStr = formatDate(d);
+                // Tâche effective (héritée ou individuelle) pour la logique métier
                 const taskCode = getEffectiveAgentTask(agent, team.id, dateStr);
                 const taskDef = TASKS[taskCode] || TASKS['R'];
+                // Affichage : uniquement si tâche individuelle (pas le roulement hérité)
+                const hasIndividual = !!(agentSchedules[agent.id] && agentSchedules[agent.id][dateStr] !== undefined);
                 const descKey = `${agent.id}_${dateStr}`;
                 const desc = taskDescriptions[descKey] || '';
 
                 const td = document.createElement('td');
                 const cellDiv = document.createElement('div');
-                const isRplAgentCell = taskDef.isReplacement;
-                cellDiv.className = `task-cell ${(isReadOnly && !isRplAgentCell) ? 'task-cell-disabled' : ''} ${desc ? 'has-desc-indicator' : ''}`;
-                cellDiv.style.backgroundColor = taskDef.color;
-                cellDiv.style.color = taskDef.text;
-                cellDiv.innerText = taskCode;
+                const isRplAgentCell = hasIndividual && taskDef.isReplacement;
+                cellDiv.className = `task-cell ${(isReadOnly && !isRplAgentCell) ? 'task-cell-disabled' : ''} ${desc && hasIndividual ? 'has-desc-indicator' : ''} ${!hasIndividual ? 'task-cell-inherited' : ''}`;
+
+                if (hasIndividual) {
+                    cellDiv.style.backgroundColor = taskDef.color;
+                    cellDiv.style.color = taskDef.text;
+                    cellDiv.innerText = taskCode;
+                    cellDiv.title = taskDef.label || taskCode;
+                } else {
+                    // Roulement hérité : cellule vide (repos/quarts calculés via l'équipe)
+                    cellDiv.style.backgroundColor = 'transparent';
+                    cellDiv.style.color = '#bbb';
+                    cellDiv.innerText = '';
+                    cellDiv.title = 'Roulement équipe : ' + taskCode + (taskDef.label ? ' (' + taskDef.label + ')' : '');
+                }
 
                 if (!isReadOnly || isRplAgentCell) {
-                    bindCellEvents(cellDiv, false, agent.id, agent.name, dateStr, taskCode, desc);
+                    // currentTaskCode = code affiché si individuel, sinon effectif pour l'attribution
+                    bindCellEvents(cellDiv, false, agent.id, agent.name, dateStr, hasIndividual ? taskCode : taskCode, desc);
                 }
-                attachCellHoverEvents(cellDiv, desc);
+                if (hasIndividual && desc) {
+                    attachCellHoverEvents(cellDiv, desc);
+                }
 
                 td.appendChild(cellDiv);
                 tr.appendChild(td);
@@ -2409,17 +2433,17 @@ if (resetAckBtn) {
 function bindCellEvents(cellDiv, isTeam, targetId, targetName, dateStr, currentTaskCode, currentDesc) {
     const isRplTask = TASKS[currentTaskCode] && TASKS[currentTaskCode].isReplacement;
 
-    // --- GESTION DU MAINTIEN DE 3 SECONDES (MOBILE / TOUCH) ---
+    // --- GESTION DU MAINTIEN DE 2 SECONDES (MOBILE / TOUCH) ---
     cellDiv.ontouchstart = (e) => {
         touchPreventClick = false;
         
-        // Déclenche le chrono de 3 secondes si la tâche est configurée comme remplacement
+        // Déclenche le chrono de 2 secondes si la tâche est configurée comme remplacement
         if (isRplTask) {
             touchTimer = setTimeout(() => {
                 touchPreventClick = true; 
                 if (navigator.vibrate) navigator.vibrate(50);
                 openReplacementModal(isTeam, targetId, targetName, dateStr);
-            }, 2000); // 2000 ms = 3 secondes
+            }, 2000); // 2000 ms = 2 secondes
         }
     };
 
