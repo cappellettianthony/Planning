@@ -2072,7 +2072,7 @@ if (resetAckBtn) {
                     tooltip.style.display = 'block';
                     tooltip.style.left = (e.clientX + 10) + 'px';
                     tooltip.style.top = (e.clientY + 10) + 'px';
-                }, 2000);
+                }, 1000);
             });
 
             element.addEventListener('mousemove', (e) => {
@@ -2343,13 +2343,13 @@ function bindCellEvents(cellDiv, isTeam, targetId, targetName, dateStr, currentT
     cellDiv.ontouchstart = (e) => {
         touchPreventClick = false;
         
-        // Déclenche le chrono de 3 secondes si la tâche est configurée comme remplacement
+        // Déclenche le chrono de 2 secondes si la tâche est configurée comme remplacement
         if (isRplTask) {
             touchTimer = setTimeout(() => {
                 touchPreventClick = true; 
                 if (navigator.vibrate) navigator.vibrate(50);
                 openReplacementModal(isTeam, targetId, targetName, dateStr);
-            }, 3000); // 3000 ms = 3 secondes
+            }, 2000); // 2000 ms = 2 secondes
         }
     };
 
