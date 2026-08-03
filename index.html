@@ -1870,7 +1870,7 @@ if (resetAckBtn) {
                 div.className = 'rpl-side-item' + (iHaveSeen ? ' rpl-seen' : '');
                 div.title = 'Clic : aller à la date — Double-clic : ouvrir la fiche';
 
-                let html = '<div class="rpl-date">' + item.dateStr + '</div>';
+                let html = '<div class="rpl-date">' + formatDateStrDisplay(item.dateStr) + '</div>';
                 html += '<div class="rpl-target">' + (item.isTeam ? '👥 ' : '👤 ') + item.targetName + '</div>';
                 html += '<span class="rpl-code" style="background:' + item.color + ';color:' + item.textColor + ';">' + item.code + '</span>';
                 if (iHaveSeen) {
@@ -1924,10 +1924,20 @@ if (resetAckBtn) {
 
         // Format d'affichage jour/mois/année (ex: 03/08/2026)
         function formatDateDisplay(d) {
+            if (!d || isNaN(d.getTime())) return '';
             const day = String(d.getDate()).padStart(2, '0');
             const month = String(d.getMonth() + 1).padStart(2, '0');
             const year = d.getFullYear();
             return `${day}/${month}/${year}`;
+        }
+
+        // Affiche une date stockée YYYY-MM-DD en jj/mm/aaaa
+        function formatDateStrDisplay(dateStr) {
+            if (!dateStr || typeof dateStr !== 'string') return dateStr || '';
+            if (dateStr.indexOf('/') !== -1) return dateStr;
+            const parts = dateStr.split('-');
+            if (parts.length !== 3) return dateStr;
+            return parts[2] + '/' + parts[1] + '/' + parts[0];
         }
 
         // est l'inverse de votre fonction formatDate(). Elle sert à convertir une chaîne de caractères au format YYYY-MM-DD en objet JavaScript Date.
@@ -2872,13 +2882,13 @@ function openReplacementModal(isTeam, targetId, targetName, dateStr) {
     markSheetAsSeen(sheetKey);
     if (typeof updateRplSidePanel === 'function') updateRplSidePanel();
 
-    const createdAtLabel = sheet.createdAt || '—';
+    const createdAtLabel = sheet.createdAt ? formatDateStrDisplay(sheet.createdAt) : '—';
 
     // 5. Afficher le titre
     const infoEl = document.getElementById('rplTargetInfo');
     if (infoEl) {
         infoEl.innerHTML =
-            'Fiche RPL pour : <strong>' + targetName + '</strong> le <strong>' + dateStr + '</strong><br>' +
+            'Fiche RPL pour : <strong>' + targetName + '</strong> le <strong>' + formatDateStrDisplay(dateStr) + '</strong><br>' +
             '<span style="color:#c0392b;">Quart d\'absence à combler : <strong>' + shiftLabel + '</strong></span><br>' +
             '<span style="color:#7f8c8d; font-size:0.8rem;">Fiche créée le : <strong>' + createdAtLabel + '</strong></span>';
     }
@@ -3390,13 +3400,13 @@ function openArchiveRemplacementModal() {
         replacementArchives.forEach(arch => {
             const tr = document.createElement('tr');
             tr.innerHTML = `
-                <td>${arch.dateRpl || ''}</td>
-                <td>${arch.createdAt || '—'}</td>
+                <td>${formatDateStrDisplay(arch.dateRpl || '')}</td>
+                <td>${arch.createdAt ? formatDateStrDisplay(arch.createdAt) : '—'}</td>
                 <td>${arch.targetName || ''}</td>
                 <td>${arch.volunteers || ''}</td>
                 <td><strong>${arch.selected || ''}</strong></td>
                 <td>${arch.comment || ''}</td>
-                <td>${arch.closedBy || ''}<br><small>${arch.closedAt || ''}</small></td>
+                <td>${arch.closedBy || ''}<br><small>${arch.closedAt ? formatDateStrDisplay(arch.closedAt) : ''}</small></td>
             `;
             tbody.appendChild(tr);
         });
@@ -3447,14 +3457,14 @@ function exportRplArchivesToExcel() {
 
     const rows = replacementArchives.map(arch => {
         return [
-            arch.dateRpl || '',
-            arch.createdAt || '',
+            formatDateStrDisplay(arch.dateRpl || ''),
+            arch.createdAt ? formatDateStrDisplay(arch.createdAt) : '',
             arch.targetName || '',
             arch.volunteers || '',
             arch.selected || '',
             arch.comment || '',
             arch.closedBy || '',
-            arch.closedAt || ''
+            arch.closedAt ? formatDateStrDisplay(arch.closedAt) : ''
         ].map(val => {
             const str = String(val).replace(/"/g, '""');
             return `"${str}"`;
