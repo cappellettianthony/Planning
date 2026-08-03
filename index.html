@@ -146,7 +146,22 @@
             font-weight: bold;
         }
 
-        .table-container { background: var(--card-bg); border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); overflow: auto; max-height: 60vh; flex: 1; min-width: 0; }
+        .table-container {
+            background: var(--card-bg);
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            overflow: auto; /* défilement vertical + horizontal */
+            max-height: calc(100vh - 220px);
+            flex: 1;
+            min-width: 0;
+        }
+        #planningTable th {
+            white-space: normal;
+            min-width: 52px;
+            font-size: 0.7rem;
+            line-height: 1.2;
+            vertical-align: bottom;
+        }
         table { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 0.85rem; }
 
         /* Panneau latéral des tâches de remplacement */
@@ -165,7 +180,7 @@
             box-shadow: 0 2px 4px rgba(0,0,0,0.05);
             display: flex;
             flex-direction: column;
-            max-height: 60vh;
+            max-height: calc(100vh - 220px);
             overflow: hidden;
         }
         .rpl-side-panel-header {
@@ -520,14 +535,14 @@
         <div class="nav-controls">
             <label for="yearSelect">Année :</label>
             <select id="yearSelect" onchange="changeYear(this.value)"></select>
-           
 
-<button class="btn btn-purple" onclick="openArchiveRemplacementModal()" id="archiveRplBtn">📋 Archives Remplacements</button>
- 
-            <button class="btn btn-secondary" onclick="navigateDays(-14)">◄ 14j</button>
+            <button class="btn btn-purple" onclick="openArchiveRemplacementModal()" id="archiveRplBtn">📋 Archives Remplacements</button>
+
+            <button class="btn btn-secondary" onclick="navigateMonths(-1)" title="Mois précédent">◄ Mois</button>
+            <span id="currentMonthLabel" style="font-weight:bold; min-width:110px; text-align:center;"></span>
+            <button class="btn btn-secondary" onclick="navigateMonths(1)" title="Mois suivant">Mois ►</button>
             <button class="btn" onclick="goToToday()">Aujourd'hui</button>
-            <button class="btn btn-secondary" onclick="navigateDays(14)">14j ►</button>
-            <input type="date" id="datePicker" onchange="jumpToDate(this.value)">
+            <input type="date" id="datePicker" onchange="jumpToDate(this.value)" title="Aller au mois de cette date">
         </div>
 
         <div style="display:flex; gap:8px; flex-wrap: wrap;">
@@ -1024,11 +1039,11 @@
         let isReadOnly = true;
         let isAdmin = false;
 
-        const DAYS_TO_SHOW = 14; 
         let currentYear = new Date().getFullYear();
         let minYearAvailable = currentYear - 1;
         let maxYearAvailable = currentYear + 3;
-        let startDate = new Date(); 
+        // startDate définit le mois affiché (1er jour du mois en pratique)
+        let startDate = new Date(currentYear, new Date().getMonth(), 1); 
 
         let pendingRotation = null;
         let pendingAckAlert = null;
@@ -1708,24 +1723,27 @@ if (resetAckBtn) {
         // est appelée lorsqu'un utilisateur change l'année sélectionnée dans l'interface. Elle met à jour le contexte temporel de l'application puis rafraîchit l'affichage.
         function changeYear(val) { 
             currentYear = parseInt(val); 
-            startDate = new Date(currentYear, 0, 1); 
+            // Conserve le mois courant si possible
+            const month = startDate.getMonth();
+            startDate = new Date(currentYear, month, 1); 
             syncDatePicker(); 
             renderAll(false); 
         }
 
-        // sert à déplacer la date courante d'un certain nombre de jours, puis à mettre à jour toute l'interface en conséquence.
-        function navigateDays(days) { 
-            startDate.setDate(startDate.getDate() + days); 
-            currentYear = startDate.getFullYear(); 
-            ensureYearExists(currentYear); 
-            document.getElementById('yearSelect').value = currentYear; 
-            syncDatePicker(); 
-            renderAll(false); 
+        /** Navigation mois par mois */
+        function navigateMonths(delta) {
+            startDate = new Date(startDate.getFullYear(), startDate.getMonth() + delta, 1);
+            currentYear = startDate.getFullYear();
+            ensureYearExists(currentYear);
+            document.getElementById('yearSelect').value = currentYear;
+            syncDatePicker();
+            renderAll(false);
         }
 
-        // sert à revenir instantanément à la date du jour, puis à mettre à jour toute l'interface du planning.
+        // sert à revenir instantanément au mois du jour.
         function goToToday() { 
-            startDate = new Date(); 
+            const now = new Date();
+            startDate = new Date(now.getFullYear(), now.getMonth(), 1); 
             currentYear = startDate.getFullYear(); 
             ensureYearExists(currentYear); 
             document.getElementById('yearSelect').value = currentYear; 
@@ -1733,19 +1751,30 @@ if (resetAckBtn) {
             renderAll(false); 
         }
 
-        // sert à aller directement à une date choisie par l'utilisateur, sans passer par les boutons de navigation.
+        // sert à aller au mois de la date choisie.
         function jumpToDate(dateStr) { 
             if (dateStr) { 
-                startDate = parseDate(dateStr); 
+                const d = parseDate(dateStr); 
+                startDate = new Date(d.getFullYear(), d.getMonth(), 1); 
                 currentYear = startDate.getFullYear(); 
                 ensureYearExists(currentYear); 
                 document.getElementById('yearSelect').value = currentYear; 
+                syncDatePicker();
                 renderAll(false); 
             } 
         }
 
+        /** Libellé du mois affiché (ex: août 2026) */
+        function updateCurrentMonthLabel() {
+            const el = document.getElementById('currentMonthLabel');
+            if (!el) return;
+            const label = startDate.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+            el.textContent = label.charAt(0).toUpperCase() + label.slice(1);
+        }
+
         // est la fonction centrale de rafraîchissement de l'application. Chaque fois qu'une donnée change (planning, date, équipe, agent, etc.), elle reconstruit l'interface et, si nécessaire, déclenche une sauvegarde.
         function renderAll(save = true) {
+            updateCurrentMonthLabel();
             updateDashboard();
             generateHeaders();
             generateTable();
@@ -1873,23 +1902,32 @@ if (resetAckBtn) {
             });
         }
 
-        // sert à générer la liste des dates actuellement visibles dans le planning à partir de la date de départ (startDate).
+        // Dates visibles = tous les jours du mois de startDate
         function getVisibleDates() {
+            const year = startDate.getFullYear();
+            const month = startDate.getMonth();
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
             const dates = [];
-            for (let i = 0; i < DAYS_TO_SHOW; i++) {
-                const d = new Date(startDate);
-                d.setDate(startDate.getDate() + i);
-                dates.push(d);
+            for (let day = 1; day <= daysInMonth; day++) {
+                dates.push(new Date(year, month, day));
             }
             return dates;
         }
 
-        // sert à convertir un objet JavaScript Date en chaîne de caractères au format YYYY-MM-DD, un format très utilisé pour :
+        // Format interne YYYY-MM-DD (clés de données / Firebase) — ne pas changer
         function formatDate(d) {
             const year = d.getFullYear(); 
             const month = String(d.getMonth() + 1).padStart(2, '0'); 
             const day = String(d.getDate()).padStart(2, '0');
             return `${year}-${month}-${day}`;
+        }
+
+        // Format d'affichage jour/mois/année (ex: 03/08/2026)
+        function formatDateDisplay(d) {
+            const day = String(d.getDate()).padStart(2, '0');
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const year = d.getFullYear();
+            return `${day}/${month}/${year}`;
         }
 
         // est l'inverse de votre fonction formatDate(). Elle sert à convertir une chaîne de caractères au format YYYY-MM-DD en objet JavaScript Date.
@@ -1901,6 +1939,7 @@ if (resetAckBtn) {
         // sert à synchroniser le champ de sélection de date de l'interface avec la variable startDate utilisée par l'application.
         function syncDatePicker() { 
             document.getElementById('datePicker').value = formatDate(startDate); 
+            updateCurrentMonthLabel();
         }
         
         // construit dynamiquement la ligne d'en-tête du tableau de planning. Elle affiche : 
@@ -1921,8 +1960,8 @@ if (resetAckBtn) {
             getVisibleDates().forEach(d => {
                 const th = document.createElement('th');
                 const dayName = d.toLocaleDateString('fr-FR', { weekday: 'short' });
-                const dayNum = d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
-                const dateStr = formatDate(d);
+                const displayDate = formatDateDisplay(d); // jj/mm/aaaa
+                const dateStr = formatDate(d); // clé interne
 
                 let badgeHtml = '';
                 const dayStatus = dailyAlertColors[dateStr];
@@ -1939,7 +1978,8 @@ if (resetAckBtn) {
                     badgeHtml = `<span class="header-date-badge ${colorClass}">${label}</span>`;
                 }
 
-                th.innerHTML = `${dayName}<br>${dayNum}${badgeHtml}`;
+                th.innerHTML = `${dayName}<br>${displayDate}${badgeHtml}`;
+                th.title = displayDate;
                 headerTr.appendChild(th);
             });
         }
