@@ -157,12 +157,12 @@
         }
         #planningTable th {
             white-space: normal;
-            min-width: 48px;
-            font-size: 0.82rem;
-            font-weight: 700;
-            line-height: 1.25;
+            min-width: 42px;
+            font-size: 0.68rem;
+            font-weight: 600;
+            line-height: 1.2;
             vertical-align: bottom;
-            padding: 6px 4px;
+            padding: 4px 2px;
         }
         #planningTable th.th-today {
             outline: 3px solid #f1c40f !important;
@@ -291,9 +291,40 @@
         th, td { border-right: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color); padding: 4px; text-align: center; white-space: nowrap; }
         th { background-color: var(--primary); color: white; position: sticky; top: 0; z-index: 10; }
         
-        .sticky-col-1 { position: sticky; left: 0; background-color: white; z-index: 5; width: 180px; text-align: left; font-weight: bold; }
-        .sticky-col-2 { position: sticky; left: 180px; background-color: white; z-index: 5; width: 170px; text-align: left; }
-        th.sticky-col-1, th.sticky-col-2 { z-index: 15; background-color: var(--primary); }
+        /* Colonnes figées au défilement horizontal : Équipe/Agent + Compétences */
+        .sticky-col-1 {
+            position: sticky;
+            left: 0;
+            background-color: white;
+            z-index: 6;
+            width: 180px;
+            min-width: 180px;
+            max-width: 180px;
+            text-align: left;
+            font-weight: bold;
+        }
+        .sticky-col-2 {
+            position: sticky;
+            left: 180px;
+            background-color: white;
+            z-index: 6;
+            width: 170px;
+            min-width: 170px;
+            max-width: 170px;
+            text-align: left;
+            box-shadow: 4px 0 6px -2px rgba(0,0,0,0.12);
+        }
+        th.sticky-col-1, th.sticky-col-2 {
+            z-index: 16;
+            background-color: var(--primary) !important;
+            color: white;
+        }
+        /* Fond opaque sur lignes équipe (sinon transparent au scroll) */
+        .team-row .sticky-col-1,
+        .team-row .sticky-col-2 {
+            background-color: #000000 !important;
+            color: #fff;
+        }
 
         /* Couleur plus foncée pour la ligne du roulement d'équipe et bordure de séparation */
 .team-row { 
