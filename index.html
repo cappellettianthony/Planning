@@ -174,7 +174,6 @@
             display: block;
             margin-top: 1px;
         }
-        /* Jour actuel — encadrement bien visible en permanence */
         #planningTable th.today-col {
             outline: 3px solid #f1c40f !important;
             outline-offset: -3px;
@@ -182,7 +181,6 @@
             background: linear-gradient(180deg, #1a252f 0%, #2c3e50 100%) !important;
             z-index: 12;
         }
-        /* Animation scintillement (en-tête jour actuel) */
         @keyframes scintillate-today {
             0%, 100% {
                 outline-color: #f1c40f;
@@ -198,23 +196,62 @@
         #planningTable th.today-col.scintillate {
             animation: scintillate-today 0.7s ease-in-out infinite;
         }
-        /* Animation scintillement cellule RPL */
         @keyframes scintillate-rpl {
-            0%, 100% {
-                box-shadow: 0 0 0 2px #e74c3c;
-                transform: scale(1);
-                filter: brightness(1);
-            }
-            50% {
-                box-shadow: 0 0 14px 5px rgba(231, 76, 60, 0.9);
-                transform: scale(1.1);
-                filter: brightness(1.15);
-            }
+            0%, 100% { box-shadow: 0 0 0 2px #e74c3c; transform: scale(1); filter: brightness(1); }
+            50% { box-shadow: 0 0 14px 5px rgba(231, 76, 60, 0.9); transform: scale(1.1); filter: brightness(1.15); }
         }
         .task-cell.scintillate-rpl {
             animation: scintillate-rpl 0.65s ease-in-out infinite;
             z-index: 8 !important;
             position: relative;
+        }
+        #planningTable th.selected-col,
+        #planningTable td.selected-col {
+            outline: 3px solid #f1c40f !important;
+            outline-offset: -3px;
+            box-shadow: inset 0 0 0 2px rgba(241, 196, 15, 0.5);
+            background-color: rgba(241, 196, 15, 0.12) !important;
+        }
+        #planningTable th.selected-col {
+            background: linear-gradient(180deg, #3d5a1a 0%, #2c3e50 100%) !important;
+            z-index: 13;
+        }
+        #planningTable.year-view th:not(.sticky-col-1):not(.sticky-col-2) {
+            min-width: 26px; max-width: 30px; font-size: 0.58rem; padding: 2px 1px;
+        }
+        #planningTable.year-view td:not(.sticky-col-1):not(.sticky-col-2) {
+            min-width: 26px; max-width: 30px; padding: 1px; font-size: 0.65rem;
+        }
+        #planningTable.year-view th .th-dayname { font-size: 0.55rem; }
+        #planningTable.year-view th .th-date { font-size: 0.7rem; font-weight: 700; }
+        #planningTable.year-view .task-cell { padding: 2px 1px; font-size: 0.6rem; }
+        #planningTable.year-view .header-date-badge { font-size: 0.5rem; padding: 1px 2px; }
+        .sticky-col-1 {
+            position: sticky !important; left: 0 !important;
+            background-color: #ffffff !important; z-index: 6 !important;
+            width: 180px; min-width: 180px; max-width: 180px;
+            text-align: left; font-weight: bold;
+            box-shadow: 4px 0 8px -2px rgba(0,0,0,0.15);
+        }
+        .sticky-col-2 {
+            position: sticky !important; left: 180px !important;
+            background-color: #ffffff !important; z-index: 6 !important;
+            width: 170px; min-width: 170px; max-width: 170px;
+            text-align: left;
+            box-shadow: 4px 0 8px -2px rgba(0,0,0,0.12);
+        }
+        th.sticky-col-1, th.sticky-col-2 {
+            z-index: 16 !important;
+            background-color: var(--primary) !important;
+            color: white !important;
+            box-shadow: 4px 0 8px -2px rgba(0,0,0,0.25);
+        }
+        .team-row .sticky-col-1,
+        .team-row .sticky-col-2,
+        td.team-name-td.sticky-col-1,
+        td.team-name-td.sticky-col-2 {
+            background-color: #7f8c8d !important;
+            color: #ffffff !important;
         }
         /* Cellule agent sans tâche individuelle = roulement hérité (non affiché) */
         .task-cell-inherited {
@@ -225,6 +262,16 @@
             background: rgba(52, 152, 219, 0.08) !important;
         }
         table { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 0.85rem; }
+        .view-mode-toggle {
+            display: inline-flex; border: 1px solid #ccc; border-radius: 5px; overflow: hidden;
+        }
+        .view-mode-toggle button {
+            border: none; padding: 5px 10px; cursor: pointer; font-weight: bold;
+            font-size: 0.8rem; background: #ecf0f1; color: #2c3e50;
+        }
+        .view-mode-toggle button.active { background: var(--accent); color: white; }
+        #monthNavPrev:disabled, #monthNavNext:disabled { opacity: 0.45; cursor: not-allowed; }
+        .dashboard-month-label { font-size: 0.85rem; color: #2980b9; font-weight: bold; margin-left: 8px; }
 
         /* Panneau latéral des tâches de remplacement */
         .planning-layout {
@@ -335,9 +382,7 @@
         th, td { border-right: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color); padding: 4px; text-align: center; white-space: nowrap; }
         th { background-color: var(--primary); color: white; position: sticky; top: 0; z-index: 10; }
         
-        .sticky-col-1 { position: sticky; left: 0; background-color: white; z-index: 5; width: 180px; text-align: left; font-weight: bold; }
-        .sticky-col-2 { position: sticky; left: 180px; background-color: white; z-index: 5; width: 170px; text-align: left; }
-        th.sticky-col-1, th.sticky-col-2 { z-index: 15; background-color: var(--primary); }
+        /* sticky-col définis plus haut */
 
         /* Couleur plus foncée pour la ligne du roulement d'équipe et bordure de séparation */
 .team-row { 
@@ -598,11 +643,16 @@
             <label for="yearSelect">Année :</label>
             <select id="yearSelect" onchange="changeYear(this.value)"></select>
 
+            <div class="view-mode-toggle" title="Affichage du planning">
+                <button type="button" id="viewModeMonthBtn" class="active" onclick="setPlanningViewMode('month')">Mois</button>
+                <button type="button" id="viewModeYearBtn" onclick="setPlanningViewMode('year')">Année</button>
+            </div>
+
             <button class="btn btn-purple" onclick="openArchiveRemplacementModal()" id="archiveRplBtn">📋 Archives Remplacements</button>
 
-            <button class="btn btn-secondary" onclick="navigateMonths(-1)" title="Mois précédent">◄ Mois</button>
+            <button class="btn btn-secondary" id="monthNavPrev" onclick="navigateMonths(-1)" title="Mois précédent">◄ Mois</button>
             <span id="currentMonthLabel" style="font-weight:bold; min-width:110px; text-align:center;"></span>
-            <button class="btn btn-secondary" onclick="navigateMonths(1)" title="Mois suivant">Mois ►</button>
+            <button class="btn btn-secondary" id="monthNavNext" onclick="navigateMonths(1)" title="Mois suivant">Mois ►</button>
             <button class="btn" onclick="goToToday()">Aujourd'hui</button>
             <input type="date" id="datePicker" onchange="jumpToDate(this.value)" title="Aller au mois de cette date">
         </div>
@@ -636,9 +686,9 @@
         <ul id="alertList"></ul>
     </div>
 
-    <details class="dashboard-wrapper" id="dashboardWrapper">
+    <details class="dashboard-wrapper" id="dashboardWrapper" ontoggle="onDashboardToggle()">
         <summary>
-            <span>📊 Surveillance des effectifs & compétences</span>
+            <span>📊 Surveillance des effectifs & compétences <span class="dashboard-month-label" id="dashboardMonthLabel"></span></span>
             <span style="font-size: 0.75rem; color: #7f8c8d; font-weight: normal;">Cliquez pour afficher / masquer</span>
         </summary>
         <div class="dashboard" id="dashboard"></div>
@@ -1095,7 +1145,10 @@
         let minYearAvailable = currentYear - 1;
         let maxYearAvailable = currentYear + 3;
         // startDate définit le mois affiché (1er jour du mois en pratique)
-        let startDate = new Date(currentYear, new Date().getMonth(), 1); 
+        let startDate = new Date(currentYear, new Date().getMonth(), 1);
+        let planningViewMode = 'month'; // 'month' | 'year'
+        let dashboardStartDate = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+        let selectedColumnDate = null; 
 
         let pendingRotation = null;
         let pendingAckAlert = null;
@@ -1799,6 +1852,15 @@ if (resetAckBtn) {
             initYearSelect();
             syncDatePicker();
             checkAuthState();
+
+            // Clic hors en-tête de date → désélection de colonne
+            const tableContainer = document.querySelector('.table-container');
+            if (tableContainer) {
+                tableContainer.addEventListener('click', function(e) {
+                    if (e.target.closest('th[data-date]')) return;
+                    if (selectedColumnDate) clearPlanningColumnSelection();
+                });
+            }
             
             planningRef.on('value', (snapshot) => {
                 const data = snapshot.val();
@@ -1828,19 +1890,59 @@ if (resetAckBtn) {
             if (year > maxYearAvailable) { maxYearAvailable = year + 1; initYearSelect(); }
         }
 
-        // est appelée lorsqu'un utilisateur change l'année sélectionnée dans l'interface. Elle met à jour le contexte temporel de l'application puis rafraîchit l'affichage.
+        // est appelée lorsqu'un utilisateur change l'année sélectionnée dans l'interface.
         function changeYear(val) { 
             currentYear = parseInt(val); 
-            // Conserve le mois courant si possible
             const month = startDate.getMonth();
-            startDate = new Date(currentYear, month, 1); 
+            startDate = new Date(currentYear, month, 1);
+            dashboardStartDate = new Date(currentYear, dashboardStartDate.getMonth(), 1);
             syncDatePicker(); 
             renderAll(false); 
         }
 
-        /** Navigation mois par mois */
+        function setPlanningViewMode(mode) {
+            if (mode !== 'month' && mode !== 'year') return;
+            planningViewMode = mode;
+            selectedColumnDate = null;
+            const btnM = document.getElementById('viewModeMonthBtn');
+            const btnY = document.getElementById('viewModeYearBtn');
+            if (btnM) btnM.classList.toggle('active', mode === 'month');
+            if (btnY) btnY.classList.toggle('active', mode === 'year');
+            updateMonthNavEnabledState();
+            renderAll(false);
+        }
+
+        function isDashboardOpen() {
+            const el = document.getElementById('dashboardWrapper');
+            return !!(el && el.open);
+        }
+
+        function onDashboardToggle() {
+            updateMonthNavEnabledState();
+            updateDashboardMonthLabel();
+        }
+
         function navigateMonths(delta) {
+            if (planningViewMode === 'year') {
+                if (!isDashboardOpen()) return;
+                dashboardStartDate = new Date(
+                    dashboardStartDate.getFullYear(),
+                    dashboardStartDate.getMonth() + delta,
+                    1
+                );
+                if (dashboardStartDate.getFullYear() !== currentYear) {
+                    currentYear = dashboardStartDate.getFullYear();
+                    ensureYearExists(currentYear);
+                    document.getElementById('yearSelect').value = currentYear;
+                    startDate = new Date(currentYear, startDate.getMonth(), 1);
+                }
+                updateDashboard();
+                updateDashboardMonthLabel();
+                updateCurrentMonthLabel();
+                return;
+            }
             startDate = new Date(startDate.getFullYear(), startDate.getMonth() + delta, 1);
+            dashboardStartDate = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
             currentYear = startDate.getFullYear();
             ensureYearExists(currentYear);
             document.getElementById('yearSelect').value = currentYear;
@@ -1848,36 +1950,36 @@ if (resetAckBtn) {
             renderAll(false);
         }
 
-        // sert à revenir instantanément au mois du jour.
+        function updateMonthNavEnabledState() {
+            const prev = document.getElementById('monthNavPrev');
+            const next = document.getElementById('monthNavNext');
+            const disable = (planningViewMode === 'year' && !isDashboardOpen());
+            if (prev) prev.disabled = disable;
+            if (next) next.disabled = disable;
+        }
+
         function goToToday() { 
             const now = new Date();
             const todayStr = formatDate(now);
             startDate = new Date(now.getFullYear(), now.getMonth(), 1); 
+            dashboardStartDate = new Date(now.getFullYear(), now.getMonth(), 1);
             currentYear = startDate.getFullYear(); 
             ensureYearExists(currentYear); 
             document.getElementById('yearSelect').value = currentYear; 
             syncDatePicker(); 
             renderAll(false);
-            // Amène le planning sur la colonne du jour
             scrollToDateInPlanning(todayStr);
-            // Scintillement de l'encadrement du jour actuel pendant 10 secondes
-            setTimeout(function() {
-                highlightTodayColumn(10000);
-            }, 80);
+            setTimeout(function() { highlightTodayColumn(10000); }, 80);
         }
 
-        /** Active l'animation de scintillement sur l'en-tête du jour actuel pendant durationMs ms */
         function highlightTodayColumn(durationMs) {
             const todayStr = formatDate(new Date());
             const th = document.querySelector('th[data-date="' + todayStr + '"]');
             if (!th) return;
             th.classList.add('today-col', 'scintillate');
-            setTimeout(function() {
-                th.classList.remove('scintillate');
-            }, durationMs || 10000);
+            setTimeout(function() { th.classList.remove('scintillate'); }, durationMs || 10000);
         }
 
-        /** Scintillement d'une cellule RPL (équipe ou agent) pendant durationMs ms */
         function highlightRplCell(targetId, dateStr, durationMs) {
             if (!targetId || !dateStr) return;
             const cells = document.querySelectorAll(
@@ -1886,17 +1988,15 @@ if (resetAckBtn) {
             if (!cells.length) return;
             cells.forEach(function(cell) {
                 cell.classList.add('scintillate-rpl');
-                setTimeout(function() {
-                    cell.classList.remove('scintillate-rpl');
-                }, durationMs || 10000);
+                setTimeout(function() { cell.classList.remove('scintillate-rpl'); }, durationMs || 10000);
             });
         }
 
-        // sert à aller au mois de la date choisie.
         function jumpToDate(dateStr) { 
             if (dateStr) { 
                 const d = parseDate(dateStr); 
-                startDate = new Date(d.getFullYear(), d.getMonth(), 1); 
+                startDate = new Date(d.getFullYear(), d.getMonth(), 1);
+                dashboardStartDate = new Date(d.getFullYear(), d.getMonth(), 1);
                 currentYear = startDate.getFullYear(); 
                 ensureYearExists(currentYear); 
                 document.getElementById('yearSelect').value = currentYear; 
@@ -1906,40 +2006,70 @@ if (resetAckBtn) {
             } 
         }
 
-        /** Fait défiler le planning horizontalement jusqu'à la colonne de la date (YYYY-MM-DD) */
         function scrollToDateInPlanning(dateStr) {
             if (!dateStr) return;
             setTimeout(function() {
                 const container = document.querySelector('.table-container');
                 const th = document.querySelector('th[data-date="' + dateStr + '"]');
                 if (!container || !th) return;
-                // Centrer approximativement la colonne dans la zone visible
-                const stickyOffset = 350; // colonnes fixes Équipe + Compétences
-                const targetLeft = th.offsetLeft - stickyOffset;
-                container.scrollLeft = Math.max(0, targetLeft);
-                // Sur mobile, s'assurer que le tableau est bien visible
+                const stickyOffset = 350;
+                container.scrollLeft = Math.max(0, th.offsetLeft - stickyOffset);
                 th.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
             }, 50);
         }
 
-        /** Libellé du mois affiché (ex: août 2026) */
         function updateCurrentMonthLabel() {
             const el = document.getElementById('currentMonthLabel');
             if (!el) return;
-            const label = startDate.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
-            el.textContent = label.charAt(0).toUpperCase() + label.slice(1);
+            if (planningViewMode === 'year') {
+                el.textContent = 'Année ' + currentYear;
+            } else {
+                const label = startDate.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+                el.textContent = label.charAt(0).toUpperCase() + label.slice(1);
+            }
+            updateDashboardMonthLabel();
+            updateMonthNavEnabledState();
         }
 
-        // est la fonction centrale de rafraîchissement de l'application. Chaque fois qu'une donnée change (planning, date, équipe, agent, etc.), elle reconstruit l'interface et, si nécessaire, déclenche une sauvegarde.
+        function updateDashboardMonthLabel() {
+            const el = document.getElementById('dashboardMonthLabel');
+            if (!el) return;
+            const label = dashboardStartDate.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+            el.textContent = '— ' + label.charAt(0).toUpperCase() + label.slice(1);
+        }
+
+        function selectPlanningColumn(dateStr) {
+            selectedColumnDate = dateStr;
+            applyColumnSelection();
+        }
+
+        function clearPlanningColumnSelection() {
+            selectedColumnDate = null;
+            applyColumnSelection();
+        }
+
+        function applyColumnSelection() {
+            document.querySelectorAll('#planningTable th.selected-col, #planningTable td.selected-col').forEach(function(el) {
+                el.classList.remove('selected-col');
+            });
+            if (!selectedColumnDate) return;
+            document.querySelectorAll('#planningTable th[data-date="' + selectedColumnDate + '"], #planningTable td[data-date="' + selectedColumnDate + '"]').forEach(function(el) {
+                el.classList.add('selected-col');
+            });
+        }
+
         function renderAll(save = true) {
             updateCurrentMonthLabel();
+            computeDailyAlertColors(getVisibleDates());
             updateDashboard();
             generateHeaders();
             generateTable();
+            applyColumnSelection();
             updateRplSidePanel();
             checkRestAlerts();
             if (save && !isReadOnly) saveToFirebase();
             applyReadOnlyMode();
+            updateMonthNavEnabledState();
         }
 
         /**
@@ -2070,7 +2200,7 @@ if (resetAckBtn) {
                     }
                 };
 
-                // Clic simple = navigation date + scintillement cellule RPL ; double-clic = ouvrir fiche RPL
+                // Clic simple = navigation date ; double-clic = ouvrir fiche RPL
                 div.onclick = function() {
                     if (sideLongPress) {
                         sideLongPress = false;
@@ -2086,7 +2216,6 @@ if (resetAckBtn) {
                             jumpToDate(item.dateStr);
                             const dp = document.getElementById('datePicker');
                             if (dp) dp.value = item.dateStr;
-                            // Scintillement de la cellule de remplacement sur le planning pendant 10 s
                             setTimeout(function() {
                                 highlightRplCell(item.targetId, item.dateStr, 10000);
                             }, 120);
@@ -2098,10 +2227,33 @@ if (resetAckBtn) {
             });
         }
 
-        // Dates visibles = tous les jours du mois de startDate
+        // Dates visibles sur le planning = mois courant OU année entière
         function getVisibleDates() {
+            if (planningViewMode === 'year') {
+                const year = currentYear;
+                const dates = [];
+                const start = new Date(year, 0, 1);
+                const end = new Date(year, 11, 31);
+                let curr = new Date(start);
+                while (curr <= end) {
+                    dates.push(new Date(curr));
+                    curr.setDate(curr.getDate() + 1);
+                }
+                return dates;
+            }
             const year = startDate.getFullYear();
             const month = startDate.getMonth();
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+            const dates = [];
+            for (let day = 1; day <= daysInMonth; day++) {
+                dates.push(new Date(year, month, day));
+            }
+            return dates;
+        }
+
+        function getDashboardDates() {
+            const year = dashboardStartDate.getFullYear();
+            const month = dashboardStartDate.getMonth();
             const daysInMonth = new Date(year, month + 1, 0).getDate();
             const dates = [];
             for (let day = 1; day <= daysInMonth; day++) {
@@ -2155,6 +2307,9 @@ if (resetAckBtn) {
             const table = document.getElementById('planningTable');
             const isCollapsed = table.classList.contains('collapsed-skills');
             const btnText = isCollapsed ? '➕' : '➖';
+
+            if (planningViewMode === 'year') table.classList.add('year-view');
+            else table.classList.remove('year-view');
             
             headerTr.innerHTML = `
                 <th class="sticky-col-1">Équipe / Agent</th>
@@ -2163,38 +2318,51 @@ if (resetAckBtn) {
                     <button class="toggle-col-btn" onclick="toggleSkillsColumn()" title="Réduire/Agrandir la colonne">${btnText}</button>
                 </th>`;
 
+            const todayStr = formatDate(new Date());
+            const isYear = planningViewMode === 'year';
+
             getVisibleDates().forEach(d => {
                 const th = document.createElement('th');
                 const dayName = d.toLocaleDateString('fr-FR', { weekday: 'short' });
                 const dayNum = String(d.getDate()).padStart(2, '0');
                 const monthNum = String(d.getMonth() + 1).padStart(2, '0');
-                const displayDateShort = dayNum + '/' + monthNum; // jj/mm
-                const displayDateFull = formatDateDisplay(d); // jj/mm/aaaa (tooltip)
-                const dateStr = formatDate(d); // clé interne
+                const displayDateShort = dayNum + '/' + monthNum;
+                const displayDateFull = formatDateDisplay(d);
+                const dateStr = formatDate(d);
 
                 let badgeHtml = '';
                 const dayStatus = dailyAlertColors[dateStr];
                 if (dayStatus) {
                     let colorClass = 'bg-green';
                     let label = 'OK';
-                    if (dayStatus === 'RED') {
-                        colorClass = 'bg-red';
-                        label = 'Alerte';
-                    } else if (dayStatus === 'ORANGE') {
-                        colorClass = 'bg-orange';
-                        label = 'Attention';
-                    }
+                    if (dayStatus === 'RED') { colorClass = 'bg-red'; label = isYear ? '!' : 'Alerte'; }
+                    else if (dayStatus === 'ORANGE') { colorClass = 'bg-orange'; label = isYear ? '~' : 'Attention'; }
+                    else { label = isYear ? '✓' : 'OK'; }
                     badgeHtml = `<span class="header-date-badge ${colorClass}">${label}</span>`;
                 }
 
                 th.setAttribute('data-date', dateStr);
-                th.innerHTML = `<span class="th-dayname">${dayName}</span><span class="th-date">${displayDateShort}</span>${badgeHtml}`;
-                th.title = displayDateFull;
-                // Mise en évidence du jour actuel (encadrement renforcé)
-                const todayStr = formatDate(new Date());
-                if (dateStr === todayStr) {
-                    th.classList.add('today-col');
+                if (isYear) {
+                    const monthShort = d.toLocaleDateString('fr-FR', { month: 'short' });
+                    if (d.getDate() === 1) {
+                        th.innerHTML = `<span class="th-dayname">${monthShort}</span><span class="th-date">${dayNum}</span>${badgeHtml}`;
+                    } else {
+                        th.innerHTML = `<span class="th-dayname">${dayName.charAt(0)}</span><span class="th-date">${dayNum}</span>${badgeHtml}`;
+                    }
+                } else {
+                    th.innerHTML = `<span class="th-dayname">${dayName}</span><span class="th-date">${displayDateShort}</span>${badgeHtml}`;
                 }
+                th.title = displayDateFull + ' — Cliquer pour sélectionner la colonne';
+                th.style.cursor = 'pointer';
+                if (dateStr === todayStr) th.classList.add('today-col');
+                if (selectedColumnDate === dateStr) th.classList.add('selected-col');
+
+                th.onclick = function(e) {
+                    e.stopPropagation();
+                    if (selectedColumnDate === dateStr) clearPlanningColumnSelection();
+                    else selectPlanningColumn(dateStr);
+                };
+
                 headerTr.appendChild(th);
             });
         }
@@ -2295,12 +2463,71 @@ if (resetAckBtn) {
             });
         }
 
-        // Elle calcule tous les indicateurs du planning, détecte les alertes de couverture de compétences, puis construit l'affichage du tableau de bord (dashboard).
+        /**
+         * Calcule les couleurs d'alerte (RED/ORANGE/GREEN) pour une liste de dates
+         * (badges sous les dates du planning — mois ou année entière).
+         */
+        function computeDailyAlertColors(dates) {
+            dailyAlertColors = {};
+            const shifts = ['M', 'A', 'N'];
+            dates.forEach(function(d) {
+                const dateStr = formatDate(d);
+                let worst = 'GREEN';
+                shifts.forEach(function(shiftId) {
+                    let count = 0;
+                    let skillCounts = {};
+                    skillDefinitions.forEach(function(s) { skillCounts[s.id] = 0; });
+                    let presentAgents = [];
+                    teams.forEach(function(team) {
+                        team.agents.forEach(function(agent) {
+                            const taskCode = getEffectiveAgentTask(agent, team.id, dateStr);
+                            const task = TASKS[taskCode] || TASKS['R'];
+                            if (task.shift === shiftId) {
+                                count++;
+                                presentAgents.push(agent);
+                                (agent.skills || []).forEach(function(sId) {
+                                    if (skillCounts[sId] !== undefined) skillCounts[sId]++;
+                                });
+                            }
+                        });
+                    });
+                    let exclusiveAlert = false;
+                    (exclusiveSkillMonitoredGroups || []).forEach(function(group) {
+                        if (!group || group.length < 2) return;
+                        presentAgents.forEach(function(agent) {
+                            const agentSkills = agent.skills || [];
+                            if (!group.every(function(sId) { return agentSkills.includes(sId); })) return;
+                            const otherHas = presentAgents.some(function(other) {
+                                if (other.id === agent.id) return false;
+                                const os = other.skills || [];
+                                return group.some(function(sId) { return os.includes(sId); });
+                            });
+                            if (!otherHas) exclusiveAlert = true;
+                        });
+                    });
+                    const th = settings.thresholds[shiftId] || { orange: 5, green: 7 };
+                    let status = 'RED';
+                    if (count >= th.green) status = 'GREEN';
+                    else if (count >= th.orange) status = 'ORANGE';
+                    if (exclusiveAlert) status = 'RED';
+                    skillDefinitions.forEach(function(s) {
+                        const sCount = skillCounts[s.id] || 0;
+                        const sMin = s.min !== undefined ? s.min : 1;
+                        if (sCount < sMin) status = 'RED';
+                    });
+                    if (status === 'RED') worst = 'RED';
+                    else if (status === 'ORANGE' && worst !== 'RED') worst = 'ORANGE';
+                });
+                dailyAlertColors[dateStr] = worst;
+            });
+        }
+
+        // Bandeau de surveillance : toujours un mois (dashboardStartDate)
         function updateDashboard() {
             const dashboard = document.getElementById('dashboard');
             dashboard.innerHTML = '';
-            const dates = getVisibleDates();
-            dailyAlertColors = {};
+            const dates = getDashboardDates();
+            updateDashboardMonthLabel();
 
             const shifts = [
                 { id: 'M', name: 'Matin' },
@@ -2339,25 +2566,14 @@ if (resetAckBtn) {
                     let exclusiveAlerts = [];
                     (exclusiveSkillMonitoredGroups || []).forEach(group => {
                         if (!group || group.length < 2) return;
-                        
                         presentAgents.forEach(agent => {
                             const agentSkills = agent.skills || [];
-                            const agentHasAllGroupSkills = group.every(sId => agentSkills.includes(sId));
-
-                            if (agentHasAllGroupSkills) {
-                                const otherAgents = presentAgents.filter(a => a.id !== agent.id);
-                                const otherHasAnyGroupSkill = otherAgents.some(otherAgent => {
-                                    const otherSkills = otherAgent.skills || [];
-                                    return group.some(sId => otherSkills.includes(sId));
-                                });
-
-                                if (!otherHasAnyGroupSkill) {
-                                    exclusiveAlerts.push({
-                                        agentName: agent.name,
-                                        group: group
-                                    });
-                                }
-                            }
+                            if (!group.every(sId => agentSkills.includes(sId))) return;
+                            const otherHas = presentAgents.some(other => {
+                                if (other.id === agent.id) return false;
+                                return group.some(sId => (other.skills || []).includes(sId));
+                            });
+                            if (!otherHas) exclusiveAlerts.push({ agentName: agent.name, group: group });
                         });
                     });
 
@@ -2365,18 +2581,7 @@ if (resetAckBtn) {
                     let statusClass = 'bg-red';
                     if (count >= th.green) statusClass = 'bg-green';
                     else if (count >= th.orange) statusClass = 'bg-orange';
-
-                    if (exclusiveAlerts.length > 0) {
-                        statusClass = 'bg-red';
-                    }
-
-                    if (statusClass === 'bg-red') {
-                        dailyAlertColors[dateStr] = 'RED';
-                    } else if (statusClass === 'bg-orange' && dailyAlertColors[dateStr] !== 'RED') {
-                        dailyAlertColors[dateStr] = 'ORANGE';
-                    } else if (!dailyAlertColors[dateStr]) {
-                        dailyAlertColors[dateStr] = 'GREEN';
-                    }
+                    if (exclusiveAlerts.length > 0) statusClass = 'bg-red';
 
                     const block = document.createElement('div');
                     block.className = 'kpi-block';
@@ -2388,21 +2593,15 @@ if (resetAckBtn) {
                         const sCount = skillCounts[s.id] || 0;
                         const sMin = s.min !== undefined ? s.min : 1;
                         let sClass = sCount >= sMin ? 'bg-green' : 'bg-red';
-                        
-                        if (sClass === 'bg-red') {
-                            dailyAlertColors[dateStr] = 'RED';
-                        }
-
+                        if (sClass === 'bg-red') statusClass = 'bg-red';
                         skillsHtml += `<div class="skill-item ${sClass}"><span>${s.id}</span><span>${sCount}/${sMin}</span></div>`;
                     });
                     skillsHtml += '</div>';
 
                     let exclusiveAlertsHtml = '';
-                    if (exclusiveAlerts.length > 0) {
-                        exclusiveAlerts.forEach(al => {
-                            exclusiveAlertsHtml += `<div class="exclusive-alert-tag" title="Seul l'agent ${al.agentName} possède le groupe de compétences (${al.group.join(', ')}) sur ce quart !">⚠️ ${al.group.join('+')}</div>`;
-                        });
-                    }
+                    exclusiveAlerts.forEach(al => {
+                        exclusiveAlertsHtml += `<div class="exclusive-alert-tag" title="Seul l'agent ${al.agentName} possède le groupe (${al.group.join(', ')})">⚠️ ${al.group.join('+')}</div>`;
+                    });
 
                     block.innerHTML = `
                         <div class="kpi-day">${dayName} ${dayNum}</div>
@@ -2453,7 +2652,8 @@ if (resetAckBtn) {
         dates.forEach(d => {
             const dateStr = formatDate(d);
             if (!teamSchedules[team.id]) teamSchedules[team.id] = {};
-            const td = document.createElement('td'); 
+            const td = document.createElement('td');
+            td.setAttribute('data-date', dateStr);
             
             const currentVal = teamSchedules[team.id][dateStr] || 'R'; 
             const taskDef = TASKS[currentVal] || TASKS['R'];
@@ -2524,6 +2724,7 @@ if (resetAckBtn) {
                 const desc = taskDescriptions[descKey] || '';
 
                 const td = document.createElement('td');
+                td.setAttribute('data-date', dateStr);
                 const cellDiv = document.createElement('div');
                 const isRplAgentCell = hasIndividual && taskDef.isReplacement;
                 cellDiv.className = `task-cell ${(isReadOnly && !isRplAgentCell) ? 'task-cell-disabled' : ''} ${desc && hasIndividual ? 'has-desc-indicator' : ''} ${!hasIndividual ? 'task-cell-inherited' : ''}`;
