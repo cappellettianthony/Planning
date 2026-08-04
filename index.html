@@ -217,32 +217,33 @@
             z-index: 13;
         }
         #planningTable.year-view th:not(.sticky-col-1):not(.sticky-col-2) {
-            min-width: 42px;
-            max-width: 48px;
-            font-size: 0.68rem;
-            padding: 4px 2px;
-            line-height: 1.2;
+            min-width: 48px;
+            max-width: 56px;
+            font-size: 0.7rem;
+            padding: 5px 2px;
+            line-height: 1.25;
         }
         #planningTable.year-view td:not(.sticky-col-1):not(.sticky-col-2) {
-            min-width: 42px;
-            max-width: 48px;
+            min-width: 48px;
+            max-width: 56px;
             padding: 2px 1px;
-            font-size: 0.72rem;
+            font-size: 0.75rem;
         }
         #planningTable.year-view th .th-dayname {
-            font-size: 0.65rem;
-            font-weight: 600;
+            font-size: 0.72rem;
+            font-weight: 700;
             opacity: 1;
-            text-transform: capitalize;
+            text-transform: lowercase;
+            letter-spacing: 0.02em;
         }
         #planningTable.year-view th .th-date {
-            font-size: 0.85rem;
+            font-size: 0.88rem;
             font-weight: 800;
             margin-top: 2px;
         }
         #planningTable.year-view .task-cell {
             padding: 3px 2px;
-            font-size: 0.7rem;
+            font-size: 0.72rem;
         }
         #planningTable.year-view .header-date-badge {
             font-size: 0.55rem;
@@ -2366,9 +2367,10 @@ if (resetAckBtn) {
 
                 th.setAttribute('data-date', dateStr);
                 if (isYear) {
-                    // Toujours afficher mois + jour pour une lecture claire sur l'année
-                    const monthShort = d.toLocaleDateString('fr-FR', { month: 'short' }).replace(/\.$/, '');
-                    th.innerHTML = `<span class="th-dayname">${monthShort}</span><span class="th-date">${dayNum}</span>${badgeHtml}`;
+                    // Jour de la semaine (lun, mar, mer...) + date jj/mm
+                    const weekdayShort = d.toLocaleDateString('fr-FR', { weekday: 'short' })
+                        .replace(/\.$/, '').toLowerCase();
+                    th.innerHTML = `<span class="th-dayname">${weekdayShort}</span><span class="th-date">${displayDateShort}</span>${badgeHtml}`;
                 } else {
                     th.innerHTML = `<span class="th-dayname">${dayName}</span><span class="th-date">${displayDateShort}</span>${badgeHtml}`;
                 }
