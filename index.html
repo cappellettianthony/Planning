@@ -217,15 +217,38 @@
             z-index: 13;
         }
         #planningTable.year-view th:not(.sticky-col-1):not(.sticky-col-2) {
-            min-width: 26px; max-width: 30px; font-size: 0.58rem; padding: 2px 1px;
+            min-width: 42px;
+            max-width: 48px;
+            font-size: 0.68rem;
+            padding: 4px 2px;
+            line-height: 1.2;
         }
         #planningTable.year-view td:not(.sticky-col-1):not(.sticky-col-2) {
-            min-width: 26px; max-width: 30px; padding: 1px; font-size: 0.65rem;
+            min-width: 42px;
+            max-width: 48px;
+            padding: 2px 1px;
+            font-size: 0.72rem;
         }
-        #planningTable.year-view th .th-dayname { font-size: 0.55rem; }
-        #planningTable.year-view th .th-date { font-size: 0.7rem; font-weight: 700; }
-        #planningTable.year-view .task-cell { padding: 2px 1px; font-size: 0.6rem; }
-        #planningTable.year-view .header-date-badge { font-size: 0.5rem; padding: 1px 2px; }
+        #planningTable.year-view th .th-dayname {
+            font-size: 0.65rem;
+            font-weight: 600;
+            opacity: 1;
+            text-transform: capitalize;
+        }
+        #planningTable.year-view th .th-date {
+            font-size: 0.85rem;
+            font-weight: 800;
+            margin-top: 2px;
+        }
+        #planningTable.year-view .task-cell {
+            padding: 3px 2px;
+            font-size: 0.7rem;
+        }
+        #planningTable.year-view .header-date-badge {
+            font-size: 0.55rem;
+            padding: 1px 3px;
+            margin-top: 2px;
+        }
         .sticky-col-1 {
             position: sticky !important; left: 0 !important;
             background-color: #ffffff !important; z-index: 6 !important;
@@ -2343,12 +2366,9 @@ if (resetAckBtn) {
 
                 th.setAttribute('data-date', dateStr);
                 if (isYear) {
-                    const monthShort = d.toLocaleDateString('fr-FR', { month: 'short' });
-                    if (d.getDate() === 1) {
-                        th.innerHTML = `<span class="th-dayname">${monthShort}</span><span class="th-date">${dayNum}</span>${badgeHtml}`;
-                    } else {
-                        th.innerHTML = `<span class="th-dayname">${dayName.charAt(0)}</span><span class="th-date">${dayNum}</span>${badgeHtml}`;
-                    }
+                    // Toujours afficher mois + jour pour une lecture claire sur l'année
+                    const monthShort = d.toLocaleDateString('fr-FR', { month: 'short' }).replace(/\.$/, '');
+                    th.innerHTML = `<span class="th-dayname">${monthShort}</span><span class="th-date">${dayNum}</span>${badgeHtml}`;
                 } else {
                     th.innerHTML = `<span class="th-dayname">${dayName}</span><span class="th-date">${displayDateShort}</span>${badgeHtml}`;
                 }
