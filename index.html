@@ -157,10 +157,64 @@
         }
         #planningTable th {
             white-space: normal;
-            min-width: 52px;
-            font-size: 0.7rem;
-            line-height: 1.2;
+            min-width: 56px;
+            font-size: 0.78rem;
+            line-height: 1.25;
             vertical-align: bottom;
+        }
+        #planningTable th .th-dayname {
+            font-size: 0.72rem;
+            opacity: 0.95;
+            display: block;
+        }
+        #planningTable th .th-date {
+            font-size: 0.95rem;
+            font-weight: 800;
+            letter-spacing: 0.02em;
+            display: block;
+            margin-top: 1px;
+        }
+        /* Jour actuel — encadrement bien visible en permanence */
+        #planningTable th.today-col {
+            outline: 3px solid #f1c40f !important;
+            outline-offset: -3px;
+            box-shadow: inset 0 0 0 2px rgba(241, 196, 15, 0.85), 0 0 8px rgba(241, 196, 15, 0.45);
+            background: linear-gradient(180deg, #1a252f 0%, #2c3e50 100%) !important;
+            z-index: 12;
+        }
+        /* Animation scintillement (en-tête jour actuel) */
+        @keyframes scintillate-today {
+            0%, 100% {
+                outline-color: #f1c40f;
+                outline-width: 3px;
+                box-shadow: inset 0 0 0 2px rgba(241, 196, 15, 0.85), 0 0 6px rgba(241, 196, 15, 0.4);
+            }
+            50% {
+                outline-color: #ffe066;
+                outline-width: 5px;
+                box-shadow: inset 0 0 0 3px #f1c40f, 0 0 18px 4px rgba(241, 196, 15, 0.95);
+            }
+        }
+        #planningTable th.today-col.scintillate {
+            animation: scintillate-today 0.7s ease-in-out infinite;
+        }
+        /* Animation scintillement cellule RPL */
+        @keyframes scintillate-rpl {
+            0%, 100% {
+                box-shadow: 0 0 0 2px #e74c3c;
+                transform: scale(1);
+                filter: brightness(1);
+            }
+            50% {
+                box-shadow: 0 0 14px 5px rgba(231, 76, 60, 0.9);
+                transform: scale(1.1);
+                filter: brightness(1.15);
+            }
+        }
+        .task-cell.scintillate-rpl {
+            animation: scintillate-rpl 0.65s ease-in-out infinite;
+            z-index: 8 !important;
+            position: relative;
         }
         /* Cellule agent sans tâche individuelle = roulement hérité (non affiché) */
         .task-cell-inherited {
@@ -1797,6 +1851,7 @@ if (resetAckBtn) {
         // sert à revenir instantanément au mois du jour.
         function goToToday() { 
             const now = new Date();
+            const todayStr = formatDate(now);
             startDate = new Date(now.getFullYear(), now.getMonth(), 1); 
             currentYear = startDate.getFullYear(); 
             ensureYearExists(currentYear); 
@@ -1804,7 +1859,37 @@ if (resetAckBtn) {
             syncDatePicker(); 
             renderAll(false);
             // Amène le planning sur la colonne du jour
-            scrollToDateInPlanning(formatDate(now));
+            scrollToDateInPlanning(todayStr);
+            // Scintillement de l'encadrement du jour actuel pendant 10 secondes
+            setTimeout(function() {
+                highlightTodayColumn(10000);
+            }, 80);
+        }
+
+        /** Active l'animation de scintillement sur l'en-tête du jour actuel pendant durationMs ms */
+        function highlightTodayColumn(durationMs) {
+            const todayStr = formatDate(new Date());
+            const th = document.querySelector('th[data-date="' + todayStr + '"]');
+            if (!th) return;
+            th.classList.add('today-col', 'scintillate');
+            setTimeout(function() {
+                th.classList.remove('scintillate');
+            }, durationMs || 10000);
+        }
+
+        /** Scintillement d'une cellule RPL (équipe ou agent) pendant durationMs ms */
+        function highlightRplCell(targetId, dateStr, durationMs) {
+            if (!targetId || !dateStr) return;
+            const cells = document.querySelectorAll(
+                '.task-cell[data-target-id="' + targetId + '"][data-date="' + dateStr + '"]'
+            );
+            if (!cells.length) return;
+            cells.forEach(function(cell) {
+                cell.classList.add('scintillate-rpl');
+                setTimeout(function() {
+                    cell.classList.remove('scintillate-rpl');
+                }, durationMs || 10000);
+            });
         }
 
         // sert à aller au mois de la date choisie.
@@ -1985,7 +2070,7 @@ if (resetAckBtn) {
                     }
                 };
 
-                // Clic simple = navigation date ; double-clic = ouvrir fiche RPL
+                // Clic simple = navigation date + scintillement cellule RPL ; double-clic = ouvrir fiche RPL
                 div.onclick = function() {
                     if (sideLongPress) {
                         sideLongPress = false;
@@ -2001,6 +2086,10 @@ if (resetAckBtn) {
                             jumpToDate(item.dateStr);
                             const dp = document.getElementById('datePicker');
                             if (dp) dp.value = item.dateStr;
+                            // Scintillement de la cellule de remplacement sur le planning pendant 10 s
+                            setTimeout(function() {
+                                highlightRplCell(item.targetId, item.dateStr, 10000);
+                            }, 120);
                         }, 250);
                     }
                 };
@@ -2077,7 +2166,10 @@ if (resetAckBtn) {
             getVisibleDates().forEach(d => {
                 const th = document.createElement('th');
                 const dayName = d.toLocaleDateString('fr-FR', { weekday: 'short' });
-                const displayDate = formatDateDisplay(d); // jj/mm/aaaa
+                const dayNum = String(d.getDate()).padStart(2, '0');
+                const monthNum = String(d.getMonth() + 1).padStart(2, '0');
+                const displayDateShort = dayNum + '/' + monthNum; // jj/mm
+                const displayDateFull = formatDateDisplay(d); // jj/mm/aaaa (tooltip)
                 const dateStr = formatDate(d); // clé interne
 
                 let badgeHtml = '';
@@ -2096,14 +2188,12 @@ if (resetAckBtn) {
                 }
 
                 th.setAttribute('data-date', dateStr);
-                th.innerHTML = `${dayName}<br>${displayDate}${badgeHtml}`;
-                th.title = displayDate;
-                // Mise en évidence du jour actuel
+                th.innerHTML = `<span class="th-dayname">${dayName}</span><span class="th-date">${displayDateShort}</span>${badgeHtml}`;
+                th.title = displayDateFull;
+                // Mise en évidence du jour actuel (encadrement renforcé)
                 const todayStr = formatDate(new Date());
                 if (dateStr === todayStr) {
-                    th.style.outline = '2px solid #f1c40f';
-                    th.style.outlineOffset = '-2px';
-                    th.style.backgroundColor = '#2c3e50';
+                    th.classList.add('today-col');
                 }
                 headerTr.appendChild(th);
             });
@@ -2374,6 +2464,9 @@ if (resetAckBtn) {
             const isRplTeamCell = taskDef.isReplacement;
             // Lecture seule : cellules RPL cliquables (double-clic / appui long), le reste désactivé
             cellDiv.className = `task-cell ${(isReadOnly && !isRplTeamCell) ? 'task-cell-disabled' : ''} ${desc ? 'has-desc-indicator' : ''}`;
+            cellDiv.setAttribute('data-target-id', team.id);
+            cellDiv.setAttribute('data-date', dateStr);
+            cellDiv.setAttribute('data-is-team', '1');
             cellDiv.style.backgroundColor = taskDef.color;
             cellDiv.style.color = taskDef.text;
             cellDiv.innerText = currentVal;
@@ -2434,6 +2527,9 @@ if (resetAckBtn) {
                 const cellDiv = document.createElement('div');
                 const isRplAgentCell = hasIndividual && taskDef.isReplacement;
                 cellDiv.className = `task-cell ${(isReadOnly && !isRplAgentCell) ? 'task-cell-disabled' : ''} ${desc && hasIndividual ? 'has-desc-indicator' : ''} ${!hasIndividual ? 'task-cell-inherited' : ''}`;
+                cellDiv.setAttribute('data-target-id', agent.id);
+                cellDiv.setAttribute('data-date', dateStr);
+                cellDiv.setAttribute('data-is-team', '0');
 
                 if (hasIndividual) {
                     cellDiv.style.backgroundColor = taskDef.color;
@@ -2470,17 +2566,17 @@ if (resetAckBtn) {
 function bindCellEvents(cellDiv, isTeam, targetId, targetName, dateStr, currentTaskCode, currentDesc) {
     const isRplTask = TASKS[currentTaskCode] && TASKS[currentTaskCode].isReplacement;
 
-    // --- GESTION DU MAINTIEN DE 3 SECONDES (MOBILE / TOUCH) ---
+    // --- GESTION DU MAINTIEN DE 2 SECONDES (MOBILE / TOUCH) ---
     cellDiv.ontouchstart = (e) => {
         touchPreventClick = false;
         
-        // Déclenche le chrono de 3 secondes si la tâche est configurée comme remplacement
+        // Déclenche le chrono de 2 secondes si la tâche est configurée comme remplacement
         if (isRplTask) {
             touchTimer = setTimeout(() => {
                 touchPreventClick = true; 
                 if (navigator.vibrate) navigator.vibrate(50);
                 openReplacementModal(isTeam, targetId, targetName, dateStr);
-            }, 2000); // 2000 ms = 3 secondes
+            }, 2000); // 2000 ms = 2 secondes
         }
     };
 
