@@ -1548,7 +1548,7 @@ function loadAppState(data) {
                 }
                 defaultTeams.push(team);
             }
-            let dayTeam = { id: `team_7`, name: `Équipe 7 (Journée Modulable)`, isDayTeam: true, agents: [] };
+            let dayTeam = { id: `team_7`, name: `Journée`, isDayTeam: true, agents: [] };
             for (let a = 1; a <= 7; a++) {
                 dayTeam.agents.push({ id: `e7_a${a}`, name: `Agent Journée ${a}`, skills: ['C1', 'C4'] });
             }
