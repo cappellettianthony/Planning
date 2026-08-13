@@ -174,6 +174,15 @@
             display: block;
             margin-top: 1px;
         }
+        /* Séparateur visuel samedi → dimanche */
+        #planningTable th.sunday-col,
+        #planningTable td.sunday-col {
+            border-left: 4px solid #e74c3c !important;
+        }
+        #planningTable th.sunday-col {
+            box-shadow: inset 4px 0 0 0 #e74c3c;
+        }
+
         #planningTable th.today-col {
             outline: 3px solid #f1c40f !important;
             outline-offset: -3px;
@@ -2366,6 +2375,7 @@ if (resetAckBtn) {
                 }
 
                 th.setAttribute('data-date', dateStr);
+                if (d.getDay() === 0) th.classList.add('sunday-col');
                 if (isYear) {
                     // Jour de la semaine (lun, mar, mer...) + date jj/mm
                     const weekdayShort = d.toLocaleDateString('fr-FR', { weekday: 'short' })
@@ -2625,6 +2635,11 @@ if (resetAckBtn) {
                         exclusiveAlertsHtml += `<div class="exclusive-alert-tag" title="Seul l'agent ${al.agentName} possède le groupe (${al.group.join(', ')})">⚠️ ${al.group.join('+')}</div>`;
                     });
 
+                    // N'afficher que les jours en défaut (orange / rouge), pas les verts
+                    if (statusClass === 'bg-green') {
+                        return; // skip this day block
+                    }
+
                     block.innerHTML = `
                         <div class="kpi-day">${dayName} ${dayNum}</div>
                         <div class="kpi-val ${statusClass}">${count}</div>
@@ -2633,6 +2648,13 @@ if (resetAckBtn) {
                     `;
                     grid.appendChild(block);
                 });
+                // Si aucun défaut sur ce quart, message court
+                if (grid.children.length === 0) {
+                    const empty = document.createElement('div');
+                    empty.style.cssText = 'font-size:0.8rem;color:#27ae60;padding:8px;font-style:italic;';
+                    empty.textContent = 'Aucun défaut sur ce quart pour le mois affiché.';
+                    grid.appendChild(empty);
+                }
                 card.appendChild(grid);
                 dashboard.appendChild(card);
             });
@@ -2676,6 +2698,7 @@ if (resetAckBtn) {
             if (!teamSchedules[team.id]) teamSchedules[team.id] = {};
             const td = document.createElement('td');
             td.setAttribute('data-date', dateStr);
+            if (d.getDay() === 0) td.classList.add('sunday-col');
             
             const currentVal = teamSchedules[team.id][dateStr] || 'R'; 
             const taskDef = TASKS[currentVal] || TASKS['R'];
@@ -2747,6 +2770,7 @@ if (resetAckBtn) {
 
                 const td = document.createElement('td');
                 td.setAttribute('data-date', dateStr);
+                if (d.getDay() === 0) td.classList.add('sunday-col');
                 const cellDiv = document.createElement('div');
                 const isRplAgentCell = hasIndividual && taskDef.isReplacement;
                 cellDiv.className = `task-cell ${(isReadOnly && !isRplAgentCell) ? 'task-cell-disabled' : ''} ${desc && hasIndividual ? 'has-desc-indicator' : ''} ${!hasIndividual ? 'task-cell-inherited' : ''}`;
