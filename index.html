@@ -367,6 +367,22 @@
             background: #fff;
             transition: box-shadow 0.15s, transform 0.1s;
             border-left: 4px solid #e74c3c;
+            position: relative;
+        }
+        .rpl-side-item .rpl-re-badge {
+            position: absolute;
+            top: 6px;
+            right: 6px;
+            background: #8e44ad;
+            color: #fff;
+            font-size: 0.65rem;
+            font-weight: 800;
+            letter-spacing: 0.04em;
+            padding: 2px 6px;
+            border-radius: 4px;
+            line-height: 1.2;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+            z-index: 1;
         }
         .rpl-side-item:hover {
             box-shadow: 0 2px 8px rgba(0,0,0,0.12);
@@ -2241,7 +2257,8 @@ if (resetAckBtn) {
                         code: code,
                         comment: (taskDescriptions && taskDescriptions[descKey]) ? taskDescriptions[descKey] : '',
                         color: def.color || '#e74c3c',
-                        textColor: def.text || '#ffffff'
+                        textColor: def.text || '#ffffff',
+                        isRETarget: (typeof agentHasRECompetence === 'function') ? agentHasRECompetence(agentId) : false
                     });
                 });
             });
@@ -2288,7 +2305,11 @@ if (resetAckBtn) {
                 div.title = 'Clic : aller à la date — Double-clic / Appui long 2 s : ouvrir la fiche';
                 div.style.touchAction = 'manipulation';
 
-                let html = '<div class="rpl-date">' + formatDateStrDisplay(item.dateStr) + '</div>';
+                let html = '';
+                if (item.isRETarget) {
+                    html += '<span class="rpl-re-badge" title="Remplacement d\'un agent RE">RE</span>';
+                }
+                html += '<div class="rpl-date">' + formatDateStrDisplay(item.dateStr) + '</div>';
                 html += '<div class="rpl-target">' + (item.isTeam ? '👥 ' : '👤 ') + item.targetName + '</div>';
                 html += '<span class="rpl-code" style="background:' + item.color + ';color:' + item.textColor + ';">' + item.code + '</span>';
                 if (iHaveSeen) {
@@ -3078,6 +3099,26 @@ function buildRplAvailabilityComment(isTeam, targetId, dateStr) {
     return 'Quart à combler : ' + shiftLabel + ' | Équipes dispo : ' + availableTeams.join(', ');
 }
 
+/**
+ * Indique si un agent possède la compétence / le rôle RE
+ * (rôle isRE paramétré OU compétence "RE" dans agent.skills).
+ */
+function agentHasRECompetence(agentId) {
+    if (!agentId) return false;
+    if (agentRoles && agentRoles[agentId] && agentRoles[agentId].isRE) {
+        return true;
+    }
+    let found = null;
+    (teams || []).forEach(function(t) {
+        const a = (t.agents || []).find(function(ag) { return ag.id === agentId; });
+        if (a) found = a;
+    });
+    if (!found || !Array.isArray(found.skills)) return false;
+    return found.skills.some(function(s) {
+        return String(s).trim().toUpperCase() === 'RE';
+    });
+}
+
 /** Retourne les infos d’un agent un jour donné */
 function getAgentInfoOnDate(agentId, dateStr) {
     let found = null;
@@ -3335,6 +3376,11 @@ function populateRplAgentSelect(showAll) {
     const sheet = ensureReplacementSheet(sheetKey);
     const seenByAgents = sheet.seenByAgents || {};
 
+    // Fiche RE : uniquement les agents ayant la compétence / le rôle RE
+    const requireRE = !activeRplContext.isTeam &&
+        (typeof agentHasRECompetence === 'function') &&
+        agentHasRECompetence(activeRplContext.targetId);
+
     const allAgents = [];
     teams.forEach(function(t) {
         t.agents.forEach(function(a) {
@@ -3352,6 +3398,8 @@ function populateRplAgentSelect(showAll) {
     });
 
     allAgents.forEach(function(a) {
+        if (requireRE && !agentHasRECompetence(a.id)) return;
+
         let eligible = true;
         if (shiftToFill && typeof canAgentTakeReplacement === 'function') {
             eligible = canAgentTakeReplacement(a.id, dateStr, shiftToFill);
@@ -3367,6 +3415,9 @@ function populateRplAgentSelect(showAll) {
         opt.value = a.id;
 
         let text = a.name + ' (' + a.teamName + ') [' + statusLabel + ']';
+        if (requireRE) {
+            text += ' [RE]';
+        }
         // Indication "Vu" visible par tous si cet agent a ouvert la fiche
         if (seenByAgents[a.id]) {
             text += ' 👁 Vu';
@@ -3387,13 +3438,21 @@ function toggleRplShowAllAgents() {
 
     const btn = document.getElementById('rplShowAllBtn');
     const hint = document.getElementById('rplFilterHint');
+    const requireRE = activeRplContext && !activeRplContext.isTeam &&
+        (typeof agentHasRECompetence === 'function') &&
+        agentHasRECompetence(activeRplContext.targetId);
+    const reSuffix = requireRE ? ' (uniquement agents RE)' : '';
 
     if (rplShowAllAgents) {
         if (btn) btn.textContent = 'Voir agents éligibles';
-        if (hint) hint.textContent = 'Liste complète affichée (les agents non éligibles sont marqués).';
+        if (hint) hint.textContent = 'Liste complète affichée (les agents non éligibles sont marqués).' + reSuffix;
     } else {
         if (btn) btn.textContent = 'Voir tous les agents';
-        if (hint) hint.textContent = 'Liste filtrée : agents en Repos (R) ou en Journée (J) respectant les temps de repos.';
+        if (hint) {
+            hint.textContent = requireRE
+                ? 'Liste filtrée : agents RE en Repos (R) ou en Journée (J) respectant les temps de repos.'
+                : 'Liste filtrée : agents en Repos (R) ou en Journée (J) respectant les temps de repos.';
+        }
     }
 
     populateRplAgentSelect(rplShowAllAgents);
@@ -3433,12 +3492,14 @@ function openReplacementModal(isTeam, targetId, targetName, dateStr) {
     }
 
     // 3. Stocker le contexte
+    const isRETarget = !isTeam && (typeof agentHasRECompetence === 'function') && agentHasRECompetence(targetId);
     activeRplContext = {
         isTeam: isTeam,
         targetId: targetId,
         targetName: targetName,
         dateStr: dateStr,
-        shiftToFill: shiftToFill
+        shiftToFill: shiftToFill,
+        isRETarget: isRETarget
     };
     rplShowAllAgents = false;
 
@@ -3462,17 +3523,24 @@ function openReplacementModal(isTeam, targetId, targetName, dateStr) {
     const infoEl = document.getElementById('rplTargetInfo');
     if (infoEl) {
         infoEl.innerHTML =
-            'Fiche RPL pour : <strong>' + targetName + '</strong> le <strong>' + formatDateStrDisplay(dateStr) + '</strong><br>' +
+            'Fiche RPL pour : <strong>' + targetName + '</strong> le <strong>' + formatDateStrDisplay(dateStr) + '</strong>' +
+            (isRETarget ? ' <span style="background:#8e44ad;color:#fff;font-size:0.7rem;font-weight:800;padding:2px 6px;border-radius:4px;margin-left:4px;">RE</span>' : '') +
+            '<br>' +
             '<span style="color:#c0392b;">Quart d\'absence à combler : <strong>' + shiftLabel + '</strong></span><br>' +
             '<span style="color:#7f8c8d; font-size:0.8rem;">Fiche créée le : <strong>' + createdAtLabel + '</strong></span><br>' +
-            '<span style="color:#d68910; font-size:0.85rem; font-weight:bold;">⏱ Date limite de traitement : <strong>' + deadlineLabel + '</strong></span>';
+            '<span style="color:#d68910; font-size:0.85rem; font-weight:bold;">⏱ Date limite de traitement : <strong>' + deadlineLabel + '</strong></span>' +
+            (isRETarget ? '<br><span style="color:#8e44ad; font-size:0.8rem;">Remplacement RE : seuls les agents RE peuvent se porter volontaires.</span>' : '');
     }
 
     // 6. Réinitialiser le bouton "Voir tous / éligibles"
     const btn = document.getElementById('rplShowAllBtn');
     const hint = document.getElementById('rplFilterHint');
     if (btn) btn.textContent = 'Voir tous les agents';
-    if (hint) hint.textContent = 'Liste filtrée : agents en Repos (R) ou en Journée (J) respectant les temps de repos.';
+    if (hint) {
+        hint.textContent = isRETarget
+            ? 'Liste filtrée : agents RE en Repos (R) ou en Journée (J) respectant les temps de repos.'
+            : 'Liste filtrée : agents en Repos (R) ou en Journée (J) respectant les temps de repos.';
+    }
 
     // 7. Remplir la liste déroulante (avec indication 👁 Vu si agent a ouvert la fiche)
     if (typeof populateRplAgentSelect === 'function') {
@@ -3545,6 +3613,15 @@ function addVolunteerToSheet() {
     const agentId = select.value;
     if (!agentId) {
         alert('Veuillez sélectionner un agent.');
+        return;
+    }
+
+    // Remplacement d'un agent RE : seuls les agents RE peuvent être volontaires
+    if (!activeRplContext.isTeam &&
+        typeof agentHasRECompetence === 'function' &&
+        agentHasRECompetence(activeRplContext.targetId) &&
+        !agentHasRECompetence(agentId)) {
+        alert('Cette fiche concerne un agent RE : seuls les agents disposant de la compétence / du rôle RE peuvent se porter volontaires.');
         return;
     }
 
