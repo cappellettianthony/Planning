@@ -309,11 +309,14 @@
         /* Panneau latéral des tâches de remplacement */
         .planning-layout {
             display: flex;
+            flex-direction: row;
             gap: 12px;
             align-items: stretch;
             margin-bottom: 15px;
         }
         .rpl-side-panel {
+            order: 0;
+            flex: 0 0 280px;
             width: 280px;
             min-width: 240px;
             max-width: 320px;
@@ -324,6 +327,15 @@
             flex-direction: column;
             max-height: calc(100vh - 255px);
             overflow: hidden;
+            position: sticky;
+            top: 12px;
+            align-self: flex-start;
+            z-index: 5;
+        }
+        .planning-layout .table-container {
+            order: 1;
+            flex: 1 1 auto;
+            min-width: 0;
         }
         .rpl-side-panel-header {
             padding: 10px 12px;
@@ -428,8 +440,20 @@
             text-align: center;
         }
         @media (max-width: 900px) {
-            .planning-layout { flex-direction: column; }
-            .rpl-side-panel { width: 100%; max-width: none; max-height: 220px; }
+            .planning-layout {
+                flex-direction: row;
+                align-items: stretch;
+            }
+            .rpl-side-panel {
+                flex: 0 0 200px;
+                width: 200px;
+                min-width: 180px;
+                max-width: 220px;
+                max-height: calc(100vh - 255px);
+                position: sticky;
+                top: 12px;
+                align-self: flex-start;
+            }
         }
         th, td { border-right: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color); padding: 4px; text-align: center; white-space: nowrap; }
         th { background-color: var(--primary); color: white; position: sticky; top: 0; z-index: 10; }
