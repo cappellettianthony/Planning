@@ -401,6 +401,25 @@
             border-left-color: #2ecc71;
             background: #f8fffc;
         }
+        .rpl-side-item.rpl-deadline-soon {
+            border-left-color: #f39c12 !important;
+            background: #fff8e1 !important;
+        }
+        .rpl-side-item.rpl-deadline-overdue {
+            border-left-color: #e74c3c !important;
+            background: #fdecea !important;
+        }
+        .rpl-side-item .rpl-deadline-badge {
+            display: inline-block;
+            margin-top: 4px;
+            font-size: 0.68rem;
+            font-weight: bold;
+            color: #9a7b0a;
+            background: #fef9e7;
+            border: 1px solid #f39c12;
+            padding: 1px 6px;
+            border-radius: 10px;
+        }
         .rpl-side-empty {
             font-size: 0.8rem;
             color: #999;
@@ -774,6 +793,23 @@
         </div>
     </div>
 
+    <!-- Modale Deadline de traitement RPL -->
+    <div class="modal" id="rplDeadlineModal">
+        <div class="modal-content" style="width: 420px;">
+            <h2>Date limite de traitement de la fiche RPL</h2>
+            <p style="font-size: 0.85rem; margin-bottom: 12px; color: var(--primary);" id="rplDeadlineModalInfo"></p>
+            <div class="form-group">
+                <label for="rplDeadlineDateInput">Date limite de traitement :</label>
+                <input type="date" id="rplDeadlineDateInput">
+            </div>
+            <p style="font-size: 0.75rem; color: #666;">Par défaut : nombre de jours paramétré avant la date du remplacement. Le panneau latéral passera en jaune la veille de cette date.</p>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="cancelRplDeadlineModal()">Annuler</button>
+                <button class="btn btn-success" onclick="confirmRplDeadlineAndSave()">Valider</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Login Modal -->
     <div class="modal" id="authModal" style="display: flex;">
         <div class="modal-content">
@@ -1046,6 +1082,16 @@
             <div class="form-group"><label>Après-midi (Or / Vert)</label><div style="display:flex; gap:10px;"><input type="number" id="th_A_orange" value="5"><input type="number" id="th_A_green" value="7"></div></div>
             <div class="form-group"><label>Nuit (Or / Vert)</label><div style="display:flex; gap:10px;"><input type="number" id="th_N_orange" value="3"><input type="number" id="th_N_green" value="5"></div></div>
 
+            <h3>3.1 Deadline de traitement des fiches RPL</h3>
+            <p style="font-size: 0.75rem; color: #666; margin-bottom: 8px;">
+                Nombre de jours avant la date du remplacement proposés par défaut comme date limite de traitement de la fiche.
+                Le panneau latéral passe en jaune la veille de cette date limite.
+            </p>
+            <div class="form-group">
+                <label for="rplDeadlineDefaultDays">Jours avant la date RPL (défaut) :</label>
+                <input type="number" id="rplDeadlineDefaultDays" min="1" max="90" value="15" style="width:100px;">
+            </div>
+
             <h3>4. Liaison Agents ↔ E-mail & Rôles</h3>
             <p style="font-size: 0.75rem; color: #666; margin-bottom: 8px;">
                 Associez chaque agent à l'adresse e-mail de connexion et définissez les rôles (Admin / RE).
@@ -1220,7 +1266,7 @@
         // Ordre explicite des tâches (Firebase ne préserve pas l'ordre des clés d'objet)
         let taskOrder = Object.keys(TASKS);
 
-        let settings = { thresholds: { M: { orange: 5, green: 7 }, A: { orange: 5, green: 7 }, N: { orange: 3, green: 5 } } };
+        let settings = { thresholds: { M: { orange: 5, green: 7 }, A: { orange: 5, green: 7 }, N: { orange: 3, green: 5 } }, rplDeadlineDefaultDays: 15 };
 
         // Liaison agentId → adresse e-mail (paramétrage admin)
         let agentEmailLinks = {};
@@ -1300,7 +1346,7 @@ function ensureReplacementSheet(sheetKey) {
         replacementSheets = {};
     }
     if (!sheetKey) {
-        return { volunteers: [], selectedVolunteers: [], createdAt: '', createdBy: '', seenByEmails: [], seenByAgents: {} };
+        return { volunteers: [], selectedVolunteers: [], createdAt: '', createdBy: '', seenByEmails: [], seenByAgents: {}, deadlineDate: '' };
     }
     if (!replacementSheets[sheetKey] || typeof replacementSheets[sheetKey] !== 'object') {
         replacementSheets[sheetKey] = {
@@ -1309,7 +1355,8 @@ function ensureReplacementSheet(sheetKey) {
             createdAt: (typeof formatDate === 'function') ? formatDate(new Date()) : '',
             createdBy: currentUser ? currentUser.email : 'inconnu',
             seenByEmails: [],
-            seenByAgents: {}
+            seenByAgents: {},
+            deadlineDate: ''
         };
     }
     const sheet = replacementSheets[sheetKey];
@@ -1317,6 +1364,9 @@ function ensureReplacementSheet(sheetKey) {
     sheet.selectedVolunteers = toArraySafe(sheet.selectedVolunteers);
     if (!sheet.createdAt) {
         sheet.createdAt = (typeof formatDate === 'function') ? formatDate(new Date()) : '';
+    }
+    if (sheet.deadlineDate === undefined || sheet.deadlineDate === null) {
+        sheet.deadlineDate = '';
     }
     // Toujours des tableaux / objets propres (persistance Firebase)
     sheet.seenByEmails = normalizeSeenByEmails(sheet.seenByEmails);
@@ -1527,6 +1577,9 @@ function loadAppState(data) {
         taskOrder = Object.keys(TASKS);
     }
     settings = data.settings || settings;
+    if (settings && (settings.rplDeadlineDefaultDays === undefined || settings.rplDeadlineDefaultDays === null)) {
+        settings.rplDeadlineDefaultDays = 15;
+    }
     agentEmailLinks = data.agentEmailLinks || agentEmailLinks || {};
     agentRoles = data.agentRoles || agentRoles || {};
 
@@ -1776,6 +1829,9 @@ if (resetAckBtn) {
         taskOrder = Object.keys(TASKS);
     }
     settings = data.settings || settings;
+    if (settings && (settings.rplDeadlineDefaultDays === undefined || settings.rplDeadlineDefaultDays === null)) {
+        settings.rplDeadlineDefaultDays = 15;
+    }
     agentEmailLinks = data.agentEmailLinks || agentEmailLinks || {};
     agentRoles = data.agentRoles || agentRoles || {};
 
@@ -2181,14 +2237,30 @@ if (resetAckBtn) {
                 return;
             }
 
+            const todayStr = formatDate(new Date());
+
             items.forEach(function(item) {
                 const div = document.createElement('div');
                 const sheetKey = item.targetId + '_' + item.dateStr;
                 const sheet = (replacementSheets && replacementSheets[sheetKey]) ? ensureReplacementSheet(sheetKey) : null;
                 const seenEmails = sheet ? normalizeSeenByEmails(sheet.seenByEmails) : [];
                 const iHaveSeen = !!(currentUser && currentUser.email && seenEmails.indexOf(currentUser.email) !== -1);
+                const deadlineDate = sheet && sheet.deadlineDate ? sheet.deadlineDate : '';
 
-                div.className = 'rpl-side-item' + (iHaveSeen ? ' rpl-seen' : '');
+                // Fond jaune dès la veille de la date limite ; rouge si dépassée
+                let deadlineClass = '';
+                if (deadlineDate) {
+                    const warnDate = parseDate(deadlineDate);
+                    warnDate.setDate(warnDate.getDate() - 1);
+                    const warnStr = formatDate(warnDate);
+                    if (todayStr > deadlineDate) {
+                        deadlineClass = ' rpl-deadline-overdue';
+                    } else if (todayStr >= warnStr) {
+                        deadlineClass = ' rpl-deadline-soon';
+                    }
+                }
+
+                div.className = 'rpl-side-item' + (iHaveSeen ? ' rpl-seen' : '') + deadlineClass;
                 div.title = 'Clic : aller à la date — Double-clic / Appui long 2 s : ouvrir la fiche';
                 div.style.touchAction = 'manipulation';
 
@@ -2197,6 +2269,9 @@ if (resetAckBtn) {
                 html += '<span class="rpl-code" style="background:' + item.color + ';color:' + item.textColor + ';">' + item.code + '</span>';
                 if (iHaveSeen) {
                     html += ' <span class="rpl-seen-badge">👁 Vu</span>';
+                }
+                if (deadlineDate) {
+                    html += ' <span class="rpl-deadline-badge">⏱ Limite : ' + formatDateStrDisplay(deadlineDate) + '</span>';
                 }
                 if (item.comment) {
                     html += '<div class="rpl-comment">' + item.comment.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</div>';
@@ -3357,6 +3432,7 @@ function openReplacementModal(isTeam, targetId, targetName, dateStr) {
     if (typeof updateRplSidePanel === 'function') updateRplSidePanel();
 
     const createdAtLabel = sheet.createdAt ? formatDateStrDisplay(sheet.createdAt) : '—';
+    const deadlineLabel = sheet.deadlineDate ? formatDateStrDisplay(sheet.deadlineDate) : '—';
 
     // 5. Afficher le titre
     const infoEl = document.getElementById('rplTargetInfo');
@@ -3364,7 +3440,8 @@ function openReplacementModal(isTeam, targetId, targetName, dateStr) {
         infoEl.innerHTML =
             'Fiche RPL pour : <strong>' + targetName + '</strong> le <strong>' + formatDateStrDisplay(dateStr) + '</strong><br>' +
             '<span style="color:#c0392b;">Quart d\'absence à combler : <strong>' + shiftLabel + '</strong></span><br>' +
-            '<span style="color:#7f8c8d; font-size:0.8rem;">Fiche créée le : <strong>' + createdAtLabel + '</strong></span>';
+            '<span style="color:#7f8c8d; font-size:0.8rem;">Fiche créée le : <strong>' + createdAtLabel + '</strong></span><br>' +
+            '<span style="color:#d68910; font-size:0.85rem; font-weight:bold;">⏱ Date limite de traitement : <strong>' + deadlineLabel + '</strong></span>';
     }
 
     // 6. Réinitialiser le bouton "Voir tous / éligibles"
@@ -4098,6 +4175,16 @@ function purgeReplacementArchives() {
 
         // fonction de validation/sauvegarde d'une modification de tâche effectuée dans la fenêtre taskModal.
         // Elle récupère le choix de l'utilisateur, met à jour les données du planning, enregistre éventuellement un commentaire, puis rafraîchit l'application.
+        let pendingRplTaskAssignment = null;
+
+        /** Calcule la date limite par défaut (N jours avant la date RPL) */
+        function computeDefaultRplDeadline(dateStr) {
+            const days = (settings && settings.rplDeadlineDefaultDays) ? parseInt(settings.rplDeadlineDefaultDays, 10) : 15;
+            const d = parseDate(dateStr);
+            d.setDate(d.getDate() - (isNaN(days) || days < 1 ? 15 : days));
+            return formatDate(d);
+        }
+
         function confirmTaskSelection() {
             if (isReadOnly || !activeTaskCellSelection) return;
 
@@ -4109,6 +4196,30 @@ function purgeReplacementArchives() {
             const selectedDef = TASKS[selectedTaskCodeInModal];
             if (selectedDef && selectedDef.isReplacement && !descValue) {
                 descValue = buildRplAvailabilityComment(isTeam, targetId, dateStr);
+            }
+
+            // Tâche de remplacement : demander la date limite de traitement avant d'enregistrer
+            if (selectedDef && selectedDef.isReplacement) {
+                pendingRplTaskAssignment = {
+                    isTeam: isTeam,
+                    targetId: targetId,
+                    targetName: activeTaskCellSelection.targetName,
+                    dateStr: dateStr,
+                    taskCode: selectedTaskCodeInModal,
+                    descValue: descValue,
+                    descKey: descKey
+                };
+                const defaultDeadline = computeDefaultRplDeadline(dateStr);
+                const infoEl = document.getElementById('rplDeadlineModalInfo');
+                if (infoEl) {
+                    infoEl.innerHTML = 'Remplacement pour <strong>' + (activeTaskCellSelection.targetName || targetId) +
+                        '</strong> le <strong>' + formatDateStrDisplay(dateStr) + '</strong>.';
+                }
+                const input = document.getElementById('rplDeadlineDateInput');
+                if (input) input.value = defaultDeadline;
+                document.getElementById('taskModal').style.display = 'none';
+                document.getElementById('rplDeadlineModal').style.display = 'flex';
+                return;
             }
 
             if (isTeam) {
@@ -4129,6 +4240,55 @@ function purgeReplacementArchives() {
                 }
             }
 
+            closeTaskModal();
+            renderAll(true);
+        }
+
+        function cancelRplDeadlineModal() {
+            document.getElementById('rplDeadlineModal').style.display = 'none';
+            pendingRplTaskAssignment = null;
+            // Rouvrir la modale tâche pour permettre de modifier
+            if (activeTaskCellSelection) {
+                document.getElementById('taskModal').style.display = 'flex';
+            }
+        }
+
+        function confirmRplDeadlineAndSave() {
+            if (isReadOnly || !pendingRplTaskAssignment) return;
+            const deadlineInput = document.getElementById('rplDeadlineDateInput');
+            let deadlineDate = deadlineInput ? deadlineInput.value : '';
+            if (!deadlineDate) {
+                alert('Veuillez indiquer une date limite de traitement.');
+                return;
+            }
+
+            const { isTeam, targetId, dateStr, taskCode, descValue, descKey } = pendingRplTaskAssignment;
+
+            if (isTeam) {
+                promptTeamRotation(targetId, dateStr, taskCode);
+                if (descValue) {
+                    taskDescriptions[descKey] = descValue;
+                } else {
+                    delete taskDescriptions[descKey];
+                }
+            } else {
+                if (!agentSchedules[targetId]) agentSchedules[targetId] = {};
+                agentSchedules[targetId][dateStr] = taskCode;
+                if (descValue) {
+                    taskDescriptions[descKey] = descValue;
+                } else {
+                    delete taskDescriptions[descKey];
+                }
+            }
+
+            // Créer / mettre à jour la fiche RPL avec la deadline
+            const sheetKey = targetId + '_' + dateStr;
+            const sheet = ensureReplacementSheet(sheetKey);
+            sheet.deadlineDate = deadlineDate;
+            replacementSheets[sheetKey] = sheet;
+
+            document.getElementById('rplDeadlineModal').style.display = 'none';
+            pendingRplTaskAssignment = null;
             closeTaskModal();
             renderAll(true);
         }
@@ -4525,9 +4685,18 @@ function resetAcknowledgedAlerts() {
             const endDate = new Date(start);
             endDate.setDate(endDate.getDate() + totalDays);
 
+            const isRplTask = TASKS[taskCode] && TASKS[taskCode].isReplacement;
             while (current <= endDate) {
                 const dStr = formatDate(current);
                 teamSchedules[teamId][dStr] = taskCode;
+                if (isRplTask) {
+                    const sheetKey = teamId + '_' + dStr;
+                    const sheet = ensureReplacementSheet(sheetKey);
+                    if (!sheet.deadlineDate) {
+                        sheet.deadlineDate = computeDefaultRplDeadline(dStr);
+                        replacementSheets[sheetKey] = sheet;
+                    }
+                }
                 current.setDate(current.getDate() + stepDays);
             }
 
@@ -4817,6 +4986,13 @@ function resetAcknowledgedAlerts() {
     document.getElementById('th_A_green').value = settings.thresholds.A.green;
     document.getElementById('th_N_orange').value = settings.thresholds.N.orange;
     document.getElementById('th_N_green').value = settings.thresholds.N.green;
+
+    const deadlineDaysInput = document.getElementById('rplDeadlineDefaultDays');
+    if (deadlineDaysInput) {
+        deadlineDaysInput.value = (settings.rplDeadlineDefaultDays !== undefined && settings.rplDeadlineDefaultDays !== null)
+            ? settings.rplDeadlineDefaultDays
+            : 15;
+    }
 
     // Liaison agents ↔ e-mails
     renderAgentEmailLinksConfig();
@@ -5136,6 +5312,9 @@ function renderMonitoredGroupRow(group = []) {
     settings.thresholds.A.green = parseInt(document.getElementById('th_A_green').value) || 7;
     settings.thresholds.N.orange = parseInt(document.getElementById('th_N_orange').value) || 3;
     settings.thresholds.N.green = parseInt(document.getElementById('th_N_green').value) || 5;
+
+    const deadlineDaysVal = parseInt(document.getElementById('rplDeadlineDefaultDays').value, 10);
+    settings.rplDeadlineDefaultDays = (!isNaN(deadlineDaysVal) && deadlineDaysVal >= 1) ? deadlineDaysVal : 15;
 
     // 5. Liaisons agent ↔ e-mail + rôles
     const newLinks = {};
