@@ -384,6 +384,30 @@
             box-shadow: 0 1px 3px rgba(0,0,0,0.2);
             z-index: 1;
         }
+        .rpl-side-item.rpl-ready-process {
+            border-left-color: #2980b9 !important;
+            box-shadow: 0 0 0 1px rgba(41, 128, 185, 0.35);
+        }
+        .rpl-side-item .rpl-ready-badge {
+            position: absolute;
+            top: 6px;
+            right: 6px;
+            background: #2980b9;
+            color: #fff;
+            font-size: 0.62rem;
+            font-weight: 800;
+            letter-spacing: 0.02em;
+            padding: 2px 6px;
+            border-radius: 4px;
+            line-height: 1.2;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+            z-index: 2;
+            white-space: nowrap;
+        }
+        /* Si RE + À traiter : RE un peu plus bas à droite */
+        .rpl-side-item .rpl-re-badge.rpl-re-with-ready {
+            top: 28px;
+        }
         .rpl-side-item:hover {
             box-shadow: 0 2px 8px rgba(0,0,0,0.12);
             transform: translateY(-1px);
@@ -2263,8 +2287,18 @@ if (resetAckBtn) {
                 });
             });
 
-            // Tri chronologique (date puis nom)
+            // Marquer les fiches prêtes à traiter (tous les agents disponibles ont vu)
+            items.forEach(function(item) {
+                item.readyToProcess = (typeof isRplReadyToProcess === 'function')
+                    ? isRplReadyToProcess(item.isTeam, item.targetId, item.dateStr)
+                    : false;
+            });
+
+            // Tri : fiches « À traiter » en premier, puis chronologique
             items.sort(function(a, b) {
+                if (a.readyToProcess !== b.readyToProcess) {
+                    return a.readyToProcess ? -1 : 1;
+                }
                 if (a.dateStr < b.dateStr) return -1;
                 if (a.dateStr > b.dateStr) return 1;
                 return (a.targetName || '').localeCompare(b.targetName || '');
@@ -2301,13 +2335,19 @@ if (resetAckBtn) {
                     }
                 }
 
-                div.className = 'rpl-side-item' + (iHaveSeen ? ' rpl-seen' : '') + deadlineClass;
-                div.title = 'Clic : aller à la date — Double-clic / Appui long 2 s : ouvrir la fiche';
+                const readyClass = item.readyToProcess ? ' rpl-ready-process' : '';
+                div.className = 'rpl-side-item' + (iHaveSeen ? ' rpl-seen' : '') + deadlineClass + readyClass;
+                div.title = item.readyToProcess
+                    ? 'Fiche à traiter — tous les agents disponibles ont consulté la fiche'
+                    : 'Clic : aller à la date — Double-clic / Appui long 2 s : ouvrir la fiche';
                 div.style.touchAction = 'manipulation';
 
                 let html = '';
+                if (item.readyToProcess) {
+                    html += '<span class="rpl-ready-badge" title="Tous les agents disponibles ont vu la fiche">📋 À traiter</span>';
+                }
                 if (item.isRETarget) {
-                    html += '<span class="rpl-re-badge" title="Remplacement d\'un agent RE">RE</span>';
+                    html += '<span class="rpl-re-badge' + (item.readyToProcess ? ' rpl-re-with-ready' : '') + '" title="Remplacement d\'un agent RE">RE</span>';
                 }
                 html += '<div class="rpl-date">' + formatDateStrDisplay(item.dateStr) + '</div>';
                 html += '<div class="rpl-target">' + (item.isTeam ? '👥 ' : '👤 ') + item.targetName + '</div>';
@@ -3097,6 +3137,56 @@ function buildRplAvailabilityComment(isTeam, targetId, dateStr) {
         return 'Quart à combler : ' + shiftLabel + ' | Aucune équipe disponible.';
     }
     return 'Quart à combler : ' + shiftLabel + ' | Équipes dispo : ' + availableTeams.join(', ');
+}
+
+/**
+ * Liste des agentIds éligibles pour une fiche RPL
+ * (mêmes règles que la liste des volontaires filtrée).
+ */
+function getEligibleAgentsForRpl(isTeam, targetId, dateStr) {
+    const shiftToFill = (typeof getShiftToFillForRpl === 'function')
+        ? getShiftToFillForRpl(isTeam, targetId, dateStr)
+        : null;
+    if (!shiftToFill) return [];
+
+    const requireRE = !isTeam && (typeof agentHasRECompetence === 'function') && agentHasRECompetence(targetId);
+    const prevContext = activeRplContext;
+    activeRplContext = {
+        isTeam: isTeam,
+        targetId: targetId,
+        targetName: '',
+        dateStr: dateStr,
+        shiftToFill: shiftToFill
+    };
+
+    const eligible = [];
+    (teams || []).forEach(function(t) {
+        (t.agents || []).forEach(function(a) {
+            if (!isTeam && a.id === targetId) return;
+            if (requireRE && !agentHasRECompetence(a.id)) return;
+            if (typeof canAgentTakeReplacement === 'function' &&
+                canAgentTakeReplacement(a.id, dateStr, shiftToFill)) {
+                eligible.push(a.id);
+            }
+        });
+    });
+
+    activeRplContext = prevContext;
+    return eligible;
+}
+
+/**
+ * True si tous les agents disponibles (éligibles) ont vu la fiche
+ * et qu'il existe au moins un agent disponible.
+ */
+function isRplReadyToProcess(isTeam, targetId, dateStr) {
+    const sheetKey = targetId + '_' + dateStr;
+    if (!replacementSheets || !replacementSheets[sheetKey]) return false;
+    const sheet = ensureReplacementSheet(sheetKey);
+    const seenByAgents = normalizeSeenByAgents(sheet.seenByAgents);
+    const eligible = getEligibleAgentsForRpl(isTeam, targetId, dateStr);
+    if (!eligible.length) return false;
+    return eligible.every(function(id) { return !!seenByAgents[id]; });
 }
 
 /**
