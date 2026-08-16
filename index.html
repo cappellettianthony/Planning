@@ -3236,12 +3236,16 @@ function buildRplAvailabilityComment(isTeam, targetId, dateStr) {
         shiftToFill: shiftToFill
     };
 
+    const requireRE = !isTeam && (typeof agentHasRECompetence === 'function') && agentHasRECompetence(targetId);
     const availableTeams = [];
     teams.forEach(function(t) {
         if (isTeam && t.id === targetId) return;
 
         const hasEligibleAgent = t.agents.some(function(a) {
             if (!isTeam && a.id === targetId) return false;
+            const agentIsRE = (typeof agentHasRECompetence === 'function') && agentHasRECompetence(a.id);
+            if (requireRE && !agentIsRE) return false;
+            if (!requireRE && agentIsRE) return false;
             return canAgentTakeReplacement(a.id, dateStr, shiftToFill);
         });
 
@@ -3268,6 +3272,7 @@ function getEligibleAgentsForRpl(isTeam, targetId, dateStr) {
         : null;
     if (!shiftToFill) return [];
 
+    // RE uniquement sur fiches RE ; agents non-RE uniquement sur fiches non-RE
     const requireRE = !isTeam && (typeof agentHasRECompetence === 'function') && agentHasRECompetence(targetId);
     const prevContext = activeRplContext;
     activeRplContext = {
@@ -3282,7 +3287,9 @@ function getEligibleAgentsForRpl(isTeam, targetId, dateStr) {
     (teams || []).forEach(function(t) {
         (t.agents || []).forEach(function(a) {
             if (!isTeam && a.id === targetId) return;
-            if (requireRE && !agentHasRECompetence(a.id)) return;
+            const agentIsRE = (typeof agentHasRECompetence === 'function') && agentHasRECompetence(a.id);
+            if (requireRE && !agentIsRE) return;
+            if (!requireRE && agentIsRE) return;
             if (typeof canAgentTakeReplacement === 'function' &&
                 canAgentTakeReplacement(a.id, dateStr, shiftToFill)) {
                 eligible.push(a.id);
@@ -3585,7 +3592,7 @@ function populateRplAgentSelect(showAll) {
     const sheet = ensureReplacementSheet(sheetKey);
     const seenByAgents = sheet.seenByAgents || {};
 
-    // Fiche RE : uniquement les agents ayant la compétence / le rôle RE
+    // RE uniquement sur fiches RE ; non-RE uniquement sur fiches non-RE
     const requireRE = !activeRplContext.isTeam &&
         (typeof agentHasRECompetence === 'function') &&
         agentHasRECompetence(activeRplContext.targetId);
@@ -3607,7 +3614,9 @@ function populateRplAgentSelect(showAll) {
     });
 
     allAgents.forEach(function(a) {
-        if (requireRE && !agentHasRECompetence(a.id)) return;
+        const agentIsRE = (typeof agentHasRECompetence === 'function') && agentHasRECompetence(a.id);
+        if (requireRE && !agentIsRE) return;
+        if (!requireRE && agentIsRE) return;
 
         let eligible = true;
         if (shiftToFill && typeof canAgentTakeReplacement === 'function') {
@@ -3825,13 +3834,18 @@ function addVolunteerToSheet() {
         return;
     }
 
-    // Remplacement d'un agent RE : seuls les agents RE peuvent être volontaires
-    if (!activeRplContext.isTeam &&
-        typeof agentHasRECompetence === 'function' &&
-        agentHasRECompetence(activeRplContext.targetId) &&
-        !agentHasRECompetence(agentId)) {
-        alert('Cette fiche concerne un agent RE : seuls les agents disposant de la compétence / du rôle RE peuvent se porter volontaires.');
-        return;
+    // RE uniquement sur fiches RE ; non-RE uniquement sur fiches non-RE
+    if (typeof agentHasRECompetence === 'function') {
+        const targetIsRE = !activeRplContext.isTeam && agentHasRECompetence(activeRplContext.targetId);
+        const agentIsRE = agentHasRECompetence(agentId);
+        if (targetIsRE && !agentIsRE) {
+            alert('Cette fiche concerne un agent RE : seuls les agents disposant de la compétence / du rôle RE peuvent se porter volontaires.');
+            return;
+        }
+        if (!targetIsRE && agentIsRE) {
+            alert('Les agents RE ne peuvent se porter volontaires que sur les fiches de remplacement RE.');
+            return;
+        }
     }
 
     const sheetKey = activeRplContext.targetId + '_' + activeRplContext.dateStr;
@@ -4372,11 +4386,15 @@ function getAvailableTeamsLabelsForRpl(isTeam, targetId, dateStr) {
         shiftToFill: shiftToFill
     };
 
+    const requireRE = !isTeam && (typeof agentHasRECompetence === 'function') && agentHasRECompetence(targetId);
     const labels = [];
     (teams || []).forEach(function(t) {
         if (isTeam && t.id === targetId) return;
         const hasEligible = (t.agents || []).some(function(a) {
             if (!isTeam && a.id === targetId) return false;
+            const agentIsRE = (typeof agentHasRECompetence === 'function') && agentHasRECompetence(a.id);
+            if (requireRE && !agentIsRE) return false;
+            if (!requireRE && agentIsRE) return false;
             return typeof canAgentTakeReplacement === 'function' &&
                 canAgentTakeReplacement(a.id, dateStr, shiftToFill);
         });
@@ -4476,12 +4494,15 @@ function openVolunteerModal() {
             const seenByAgents = sheet ? normalizeSeenByAgents(sheet.seenByAgents) : {};
             const alreadySeen = !!seenByAgents[agent.id];
 
-            // Éligible ?
+            // Éligible ? RE uniquement sur fiches RE ; non-RE uniquement sur fiches non-RE
             let eligible = false;
             const requireRE = !item.isTeam &&
                 typeof agentHasRECompetence === 'function' &&
                 agentHasRECompetence(item.targetId);
-            if (requireRE && !agentHasRECompetence(agent.id)) {
+            const agentIsRE = typeof agentHasRECompetence === 'function' && agentHasRECompetence(agent.id);
+            if (requireRE && !agentIsRE) {
+                eligible = false;
+            } else if (!requireRE && agentIsRE) {
                 eligible = false;
             } else {
                 const shiftToFill = (typeof getShiftToFillForRpl === 'function')
