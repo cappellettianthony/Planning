@@ -1341,7 +1341,7 @@
             </div>
             <p id="rplAgentStats" style="font-size:0.8rem; font-weight:bold; color:#d35400; margin-bottom:8px;"></p>
             <div style="display:flex; gap:8px; margin-bottom:8px;">
-                <button class="btn btn-success" style="flex:1;" onclick="addVolunteerToSheet()">Se porter / Inscrire volontaire</button>
+                <button class="btn btn-success" style="flex:1;" id="rplAddVolunteerBtn" onclick="addVolunteerToSheet()">Se porter / Inscrire volontaire</button>
                 <button class="btn btn-secondary" style="flex:0 0 auto; font-size:0.8rem;" id="rplShowAllBtn" onclick="toggleRplShowAllAgents()">Voir tous les agents</button>
             </div>
             <p id="rplFilterHint" style="font-size:0.75rem; color:#666; margin:0;">Liste filtrée : agents en Repos (R) ou en Journée (J) respectant les 11h de repos.</p>
@@ -3658,7 +3658,13 @@ function populateRplAgentSelect(showAll) {
         return a.name.localeCompare(b.name);
     });
 
+    // Agent (lecture seule) : uniquement soi-même ; RE / Admin : tous les agents éligibles
+    const myIds = (typeof getMyAgentIds === 'function') ? getMyAgentIds() : [];
+    const onlySelf = !!isReadOnly;
+
     allAgents.forEach(function(a) {
+        if (onlySelf && myIds.indexOf(a.id) === -1) return;
+
         const agentIsRE = (typeof agentHasRECompetence === 'function') && agentHasRECompetence(a.id);
         if (requireRE && !agentIsRE) return;
         if (!requireRE && agentIsRE) return;
@@ -3798,11 +3804,25 @@ function openReplacementModal(isTeam, targetId, targetName, dateStr) {
     // 6. Réinitialiser le bouton "Voir tous / éligibles"
     const btn = document.getElementById('rplShowAllBtn');
     const hint = document.getElementById('rplFilterHint');
-    if (btn) btn.textContent = 'Voir tous les agents';
-    if (hint) {
-        hint.textContent = isRETarget
-            ? 'Liste filtrée : agents RE en Repos (R) ou en Journée (J) respectant les temps de repos.'
-            : 'Liste filtrée : agents en Repos (R) ou en Journée (J) respectant les temps de repos.';
+    const volunteerBtn = document.getElementById('rplAddVolunteerBtn');
+    if (isReadOnly) {
+        // Agent : uniquement se proposer soi-même
+        if (btn) btn.style.display = 'none';
+        if (hint) {
+            hint.textContent = 'Vous ne pouvez vous proposer que vous-même. Les RE peuvent inscrire d\'autres agents.';
+        }
+        if (volunteerBtn) volunteerBtn.textContent = 'Se porter volontaire';
+    } else {
+        if (btn) {
+            btn.style.display = '';
+            btn.textContent = 'Voir tous les agents';
+        }
+        if (hint) {
+            hint.textContent = isRETarget
+                ? 'Liste filtrée : agents RE en Repos (R) ou en Journée (J) respectant les temps de repos.'
+                : 'Liste filtrée : agents en Repos (R) ou en Journée (J) respectant les temps de repos.';
+        }
+        if (volunteerBtn) volunteerBtn.textContent = 'Se porter / Inscrire volontaire';
     }
 
     // 7. Remplir la liste déroulante (avec indication 👁 Vu si agent a ouvert la fiche)
@@ -3877,6 +3897,15 @@ function addVolunteerToSheet() {
     if (!agentId) {
         alert('Veuillez sélectionner un agent.');
         return;
+    }
+
+    // Agent (lecture seule) : ne peut proposer que lui-même
+    if (isReadOnly) {
+        const myIds = (typeof getMyAgentIds === 'function') ? getMyAgentIds() : [];
+        if (myIds.indexOf(agentId) === -1) {
+            alert('Vous ne pouvez vous proposer que vous-même. Seuls les RE / Admin peuvent inscrire un autre agent.');
+            return;
+        }
     }
 
     // RE uniquement sur fiches RE ; non-RE uniquement sur fiches non-RE
