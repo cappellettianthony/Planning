@@ -4389,13 +4389,40 @@ function getAvailableTeamsLabelsForRpl(isTeam, targetId, dateStr) {
     return labels;
 }
 
-/** Cases mutuellement exclusives volontaire / ne pas se proposer */
+/**
+ * Cases mutuellement exclusives volontaire / ne pas se proposer.
+ * Si « ne pas se proposer » était pré-cochée (déjà vu), elle ne peut pas être
+ * décochée seule : seulement en cochant « se proposer ».
+ */
 function onVolunteerChoiceChange(rowId, which) {
     const yes = document.getElementById('vol_yes_' + rowId);
     const no = document.getElementById('vol_no_' + rowId);
     if (!yes || !no) return;
-    if (which === 'yes' && yes.checked) no.checked = false;
-    if (which === 'no' && no.checked) yes.checked = false;
+    const noLocked = no.getAttribute('data-locked') === '1';
+
+    if (which === 'yes') {
+        if (yes.checked) {
+            no.checked = false;
+            // Déverrouille temporairement l'affichage (toujours re-cochable via oui)
+            no.disabled = false;
+        } else {
+            // Décoche volontaire : si la fiche était déjà vue, forcer « non volontaire »
+            if (noLocked) {
+                no.checked = true;
+                no.disabled = true;
+            }
+        }
+    }
+    if (which === 'no') {
+        if (noLocked && !no.checked) {
+            // Interdit de décocher « non volontaire » sans passer par « se proposer »
+            no.checked = true;
+            return;
+        }
+        if (no.checked) {
+            yes.checked = false;
+        }
+    }
 }
 
 function openVolunteerModal() {
@@ -4446,6 +4473,8 @@ function openVolunteerModal() {
                 : null;
             const volunteers = sheet ? toArraySafe(sheet.volunteers) : [];
             const alreadyVolunteer = volunteers.indexOf(agent.id) !== -1;
+            const seenByAgents = sheet ? normalizeSeenByAgents(sheet.seenByAgents) : {};
+            const alreadySeen = !!seenByAgents[agent.id];
 
             // Éligible ?
             let eligible = false;
@@ -4472,8 +4501,8 @@ function openVolunteerModal() {
                 }
             }
 
-            // Afficher si éligible OU déjà volontaire
-            if (!eligible && !alreadyVolunteer) return;
+            // Afficher si éligible OU déjà volontaire OU déjà vu
+            if (!eligible && !alreadyVolunteer && !alreadySeen) return;
 
             const shiftLabel = getRplShiftLabel(item.isTeam, item.targetId, item.dateStr);
             // Équipe qui a besoin d'un remplaçant (équipe cible ou équipe de l'agent cible)
@@ -4498,6 +4527,7 @@ function openVolunteerModal() {
                 shiftLabel: shiftLabel,
                 needingTeamName: needingTeamName,
                 alreadyVolunteer: alreadyVolunteer,
+                alreadySeen: alreadySeen,
                 sheetKey: sheetKey
             });
         });
@@ -4516,10 +4546,25 @@ function openVolunteerModal() {
             div.setAttribute('data-is-team', row.isTeam ? '1' : '0');
             div.setAttribute('data-target-id', row.targetId);
             div.setAttribute('data-date', row.dateStr);
+            div.setAttribute('data-was-volunteer', row.alreadyVolunteer ? '1' : '0');
+            div.setAttribute('data-was-seen', row.alreadySeen ? '1' : '0');
+
+            // Pré-cochage : volontaire prioritaire, sinon non volontaire si déjà vu
+            const preYes = !!row.alreadyVolunteer;
+            const preNo = !preYes && !!row.alreadySeen;
+            // « Non volontaire » pré-cochée = verrouillée (ne peut être décochée seule)
+            const noLocked = preNo;
 
             let multiAgent = myAgents.length > 1
                 ? '<span style="color:#7f8c8d;"> (' + row.agentName + ')</span>'
                 : '';
+
+            let statusBadge = '';
+            if (row.alreadyVolunteer) {
+                statusBadge = ' <span class="rpl-seen-badge">Déjà volontaire</span>';
+            } else if (row.alreadySeen) {
+                statusBadge = ' <span class="rpl-seen-badge">👁 Déjà vu</span>';
+            }
 
             div.innerHTML =
                 '<div class="vol-row-main">' +
@@ -4527,13 +4572,15 @@ function openVolunteerModal() {
                     'Quart : <strong>' + row.shiftLabel + '</strong><br>' +
                     'Équipe concernée : <strong>' + (row.needingTeamName || '—') + '</strong>' +
                     (row.isTeam ? '' : ' — Agent : ' + row.targetName) + multiAgent +
-                    (row.alreadyVolunteer ? ' <span class="rpl-seen-badge">Déjà volontaire</span>' : '') +
+                    statusBadge +
                 '</div>' +
                 '<div class="vol-row-choices">' +
                     '<label><input type="checkbox" id="vol_yes_' + rowId + '" ' +
-                        (row.alreadyVolunteer ? 'checked ' : '') +
+                        (preYes ? 'checked ' : '') +
                         'onchange="onVolunteerChoiceChange(\'' + rowId + '\', \'yes\')"> Se proposer</label>' +
                     '<label><input type="checkbox" id="vol_no_' + rowId + '" ' +
+                        (preNo ? 'checked ' : '') +
+                        (noLocked ? 'data-locked="1" disabled ' : '') +
                         'onchange="onVolunteerChoiceChange(\'' + rowId + '\', \'no\')"> Ne pas se proposer</label>' +
                 '</div>';
             listEl.appendChild(div);
@@ -4552,7 +4599,8 @@ function closeVolunteerModal() {
  * Applique les choix de la modale « Se porter volontaire ».
  * - Se proposer → inscrit comme volontaire + vu
  * - Ne pas se proposer → marque vu (retire du volontariat si présent)
- * - Aucun choix → aucune modification
+ * - Décoche « se proposer » alors qu'il était volontaire → retire du volontariat, conserve vu
+ * - Aucun choix et n'était pas volontaire → aucune modification
  */
 function confirmVolunteerChoices() {
     const listEl = document.getElementById('volunteerModalList');
@@ -4573,11 +4621,15 @@ function confirmVolunteerChoices() {
         const yes = document.getElementById('vol_yes_' + rowId);
         const no = document.getElementById('vol_no_' + rowId);
         if (!yes || !no) return;
-        if (!yes.checked && !no.checked) return; // aucun choix → ignore
 
         const agentId = div.getAttribute('data-agent-id');
         const sheetKey = div.getAttribute('data-sheet-key');
+        const wasVolunteer = div.getAttribute('data-was-volunteer') === '1';
         if (!agentId || !sheetKey) return;
+
+        // Aucun choix et n'était pas volontaire → ignore
+        // Si était volontaire et a décoché « se proposer » → retrait volontariat, conserve vu
+        if (!yes.checked && !no.checked && !wasVolunteer) return;
 
         const sheet = ensureReplacementSheet(sheetKey);
         let volunteers = toArraySafe(sheet.volunteers);
@@ -4590,9 +4642,9 @@ function confirmVolunteerChoices() {
                 localChanged = true;
             }
             volunteerCount++;
-            // Marquer vu
             markAgentSeenOnSheet(sheetKey, agentId);
-        } else if (no.checked) {
+        } else if (no.checked || wasVolunteer) {
+            // Ne pas se proposer OU retrait après avoir décoché « se proposer »
             const vIdx = volunteers.indexOf(agentId);
             if (vIdx !== -1) {
                 volunteers.splice(vIdx, 1);
@@ -4611,7 +4663,7 @@ function confirmVolunteerChoices() {
         sheet.selectedVolunteers = selected;
         replacementSheets[sheetKey] = sheet;
 
-        if (localChanged || yes.checked || no.checked) {
+        if (localChanged || yes.checked || no.checked || wasVolunteer) {
             changed++;
             if (planningRef) {
                 planningRef.child('replacementSheets/' + sheetKey).update({
@@ -4635,7 +4687,9 @@ function confirmVolunteerChoices() {
             const rowId = String(idx);
             const yes = document.getElementById('vol_yes_' + rowId);
             const no = document.getElementById('vol_no_' + rowId);
-            if (!yes || !no || (!yes.checked && !no.checked)) return;
+            const wasVolunteer = div.getAttribute('data-was-volunteer') === '1';
+            if (!yes || !no) return;
+            if (!yes.checked && !no.checked && !wasVolunteer) return;
             const sheetKey = div.getAttribute('data-sheet-key');
             if (sheetKey) markSheetAsSeen(sheetKey);
         });
@@ -4651,7 +4705,7 @@ function confirmVolunteerChoices() {
         alert(
             '✅ Choix enregistrés.\n' +
             (volunteerCount ? ('• Propositions : ' + volunteerCount + '\n') : '') +
-            (declineCount ? ('• Ne pas se proposer (vu) : ' + declineCount) : '')
+            (declineCount ? ('• Ne pas se proposer / retrait (vu conservé) : ' + declineCount) : '')
         );
     } else {
         alert('Aucun choix à enregistrer.');
