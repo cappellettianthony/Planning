@@ -7,10 +7,10 @@
     
     <style>
         :root {
-            --bg-color: #8e97a0;
+            --bg-color: #cfd5db;
             --card-bg: #eef1f4;
-            --text-color: #333333;
-            --border-color: #e0e0e0;
+            --text-color: #2c3338;
+            --border-color: #b8c0c8;
             --primary: #2c3e50;
             --accent: #3498db;
             
@@ -875,6 +875,7 @@
             <input type="file" id="importFile" style="display:none" accept=".json" onchange="importData(event)">
             
             <button class="btn btn-secondary" onclick="openArchiveModal()" id="archiveBtn">📁 Archives Alertes</button>
+            <button class="btn btn-secondary" onclick="openModificationLogModal()" id="modLogBtn" style="display:none;">📝 Suivi des modifications</button>
             <button class="btn" onclick="openSettings()" id="settingsBtn">⚙️ Tâches & Minimas</button>
             <button class="btn btn-logout" onclick="logout()" id="logoutBtn" style="display: none;">Déconnexion</button>
         </div>
@@ -1091,6 +1092,38 @@
     </button>
     <button class="btn btn-secondary" onclick="closeArchiveModal()">Fermer</button>
 </div>
+        </div>
+    </div>
+
+    <!-- Suivi des modifications -->
+    <div class="modal" id="modificationLogModal">
+        <div class="modal-content" style="width: 960px; max-width: 98%;">
+            <h2>📝 Suivi des modifications</h2>
+            <p style="font-size:0.8rem; color:#666; margin-bottom:10px;">
+                Historique des changements de cellules (valeur avant → après, auteur, date/heure).
+            </p>
+            <div style="max-height: 60vh; overflow-y: auto;">
+                <table class="archive-table">
+                    <thead>
+                        <tr>
+                            <th>Quand</th>
+                            <th>Date planning</th>
+                            <th>Cible</th>
+                            <th>Avant</th>
+                            <th>Après</th>
+                            <th>Par</th>
+                        </tr>
+                    </thead>
+                    <tbody id="modificationLogTableBody"></tbody>
+                </table>
+            </div>
+            <div class="modal-actions" style="justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+                <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                    <button class="btn btn-success" onclick="exportModificationLogToCsv()" id="exportModLogBtn" style="display:none;">📥 Export CSV</button>
+                    <button class="btn btn-danger" onclick="purgeModificationLog()" id="purgeModLogBtn" style="display:none;">🗑️ Vider l'historique</button>
+                </div>
+                <button class="btn btn-secondary" onclick="closeModificationLogModal()">Fermer</button>
+            </div>
         </div>
     </div>
 
@@ -1470,6 +1503,7 @@
 // À ajouter dans les déclarations de variables globales
 let replacementSheets = {};    // Stocke les volontaires pour une fiche
 let replacementArchives = [];  // Stocke l'historique des fiches soldées
+let modificationLog = [];      // Historique des modifications de cellules
 let activeRplContext = null;   // Contexte courant de la fiche ouverte
 let rplShowAllAgents = false; // false = liste filtrée (éligibles), true = tous les agents
 let clickTimer = null;         // Pour distinguer le clic simple du double-clic
@@ -1718,7 +1752,8 @@ function getAppState() {
         agentEmailLinks: agentEmailLinks,
         agentRoles: agentRoles,
         replacementSheets: replacementSheets,
-        replacementArchives: replacementArchives
+        replacementArchives: replacementArchives,
+        modificationLog: modificationLog
     };
 }
 
@@ -1776,6 +1811,7 @@ function loadAppState(data) {
         replacementSheets = {};
     }
     replacementArchives = Array.isArray(data.replacementArchives) ? data.replacementArchives : [];
+    modificationLog = Array.isArray(data.modificationLog) ? data.modificationLog : [];
 
     // Recalcul des droits après chargement des rôles / e-mails
     if (typeof refreshUserRoles === 'function') refreshUserRoles();
@@ -1927,6 +1963,7 @@ function loadAppState(data) {
         function applyReadOnlyMode() {
             const settingsBtn = document.getElementById('settingsBtn');
             const importBtn = document.getElementById('importBtn');
+            const modLogBtn = document.getElementById('modLogBtn');
 
             if (settingsBtn) {
                 settingsBtn.disabled = !isAdmin;
@@ -1936,6 +1973,12 @@ function loadAppState(data) {
             if (importBtn) {
                 importBtn.disabled = isReadOnly;
                 importBtn.style.opacity = isReadOnly ? '0.6' : '1';
+            }
+            // Suivi des modifications : RE + Admin uniquement
+            if (modLogBtn) {
+                const canSeeLog = !isReadOnly; // RE ou Admin
+                modLogBtn.style.display = canSeeLog ? 'inline-block' : 'none';
+                modLogBtn.disabled = !canSeeLog;
             }
             
             const resetAckBtn = document.getElementById('resetAckBtn');
@@ -1970,7 +2013,8 @@ if (resetAckBtn) {
         agentEmailLinks: agentEmailLinks,
         agentRoles: agentRoles,
         replacementSheets: replacementSheets,
-        replacementArchives: replacementArchives
+        replacementArchives: replacementArchives,
+        modificationLog: modificationLog
     };
 }
 
@@ -2028,6 +2072,7 @@ if (resetAckBtn) {
         replacementSheets = {};
     }
     replacementArchives = Array.isArray(data.replacementArchives) ? data.replacementArchives : [];
+    modificationLog = Array.isArray(data.modificationLog) ? data.modificationLog : [];
 
     // Recalcul des droits après chargement des rôles / e-mails
     if (typeof refreshUserRoles === 'function') refreshUserRoles();
@@ -4133,7 +4178,11 @@ function validateReplacementSheet() {
     if (shiftToFill && TASKS[shiftToFill]) {
         selected.forEach(function(agentId) {
             if (!agentSchedules[agentId]) agentSchedules[agentId] = {};
+            const beforeCode = getCellTaskCode(false, agentId, activeRplContext.dateStr);
             agentSchedules[agentId][activeRplContext.dateStr] = shiftToFill;
+            if (typeof logCellModification === 'function') {
+                logCellModification(false, agentId, activeRplContext.dateStr, beforeCode, shiftToFill);
+            }
 
             const descKey = agentId + '_' + activeRplContext.dateStr;
             taskDescriptions[descKey] = 'RPL validé – ' + comment;
@@ -4972,6 +5021,7 @@ function purgeReplacementArchives() {
             }
 
             if (isTeam) {
+                // Le log se fait dans applyTeamRotation pour chaque date
                 promptTeamRotation(targetId, dateStr, selectedTaskCodeInModal);
                 if (descValue) {
                     taskDescriptions[descKey] = descValue;
@@ -4979,8 +5029,10 @@ function purgeReplacementArchives() {
                     delete taskDescriptions[descKey];
                 }
             } else {
+                const beforeCode = getCellTaskCode(false, targetId, dateStr);
                 if (!agentSchedules[targetId]) agentSchedules[targetId] = {};
                 agentSchedules[targetId][dateStr] = selectedTaskCodeInModal;
+                logCellModification(false, targetId, dateStr, beforeCode, selectedTaskCodeInModal);
 
                 if (descValue) {
                     taskDescriptions[descKey] = descValue;
@@ -5021,8 +5073,10 @@ function purgeReplacementArchives() {
                     delete taskDescriptions[descKey];
                 }
             } else {
+                const beforeCode = getCellTaskCode(false, targetId, dateStr);
                 if (!agentSchedules[targetId]) agentSchedules[targetId] = {};
                 agentSchedules[targetId][dateStr] = taskCode;
+                logCellModification(false, targetId, dateStr, beforeCode, taskCode);
                 if (descValue) {
                     taskDescriptions[descKey] = descValue;
                 } else {
@@ -5046,6 +5100,7 @@ function purgeReplacementArchives() {
             if (isReadOnly || !activeTaskCellSelection) return;
             const { isTeam, targetId, dateStr } = activeTaskCellSelection;
             const descKey = `${targetId}_${dateStr}`;
+            const beforeCode = getCellTaskCode(isTeam, targetId, dateStr);
 
             delete taskDescriptions[descKey];
             if (isTeam) {
@@ -5053,6 +5108,7 @@ function purgeReplacementArchives() {
             } else {
                 if (agentSchedules[targetId]) delete agentSchedules[targetId][dateStr];
             }
+            logCellModification(isTeam, targetId, dateStr, beforeCode, '');
 
             closeTaskModal();
             renderAll(true);
@@ -5399,6 +5455,175 @@ function resetAcknowledgedAlerts() {
             document.getElementById('archiveModal').style.display = 'none';
         }
 
+        const MODIFICATION_LOG_MAX = 3000;
+
+        /** Nom affichable d'une cible (équipe ou agent) */
+        function resolveTargetName(isTeam, targetId) {
+            if (isTeam) {
+                const team = (teams || []).find(function(t) { return t.id === targetId; });
+                return team ? team.name : targetId;
+            }
+            let name = targetId;
+            (teams || []).forEach(function(t) {
+                const a = (t.agents || []).find(function(ag) { return ag.id === targetId; });
+                if (a) name = a.name + ' (' + t.name + ')';
+            });
+            return name;
+        }
+
+        /** Valeur actuelle d'une cellule planning (code tâche) */
+        function getCellTaskCode(isTeam, targetId, dateStr) {
+            if (isTeam) {
+                if (teamSchedules[targetId] && teamSchedules[targetId][dateStr] !== undefined) {
+                    return teamSchedules[targetId][dateStr];
+                }
+                return '';
+            }
+            if (agentSchedules[targetId] && agentSchedules[targetId][dateStr] !== undefined) {
+                return agentSchedules[targetId][dateStr];
+            }
+            // Pas de planning individuel : hérite du roulement d'équipe
+            let teamId = null;
+            (teams || []).forEach(function(t) {
+                if ((t.agents || []).some(function(a) { return a.id === targetId; })) teamId = t.id;
+            });
+            if (teamId && teamSchedules[teamId] && teamSchedules[teamId][dateStr] !== undefined) {
+                return teamSchedules[teamId][dateStr] + ' (équipe)';
+            }
+            return '';
+        }
+
+        /**
+         * Enregistre une modification de cellule dans l'historique.
+         * before/after : codes tâche (chaînes).
+         */
+        function logCellModification(isTeam, targetId, dateStr, beforeVal, afterVal) {
+            const before = (beforeVal === undefined || beforeVal === null) ? '' : String(beforeVal);
+            const after = (afterVal === undefined || afterVal === null) ? '' : String(afterVal);
+            if (before === after) return;
+
+            if (!Array.isArray(modificationLog)) modificationLog = [];
+            const now = new Date();
+            const pad = function(n) { return String(n).padStart(2, '0'); };
+            const whenStr = formatDate(now) + ' ' + pad(now.getHours()) + ':' + pad(now.getMinutes()) + ':' + pad(now.getSeconds());
+
+            modificationLog.unshift({
+                id: 'mod_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+                when: whenStr,
+                whenTs: now.getTime(),
+                planningDate: dateStr,
+                targetId: targetId,
+                targetName: resolveTargetName(isTeam, targetId),
+                isTeam: !!isTeam,
+                before: before || '—',
+                after: after || '—',
+                by: (currentUser && currentUser.email) ? currentUser.email : 'inconnu'
+            });
+
+            if (modificationLog.length > MODIFICATION_LOG_MAX) {
+                modificationLog = modificationLog.slice(0, MODIFICATION_LOG_MAX);
+            }
+        }
+
+        function openModificationLogModal() {
+            // Accès réservé aux RE et Admin
+            if (isReadOnly) {
+                alert('Accès réservé aux Responsables d\'Équipe et Administrateurs.');
+                return;
+            }
+            const tbody = document.getElementById('modificationLogTableBody');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+
+            const logs = Array.isArray(modificationLog) ? modificationLog : [];
+            if (logs.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">Aucune modification enregistrée.</td></tr>';
+            } else {
+                logs.forEach(function(entry) {
+                    const tr = document.createElement('tr');
+                    const typeIcon = entry.isTeam ? '👥 ' : '👤 ';
+                    tr.innerHTML =
+                        '<td>' + (entry.when || '') + '</td>' +
+                        '<td>' + (entry.planningDate ? formatDateStrDisplay(entry.planningDate) : '') + '</td>' +
+                        '<td>' + typeIcon + (entry.targetName || entry.targetId || '') + '</td>' +
+                        '<td><strong>' + (entry.before || '—') + '</strong></td>' +
+                        '<td><strong>' + (entry.after || '—') + '</strong></td>' +
+                        '<td>' + (entry.by || '') + '</td>';
+                    tbody.appendChild(tr);
+                });
+            }
+
+            // Export CSV + purge : Admin uniquement
+            const purgeBtn = document.getElementById('purgeModLogBtn');
+            const exportBtn = document.getElementById('exportModLogBtn');
+            if (purgeBtn) {
+                purgeBtn.style.display = isAdmin ? 'inline-block' : 'none';
+                purgeBtn.disabled = !isAdmin;
+            }
+            if (exportBtn) {
+                exportBtn.style.display = isAdmin ? 'inline-block' : 'none';
+                exportBtn.disabled = !isAdmin;
+            }
+            document.getElementById('modificationLogModal').style.display = 'flex';
+        }
+
+        function closeModificationLogModal() {
+            document.getElementById('modificationLogModal').style.display = 'none';
+        }
+
+        function exportModificationLogToCsv() {
+            if (!isAdmin) {
+                alert('Export réservé aux Administrateurs.');
+                return;
+            }
+            const logs = Array.isArray(modificationLog) ? modificationLog : [];
+            if (!logs.length) {
+                alert('Aucune modification à exporter.');
+                return;
+            }
+            const headers = ['Quand', 'Date planning', 'Type', 'Cible', 'Avant', 'Après', 'Par'];
+            const rows = logs.map(function(entry) {
+                return [
+                    entry.when || '',
+                    entry.planningDate ? formatDateStrDisplay(entry.planningDate) : '',
+                    entry.isTeam ? 'Équipe' : 'Agent',
+                    entry.targetName || entry.targetId || '',
+                    entry.before || '',
+                    entry.after || '',
+                    entry.by || ''
+                ].map(function(val) {
+                    const str = String(val).replace(/"/g, '""');
+                    return '"' + str + '"';
+                }).join(';');
+            });
+            const csvContent = '\uFEFF' + headers.join(';') + '\n' + rows.join('\n');
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'suivi_modifications_' + formatDate(new Date()) + '.csv';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function purgeModificationLog() {
+            if (!isAdmin) {
+                alert('La purge de l\'historique est réservée aux Administrateurs.');
+                return;
+            }
+            if (!modificationLog || modificationLog.length === 0) {
+                alert('L\'historique est déjà vide.');
+                return;
+            }
+            if (!confirm('Vider tout l\'historique des modifications ?\nCette action est irréversible.')) return;
+            modificationLog = [];
+            saveToFirebase();
+            openModificationLogModal();
+            alert('✅ Historique des modifications vidé.');
+        }
+
         // sert à préparer la modification du roulement d'une équipe et ouvrir une fenêtre de confirmation pour savoir jusqu'à quelle date appliquer cette modification.
         // Elle ne modifie pas directement le planning. Elle stocke les informations nécessaires puis affiche une modale de répétition.
         function promptTeamRotation(teamId, dateStr, taskCode) {
@@ -5437,7 +5662,9 @@ function resetAcknowledgedAlerts() {
             const isRplTask = TASKS[taskCode] && TASKS[taskCode].isReplacement;
             while (current <= endDate) {
                 const dStr = formatDate(current);
+                const beforeCode = getCellTaskCode(true, teamId, dStr);
                 teamSchedules[teamId][dStr] = taskCode;
+                logCellModification(true, teamId, dStr, beforeCode, taskCode);
                 if (isRplTask) {
                     const sheetKey = teamId + '_' + dStr;
                     const sheet = ensureReplacementSheet(sheetKey);
@@ -5590,8 +5817,10 @@ function resetAcknowledgedAlerts() {
             let curr = new Date(dStart);
             while (curr <= dEnd) {
                 const dStr = formatDate(curr);
+                const beforeCode = getCellTaskCode(false, agentId, dStr);
                 const teamTask = teamSchedules[teamId] ? (teamSchedules[teamId][dStr] || 'R') : 'R';
                 agentSchedules[agentId][dStr] = teamTask;
+                logCellModification(false, agentId, dStr, beforeCode, teamTask);
                 curr.setDate(curr.getDate() + 1);
             }
 
@@ -5632,8 +5861,10 @@ function resetAcknowledgedAlerts() {
             let curr = new Date(dStart);
             while (curr <= dEnd) {
                 const dStr = formatDate(curr);
+                const beforeCode = getCellTaskCode(false, targetAgentId, dStr);
                 const task = getEffectiveAgentTask({ id: sourceAgentId }, sourceTeamId, dStr);
                 agentSchedules[targetAgentId][dStr] = task;
+                logCellModification(false, targetAgentId, dStr, beforeCode, task);
 
                 if (comment) {
                     taskDescriptions[`${targetAgentId}_${dStr}`] = comment;
@@ -5679,7 +5910,9 @@ function resetAcknowledgedAlerts() {
                 let curr = new Date(startDate);
                 while (curr <= endDate) {
                     const dStr = formatDate(curr);
+                    const beforeCode = getCellTaskCode(false, agentId, dStr);
                     agentSchedules[agentId][dStr] = taskCode;
+                    logCellModification(false, agentId, dStr, beforeCode, taskCode);
                     if (desc) taskDescriptions[`${agentId}_${dStr}`] = desc;
                     curr.setDate(curr.getDate() + 1);
                 }
@@ -5694,7 +5927,9 @@ function resetAcknowledgedAlerts() {
                 let curr = new Date(startDate);
                 while (curr <= endDate) {
                     const dStr = formatDate(curr);
+                    const beforeCode = getCellTaskCode(false, agentId, dStr);
                     agentSchedules[agentId][dStr] = taskCode;
+                    logCellModification(false, agentId, dStr, beforeCode, taskCode);
                     if (desc) taskDescriptions[`${agentId}_${dStr}`] = desc;
                     curr.setDate(curr.getDate() + stepDays);
                 }
