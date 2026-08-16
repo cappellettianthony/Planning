@@ -314,28 +314,127 @@
             align-items: stretch;
             margin-bottom: 15px;
         }
-        .rpl-side-panel {
+        .rpl-side-column {
             order: 0;
             flex: 0 0 280px;
             width: 280px;
             min-width: 240px;
             max-width: 320px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            position: sticky;
+            top: 12px;
+            align-self: flex-start;
+            z-index: 5;
+            max-height: calc(100vh - 255px);
+        }
+        .rpl-volunteer-btn {
+            width: 100%;
+            flex-shrink: 0;
+            background-color: #27ae60;
+            color: white;
+            border: none;
+            padding: 9px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 0.85rem;
+        }
+        .rpl-volunteer-btn:hover { opacity: 0.92; }
+        .rpl-side-panel {
+            flex: 1 1 auto;
+            width: 100%;
+            min-width: 0;
+            max-width: none;
             background: var(--card-bg);
             border-radius: 8px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.05);
             display: flex;
             flex-direction: column;
-            max-height: calc(100vh - 255px);
+            min-height: 0;
+            max-height: none;
             overflow: hidden;
-            position: sticky;
-            top: 12px;
-            align-self: flex-start;
-            z-index: 5;
         }
         .planning-layout .table-container {
             order: 1;
             flex: 1 1 auto;
             min-width: 0;
+        }
+        /* Modale se porter volontaire */
+        #volunteerModal .modal-content {
+            width: 640px;
+            max-width: 96%;
+            max-height: 90vh;
+            display: flex;
+            flex-direction: column;
+            padding: 0;
+            overflow: hidden;
+        }
+        #volunteerModal .vol-modal-header {
+            padding: 14px 18px 10px;
+            border-bottom: 1px solid var(--border-color);
+            background: #fafbfc;
+            flex-shrink: 0;
+            position: sticky;
+            top: 0;
+            z-index: 2;
+        }
+        #volunteerModal .vol-modal-header h2 {
+            margin: 0 0 10px 0;
+            font-size: 1.1rem;
+            border-bottom: none;
+            padding-bottom: 0;
+        }
+        #volunteerModal .vol-modal-actions-top {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        #volunteerModal .vol-modal-body {
+            overflow-y: auto;
+            flex: 1;
+            padding: 12px 16px 18px;
+            min-height: 120px;
+        }
+        .vol-row {
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 10px 12px;
+            margin-bottom: 8px;
+            background: #fff;
+            border-left: 4px solid #e74c3c;
+        }
+        .vol-row.vol-already {
+            border-left-color: #27ae60;
+            background: #f8fffc;
+        }
+        .vol-row-main {
+            font-size: 0.85rem;
+            margin-bottom: 8px;
+            line-height: 1.4;
+        }
+        .vol-row-main strong { color: var(--primary); }
+        .vol-row-choices {
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+            font-size: 0.82rem;
+        }
+        .vol-row-choices label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            font-weight: normal;
+        }
+        .vol-empty {
+            text-align: center;
+            color: #999;
+            font-style: italic;
+            padding: 20px 10px;
+            font-size: 0.85rem;
         }
         .rpl-side-panel-header {
             padding: 10px 12px;
@@ -484,15 +583,11 @@
                 flex-direction: row;
                 align-items: stretch;
             }
-            .rpl-side-panel {
+            .rpl-side-column {
                 flex: 0 0 200px;
                 width: 200px;
                 min-width: 180px;
                 max-width: 220px;
-                max-height: calc(100vh - 255px);
-                position: sticky;
-                top: 12px;
-                align-self: flex-start;
             }
         }
         th, td { border-right: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color); padding: 4px; text-align: center; white-space: nowrap; }
@@ -811,14 +906,19 @@
     </details>
 
     <div class="planning-layout">
-        <aside class="rpl-side-panel" id="rplSidePanel">
-            <div class="rpl-side-panel-header">
-                📋 Remplacements <span class="count" id="rplSidePanelCount">(0)</span>
-            </div>
-            <div class="rpl-side-panel-list" id="rplSidePanelList">
-                <div class="rpl-side-empty">Aucune tâche de remplacement</div>
-            </div>
-        </aside>
+        <div class="rpl-side-column">
+            <button type="button" class="rpl-volunteer-btn" id="volunteerOpenBtn" onclick="openVolunteerModal()">
+                ✋ Se porter volontaire
+            </button>
+            <aside class="rpl-side-panel" id="rplSidePanel">
+                <div class="rpl-side-panel-header">
+                    📋 Remplacements <span class="count" id="rplSidePanelCount">(0)</span>
+                </div>
+                <div class="rpl-side-panel-list" id="rplSidePanelList">
+                    <div class="rpl-side-empty">Aucune tâche de remplacement</div>
+                </div>
+            </aside>
+        </div>
 
         <div class="table-container">
             <table id="planningTable" class="collapsed-skills">
@@ -870,6 +970,25 @@
             <div class="modal-actions">
                 <button class="btn btn-secondary" onclick="cancelRplDeadlineModal()">Annuler</button>
                 <button class="btn btn-success" onclick="confirmRplDeadlineAndSave()">Valider</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modale Se porter volontaire (choix groupés) -->
+    <div class="modal" id="volunteerModal">
+        <div class="modal-content">
+            <div class="vol-modal-header">
+                <h2>✋ Se porter volontaire</h2>
+                <p style="font-size:0.8rem; color:#666; margin:0 0 10px 0;" id="volunteerModalSubtitle">
+                    Cochez vos choix puis validez. Sans choix, la fiche n’est ni renseignée ni marquée comme vue.
+                </p>
+                <div class="vol-modal-actions-top">
+                    <button type="button" class="btn btn-success" onclick="confirmVolunteerChoices()">Valider mes choix</button>
+                    <button type="button" class="btn btn-secondary" onclick="closeVolunteerModal()">Fermer</button>
+                </div>
+            </div>
+            <div class="vol-modal-body" id="volunteerModalList">
+                <div class="vol-empty">Chargement…</div>
             </div>
         </div>
     </div>
@@ -4176,6 +4295,370 @@ function openOutlookWebCompose(toEmails, subject, body) {
     window.open(url, '_blank');
 }
 
+
+        /**
+ * Collecte toutes les fiches RPL actives (équipe + agents).
+ */
+function collectAllRplItems() {
+    const items = [];
+    Object.keys(teamSchedules || {}).forEach(function(teamId) {
+        const schedule = teamSchedules[teamId] || {};
+        Object.keys(schedule).forEach(function(dateStr) {
+            const code = schedule[dateStr];
+            const def = TASKS[code];
+            if (!def || !def.isReplacement) return;
+            const team = (teams || []).find(function(t) { return t.id === teamId; });
+            items.push({
+                dateStr: dateStr,
+                isTeam: true,
+                targetId: teamId,
+                targetName: team ? team.name : teamId,
+                code: code
+            });
+        });
+    });
+    Object.keys(agentSchedules || {}).forEach(function(agentId) {
+        const schedule = agentSchedules[agentId] || {};
+        Object.keys(schedule).forEach(function(dateStr) {
+            const code = schedule[dateStr];
+            const def = TASKS[code];
+            if (!def || !def.isReplacement) return;
+            let targetName = agentId;
+            (teams || []).forEach(function(t) {
+                const a = (t.agents || []).find(function(ag) { return ag.id === agentId; });
+                if (a) targetName = a.name;
+            });
+            items.push({
+                dateStr: dateStr,
+                isTeam: false,
+                targetId: agentId,
+                targetName: targetName,
+                code: code
+            });
+        });
+    });
+    items.sort(function(a, b) {
+        if (a.dateStr < b.dateStr) return -1;
+        if (a.dateStr > b.dateStr) return 1;
+        return (a.targetName || '').localeCompare(b.targetName || '');
+    });
+    return items;
+}
+
+/** Libellé du quart à combler pour une fiche RPL */
+function getRplShiftLabel(isTeam, targetId, dateStr) {
+    const shift = (typeof getShiftToFillForRpl === 'function')
+        ? getShiftToFillForRpl(isTeam, targetId, dateStr)
+        : null;
+    if (shift && TASKS[shift]) {
+        return shift + ' (' + TASKS[shift].label + ')';
+    }
+    return 'non déterminé';
+}
+
+/** Équipes disponibles pour un remplacement (libellés courts) */
+function getAvailableTeamsLabelsForRpl(isTeam, targetId, dateStr) {
+    const shiftToFill = (typeof getShiftToFillForRpl === 'function')
+        ? getShiftToFillForRpl(isTeam, targetId, dateStr)
+        : null;
+    if (!shiftToFill) return [];
+
+    const prevContext = activeRplContext;
+    activeRplContext = {
+        isTeam: isTeam,
+        targetId: targetId,
+        targetName: '',
+        dateStr: dateStr,
+        shiftToFill: shiftToFill
+    };
+
+    const labels = [];
+    (teams || []).forEach(function(t) {
+        if (isTeam && t.id === targetId) return;
+        const hasEligible = (t.agents || []).some(function(a) {
+            if (!isTeam && a.id === targetId) return false;
+            return typeof canAgentTakeReplacement === 'function' &&
+                canAgentTakeReplacement(a.id, dateStr, shiftToFill);
+        });
+        if (hasEligible) {
+            labels.push(typeof getTeamShortLabel === 'function' ? getTeamShortLabel(t) : (t.name || t.id));
+        }
+    });
+
+    activeRplContext = prevContext;
+    return labels;
+}
+
+/** Cases mutuellement exclusives volontaire / ne pas se proposer */
+function onVolunteerChoiceChange(rowId, which) {
+    const yes = document.getElementById('vol_yes_' + rowId);
+    const no = document.getElementById('vol_no_' + rowId);
+    if (!yes || !no) return;
+    if (which === 'yes' && yes.checked) no.checked = false;
+    if (which === 'no' && no.checked) yes.checked = false;
+}
+
+function openVolunteerModal() {
+    if (!currentUser || !currentUser.email) {
+        alert('Connexion requise pour se porter volontaire.');
+        return;
+    }
+    const myIds = (typeof getMyAgentIds === 'function') ? getMyAgentIds() : [];
+    if (!myIds.length) {
+        alert(
+            'Aucun agent n\'est lié à votre adresse e-mail.\n' +
+            'Demandez à un administrateur de renseigner la liaison Agents ↔ e-mail dans les paramètres.'
+        );
+        return;
+    }
+
+    const listEl = document.getElementById('volunteerModalList');
+    const subEl = document.getElementById('volunteerModalSubtitle');
+    if (!listEl) return;
+
+    // Noms des agents liés
+    const myAgents = [];
+    myIds.forEach(function(id) {
+        let name = id;
+        (teams || []).forEach(function(t) {
+            const a = (t.agents || []).find(function(ag) { return ag.id === id; });
+            if (a) name = a.name;
+        });
+        myAgents.push({ id: id, name: name });
+    });
+    if (subEl) {
+        subEl.innerHTML =
+            'Agents liés : <strong>' + myAgents.map(function(a) { return a.name; }).join(', ') + '</strong>. ' +
+            'Cochez vos choix puis validez. Sans choix, la fiche n’est ni renseignée ni marquée comme vue.';
+    }
+
+    const rplItems = collectAllRplItems();
+    const rows = [];
+
+    rplItems.forEach(function(item) {
+        myAgents.forEach(function(agent) {
+            // Ne pas se proposer sur sa propre fiche
+            if (!item.isTeam && item.targetId === agent.id) return;
+
+            const sheetKey = item.targetId + '_' + item.dateStr;
+            const sheet = (replacementSheets && replacementSheets[sheetKey])
+                ? ensureReplacementSheet(sheetKey)
+                : null;
+            const volunteers = sheet ? toArraySafe(sheet.volunteers) : [];
+            const alreadyVolunteer = volunteers.indexOf(agent.id) !== -1;
+
+            // Éligible ?
+            let eligible = false;
+            const requireRE = !item.isTeam &&
+                typeof agentHasRECompetence === 'function' &&
+                agentHasRECompetence(item.targetId);
+            if (requireRE && !agentHasRECompetence(agent.id)) {
+                eligible = false;
+            } else {
+                const shiftToFill = (typeof getShiftToFillForRpl === 'function')
+                    ? getShiftToFillForRpl(item.isTeam, item.targetId, item.dateStr)
+                    : null;
+                if (shiftToFill && typeof canAgentTakeReplacement === 'function') {
+                    const prev = activeRplContext;
+                    activeRplContext = {
+                        isTeam: item.isTeam,
+                        targetId: item.targetId,
+                        targetName: item.targetName,
+                        dateStr: item.dateStr,
+                        shiftToFill: shiftToFill
+                    };
+                    eligible = canAgentTakeReplacement(agent.id, item.dateStr, shiftToFill);
+                    activeRplContext = prev;
+                }
+            }
+
+            // Afficher si éligible OU déjà volontaire
+            if (!eligible && !alreadyVolunteer) return;
+
+            const shiftLabel = getRplShiftLabel(item.isTeam, item.targetId, item.dateStr);
+            // Équipe qui a besoin d'un remplaçant (équipe cible ou équipe de l'agent cible)
+            let needingTeamName = item.targetName;
+            if (item.isTeam) {
+                needingTeamName = item.targetName;
+            } else {
+                (teams || []).forEach(function(t) {
+                    if ((t.agents || []).some(function(a) { return a.id === item.targetId; })) {
+                        needingTeamName = t.name || t.id;
+                    }
+                });
+            }
+
+            rows.push({
+                agentId: agent.id,
+                agentName: agent.name,
+                isTeam: item.isTeam,
+                targetId: item.targetId,
+                targetName: item.targetName,
+                dateStr: item.dateStr,
+                shiftLabel: shiftLabel,
+                needingTeamName: needingTeamName,
+                alreadyVolunteer: alreadyVolunteer,
+                sheetKey: sheetKey
+            });
+        });
+    });
+
+    if (rows.length === 0) {
+        listEl.innerHTML = '<div class="vol-empty">Aucune fiche de remplacement pour laquelle vous êtes disponible ou déjà volontaire.</div>';
+    } else {
+        listEl.innerHTML = '';
+        rows.forEach(function(row, idx) {
+            const rowId = String(idx);
+            const div = document.createElement('div');
+            div.className = 'vol-row' + (row.alreadyVolunteer ? ' vol-already' : '');
+            div.setAttribute('data-agent-id', row.agentId);
+            div.setAttribute('data-sheet-key', row.sheetKey);
+            div.setAttribute('data-is-team', row.isTeam ? '1' : '0');
+            div.setAttribute('data-target-id', row.targetId);
+            div.setAttribute('data-date', row.dateStr);
+
+            let multiAgent = myAgents.length > 1
+                ? '<span style="color:#7f8c8d;"> (' + row.agentName + ')</span>'
+                : '';
+
+            div.innerHTML =
+                '<div class="vol-row-main">' +
+                    '<strong>' + formatDateStrDisplay(row.dateStr) + '</strong> — ' +
+                    'Quart : <strong>' + row.shiftLabel + '</strong><br>' +
+                    'Équipe concernée : <strong>' + (row.needingTeamName || '—') + '</strong>' +
+                    (row.isTeam ? '' : ' — Agent : ' + row.targetName) + multiAgent +
+                    (row.alreadyVolunteer ? ' <span class="rpl-seen-badge">Déjà volontaire</span>' : '') +
+                '</div>' +
+                '<div class="vol-row-choices">' +
+                    '<label><input type="checkbox" id="vol_yes_' + rowId + '" ' +
+                        (row.alreadyVolunteer ? 'checked ' : '') +
+                        'onchange="onVolunteerChoiceChange(\'' + rowId + '\', \'yes\')"> Se proposer</label>' +
+                    '<label><input type="checkbox" id="vol_no_' + rowId + '" ' +
+                        'onchange="onVolunteerChoiceChange(\'' + rowId + '\', \'no\')"> Ne pas se proposer</label>' +
+                '</div>';
+            listEl.appendChild(div);
+        });
+    }
+
+    document.getElementById('volunteerModal').style.display = 'flex';
+}
+
+function closeVolunteerModal() {
+    const modal = document.getElementById('volunteerModal');
+    if (modal) modal.style.display = 'none';
+}
+
+/**
+ * Applique les choix de la modale « Se porter volontaire ».
+ * - Se proposer → inscrit comme volontaire + vu
+ * - Ne pas se proposer → marque vu (retire du volontariat si présent)
+ * - Aucun choix → aucune modification
+ */
+function confirmVolunteerChoices() {
+    const listEl = document.getElementById('volunteerModalList');
+    if (!listEl) return;
+
+    const rowEls = listEl.querySelectorAll('.vol-row');
+    if (!rowEls.length) {
+        closeVolunteerModal();
+        return;
+    }
+
+    let changed = 0;
+    let volunteerCount = 0;
+    let declineCount = 0;
+
+    rowEls.forEach(function(div, idx) {
+        const rowId = String(idx);
+        const yes = document.getElementById('vol_yes_' + rowId);
+        const no = document.getElementById('vol_no_' + rowId);
+        if (!yes || !no) return;
+        if (!yes.checked && !no.checked) return; // aucun choix → ignore
+
+        const agentId = div.getAttribute('data-agent-id');
+        const sheetKey = div.getAttribute('data-sheet-key');
+        if (!agentId || !sheetKey) return;
+
+        const sheet = ensureReplacementSheet(sheetKey);
+        let volunteers = toArraySafe(sheet.volunteers);
+        const selected = toArraySafe(sheet.selectedVolunteers);
+        let localChanged = false;
+
+        if (yes.checked) {
+            if (volunteers.indexOf(agentId) === -1) {
+                volunteers.push(agentId);
+                localChanged = true;
+            }
+            volunteerCount++;
+            // Marquer vu
+            markAgentSeenOnSheet(sheetKey, agentId);
+        } else if (no.checked) {
+            const vIdx = volunteers.indexOf(agentId);
+            if (vIdx !== -1) {
+                volunteers.splice(vIdx, 1);
+                localChanged = true;
+            }
+            const sIdx = selected.indexOf(agentId);
+            if (sIdx !== -1) {
+                selected.splice(sIdx, 1);
+                localChanged = true;
+            }
+            declineCount++;
+            markAgentSeenOnSheet(sheetKey, agentId);
+        }
+
+        sheet.volunteers = volunteers;
+        sheet.selectedVolunteers = selected;
+        replacementSheets[sheetKey] = sheet;
+
+        if (localChanged || yes.checked || no.checked) {
+            changed++;
+            if (planningRef) {
+                planningRef.child('replacementSheets/' + sheetKey).update({
+                    volunteers: sheet.volunteers,
+                    selectedVolunteers: sheet.selectedVolunteers,
+                    seenByAgents: sheet.seenByAgents,
+                    seenByEmails: sheet.seenByEmails,
+                    createdAt: sheet.createdAt || '',
+                    createdBy: sheet.createdBy || '',
+                    deadlineDate: sheet.deadlineDate || ''
+                }).catch(function(err) {
+                    console.error('Erreur sauvegarde choix volontaire:', err);
+                });
+            }
+        }
+    });
+
+    // Marquer aussi l'e-mail connecté comme ayant vu (choix effectués)
+    if (currentUser && currentUser.email && changed > 0) {
+        rowEls.forEach(function(div, idx) {
+            const rowId = String(idx);
+            const yes = document.getElementById('vol_yes_' + rowId);
+            const no = document.getElementById('vol_no_' + rowId);
+            if (!yes || !no || (!yes.checked && !no.checked)) return;
+            const sheetKey = div.getAttribute('data-sheet-key');
+            if (sheetKey) markSheetAsSeen(sheetKey);
+        });
+    }
+
+    if (changed > 0) {
+        if (isReadOnly) {
+            saveReplacementSheetsToFirebase();
+        } else {
+            saveToFirebase();
+        }
+        if (typeof updateRplSidePanel === 'function') updateRplSidePanel();
+        alert(
+            '✅ Choix enregistrés.\n' +
+            (volunteerCount ? ('• Propositions : ' + volunteerCount + '\n') : '') +
+            (declineCount ? ('• Ne pas se proposer (vu) : ' + declineCount) : '')
+        );
+    } else {
+        alert('Aucun choix à enregistrer.');
+    }
+
+    closeVolunteerModal();
+}
 
         // sert simplement à fermer la fenêtre de gestion des remplacements (RPL) et à nettoyer le contexte actif.
 function closeReplacementModal() {
