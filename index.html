@@ -5389,27 +5389,32 @@ function purgeReplacementArchives() {
                 if (!sk) return;
                 any = true;
 
-                // Pré-cocher si : agent ciblé possède la compétence ET il en est le seul détenteur
+                // Pré-cocher si l\'agent absent possède cette compétence suivie
+                // → elle devient manquante du fait de son absence
                 let autoChecked = false;
+                let soleHolder = false;
                 if (targetAgentId && targetSkills.indexOf(String(skillId)) !== -1) {
+                    autoChecked = true;
+                    autoCount++;
                     const info = countAgentsWithSkill(skillId);
-                    if (info.count === 1 && info.soleAgentId === targetAgentId) {
-                        autoChecked = true;
-                        autoCount++;
-                    }
+                    soleHolder = (info.count === 1 && info.soleAgentId === targetAgentId);
                 }
 
                 const label = document.createElement('label');
                 label.style.cssText = 'display:inline-flex; align-items:center; gap:6px; font-size:0.82rem; cursor:pointer; padding:4px 8px; background:#fff; border:1px solid ' +
                     (autoChecked ? '#27ae60' : '#b8c0c8') + '; border-radius:6px;' +
                     (autoChecked ? ' box-shadow:0 0 0 1px rgba(39,174,96,0.25);' : '');
+                let extraBadge = '';
+                if (autoChecked && soleHolder) {
+                    extraBadge = ' <span style="font-size:0.68rem; color:#1e8449; font-weight:bold;" title="Seul détenteur de cette compétence">★ seul détenteur</span>';
+                } else if (autoChecked) {
+                    extraBadge = ' <span style="font-size:0.68rem; color:#2980b9; font-weight:bold;" title="Compétence détenue par l\'agent absent">→ manquante</span>';
+                }
                 label.innerHTML =
                     '<input type="checkbox" value="' + sk.id + '"' + (autoChecked ? ' checked' : '') + '>' +
                     '<span class="badge" style="background:' + (sk.color || '#3498db') + '; color:#fff; padding:2px 6px; border-radius:3px;">' + sk.id + '</span>' +
                     '<span>' + (sk.name || sk.id) + '</span>' +
-                    (autoChecked
-                        ? ' <span style="font-size:0.68rem; color:#1e8449; font-weight:bold;" title="Seul détenteur — compétence manquante en cas d\'absence">★ seul détenteur</span>'
-                        : '');
+                    extraBadge;
                 container.appendChild(label);
             });
 
@@ -5417,7 +5422,7 @@ function purgeReplacementArchives() {
             if (autoCount > 0) {
                 const hint = document.createElement('p');
                 hint.style.cssText = 'width:100%; margin:8px 0 0 0; font-size:0.72rem; color:#1e8449;';
-                hint.textContent = '★ ' + autoCount + ' compétence(s) pré-cochée(s) : l\'agent est le seul détenteur (compétence manquante en cas d\'absence).';
+                hint.textContent = '★ ' + autoCount + ' compétence(s) pré-cochée(s) : détenue(s) par l\'agent absent (manquante(s) du fait de son absence).';
                 container.appendChild(hint);
             }
 
