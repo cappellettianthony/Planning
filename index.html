@@ -5387,6 +5387,99 @@ function purgeReplacementArchives() {
                 ? targetAgent.skills.map(String)
                 : [];
 
+            // Équipe de l\'agent absent + date du remplacement
+            let targetTeam = null;
+            const rplDateStr = (ctx && ctx.dateStr) ? ctx.dateStr : null;
+            if (targetAgentId) {
+                (teams || []).forEach(function(t) {
+                    if ((t.agents || []).some(function(a) { return a && a.id === targetAgentId; })) {
+                        targetTeam = t;
+                    }
+                });
+            }
+
+            /**
+             * Indique si un agent possède une compétence.
+             */
+            function agentHasSkill(agent, skillId) {
+                if (!agent) return false;
+                const skills = Array.isArray(agent.skills) ? agent.skills : [];
+                return skills.some(function(s) { return String(s) === String(skillId); });
+            }
+
+            /**
+             * Agents (hors agent absent) qui couvrent déjà l\'équipe ce jour-là
+             * et détiennent la compétence :
+             *  1) autres membres de l\'équipe présents (pas en repos) ce jour
+             *  2) remplaçants : agents hors équipe avec planning individuel travaillé ce jour
+             *     (affectation RPL / mission sur ce quart)
+             */
+            function otherSkillHoldersPresentForTeam(team, absentId, dateStr, skillId) {
+                if (!team || !dateStr) return [];
+                const holders = [];
+                const memberIds = {};
+                (team.agents || []).forEach(function(a) {
+                    if (a && a.id) memberIds[a.id] = true;
+                });
+
+                // 1) Membres de l\'équipe présents ce jour (hors absent)
+                (team.agents || []).forEach(function(a) {
+                    if (!a || !a.id || a.id === absentId) return;
+                    if (!agentHasSkill(a, skillId)) return;
+                    const code = (typeof getEffectiveAgentTask === 'function')
+                        ? getEffectiveAgentTask(a, team.id, dateStr)
+                        : null;
+                    const def = (code && TASKS[code]) ? TASKS[code] : null;
+                    if (def && !def.isRest) {
+                        holders.push(a.id);
+                    }
+                });
+
+                // 2) Remplaçants hors équipe déjà affectés ce jour
+                //    = planning individuel en quart de travail + détient la compétence
+                (teams || []).forEach(function(t) {
+                    (t.agents || []).forEach(function(a) {
+                        if (!a || !a.id || a.id === absentId) return;
+                        if (memberIds[a.id]) return; // déjà traité comme membre
+                        if (!agentHasSkill(a, skillId)) return;
+                        const personal = (agentSchedules && agentSchedules[a.id])
+                            ? agentSchedules[a.id][dateStr]
+                            : null;
+                        if (personal === null || personal === undefined || personal === '') return;
+                        const def = TASKS[personal];
+                        if (!def || def.isRest) return;
+                        // Agent d\'une autre équipe déjà en travail ce jour = remplaçant présent
+                        holders.push(a.id);
+                    });
+                });
+
+                return holders;
+            }
+
+            /**
+             * L\'agent absent est-il le seul détenteur « utile » de la compétence
+             * pour l\'équipe ce jour (composition + remplaçants déjà présents) ?
+             */
+            function isSoleUsefulHolderInTeam(team, absentId, dateStr, skillId) {
+                if (!team || !absentId) return false;
+                const absentAgent = findAgentById(absentId);
+                if (!agentHasSkill(absentAgent, skillId)) return false;
+
+                // Autres membres de l\'équipe (composition) qui ont la compétence
+                let otherMembersWithSkill = 0;
+                (team.agents || []).forEach(function(a) {
+                    if (!a || !a.id || a.id === absentId) return;
+                    if (agentHasSkill(a, skillId)) otherMembersWithSkill++;
+                });
+                if (otherMembersWithSkill > 0) return false;
+
+                // Remplaçants / présents qui couvrent déjà la compétence ce jour
+                const presentHolders = otherSkillHoldersPresentForTeam(team, absentId, dateStr, skillId);
+                if (presentHolders.length > 0) return false;
+
+                return true;
+            }
+
             let any = false;
             let autoCount = 0;
             tracked.forEach(function(skillId) {
@@ -5394,27 +5487,23 @@ function purgeReplacementArchives() {
                 if (!sk) return;
                 any = true;
 
-                // Pré-cocher si l\'agent absent possède cette compétence suivie
-                // → elle devient manquante du fait de son absence
+                // Pré-cocher si seul détenteur dans l\'équipe (composition)
+                // et aucun remplaçant déjà présent ce jour avec cette compétence
                 let autoChecked = false;
-                let soleHolder = false;
-                if (targetAgentId && targetSkills.indexOf(String(skillId)) !== -1) {
-                    autoChecked = true;
-                    autoCount++;
-                    const info = countAgentsWithSkill(skillId);
-                    soleHolder = (info.count === 1 && info.soleAgentId === targetAgentId);
+                if (targetAgentId && targetTeam && rplDateStr) {
+                    if (isSoleUsefulHolderInTeam(targetTeam, targetAgentId, rplDateStr, skillId)) {
+                        autoChecked = true;
+                        autoCount++;
+                    }
                 }
 
                 const label = document.createElement('label');
                 label.style.cssText = 'display:inline-flex; align-items:center; gap:6px; font-size:0.82rem; cursor:pointer; padding:4px 8px; background:#fff; border:1px solid ' +
                     (autoChecked ? '#27ae60' : '#b8c0c8') + '; border-radius:6px;' +
                     (autoChecked ? ' box-shadow:0 0 0 1px rgba(39,174,96,0.25);' : '');
-                let extraBadge = '';
-                if (autoChecked && soleHolder) {
-                    extraBadge = ' <span style="font-size:0.68rem; color:#1e8449; font-weight:bold;" title="Seul détenteur de cette compétence">★ seul détenteur</span>';
-                } else if (autoChecked) {
-                    extraBadge = ' <span style="font-size:0.68rem; color:#2980b9; font-weight:bold;" title="Compétence détenue par l\'agent absent">→ manquante</span>';
-                }
+                const extraBadge = autoChecked
+                    ? ' <span style="font-size:0.68rem; color:#1e8449; font-weight:bold;" title="Seul détenteur dans l\'équipe (aucun remplaçant présent avec cette compétence)">★ seul dans l\'équipe</span>'
+                    : '';
                 label.innerHTML =
                     '<input type="checkbox" value="' + sk.id + '"' + (autoChecked ? ' checked' : '') + '>' +
                     '<span class="badge" style="background:' + (sk.color || '#3498db') + '; color:#fff; padding:2px 6px; border-radius:3px;">' + sk.id + '</span>' +
@@ -5423,11 +5512,10 @@ function purgeReplacementArchives() {
                 container.appendChild(label);
             });
 
-            // Rappel sous les cases si au moins une a été pré-cochée
             if (autoCount > 0) {
                 const hint = document.createElement('p');
                 hint.style.cssText = 'width:100%; margin:8px 0 0 0; font-size:0.72rem; color:#1e8449;';
-                hint.textContent = '★ ' + autoCount + ' compétence(s) pré-cochée(s) : détenue(s) par l\'agent absent (manquante(s) du fait de son absence).';
+                hint.textContent = '★ ' + autoCount + ' compétence(s) pré-cochée(s) : seul détenteur dans l\'équipe, sans remplaçant déjà présent avec cette compétence.';
                 container.appendChild(hint);
             }
 
