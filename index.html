@@ -5317,28 +5317,46 @@ function purgeReplacementArchives() {
 
         /**
          * Compte combien d'agents (toutes équipes) possèdent une compétence donnée.
-         * @returns {{ count: number, soleAgentId: string|null }}
+         * @returns {{ count: number, soleAgentId: string|null, holders: string[] }}
          */
         function countAgentsWithSkill(skillId) {
             let count = 0;
             let soleAgentId = null;
+            const holders = [];
             (teams || []).forEach(function(t) {
                 (t.agents || []).forEach(function(a) {
+                    if (!a || !a.id) return;
                     const skills = Array.isArray(a.skills) ? a.skills : [];
-                    if (skills.indexOf(skillId) !== -1) {
+                    // Comparaison souple (string)
+                    const has = skills.some(function(s) { return String(s) === String(skillId); });
+                    if (has) {
                         count++;
                         soleAgentId = a.id;
+                        holders.push(a.id);
                     }
                 });
             });
             if (count !== 1) soleAgentId = null;
-            return { count: count, soleAgentId: soleAgentId };
+            return { count: count, soleAgentId: soleAgentId, holders: holders };
+        }
+
+        /** Retourne l'objet agent à partir de son id */
+        function findAgentById(agentId) {
+            if (!agentId) return null;
+            let found = null;
+            (teams || []).forEach(function(t) {
+                (t.agents || []).forEach(function(a) {
+                    if (a && a.id === agentId) found = a;
+                });
+            });
+            return found;
         }
 
         /**
          * Remplit les cases « compétences recommandées » dans la modale de deadline RPL
-         * à partir de settings.rplTrackableSkillIds.
-         * Si la cible est un agent seul détenteur d'une compétence suivie, la case est pré-cochée.
+         * à partir de settings.rplTrackableSkillIds (paramétrage 3.2).
+         * Si la cible est un agent et qu'il est le SEUL à posséder une de ces compétences,
+         * la case est pré-cochée (compétence manquante suite à son absence).
          */
         function populateRplRecommendedSkillsCheckboxes() {
             const box = document.getElementById('rplRecommendedSkillsBox');
@@ -5353,24 +5371,31 @@ function purgeReplacementArchives() {
                 return;
             }
 
-            // Cible agent (pas équipe) : pré-cocher les compétences dont il est le seul détenteur
+            // Cible agent (pas équipe)
             let targetAgentId = null;
-            const ctx = pendingRplTaskAssignment || activeTaskCellSelection;
+            const ctx = pendingRplTaskAssignment || activeTaskCellSelection || null;
             if (ctx && !ctx.isTeam && ctx.targetId) {
                 targetAgentId = ctx.targetId;
             }
+            const targetAgent = targetAgentId ? findAgentById(targetAgentId) : null;
+            const targetSkills = (targetAgent && Array.isArray(targetAgent.skills))
+                ? targetAgent.skills.map(String)
+                : [];
 
             let any = false;
+            let autoCount = 0;
             tracked.forEach(function(skillId) {
-                const sk = (skillDefinitions || []).find(function(s) { return s.id === skillId; });
+                const sk = (skillDefinitions || []).find(function(s) { return String(s.id) === String(skillId); });
                 if (!sk) return;
                 any = true;
 
+                // Pré-cocher si : agent ciblé possède la compétence ET il en est le seul détenteur
                 let autoChecked = false;
-                if (targetAgentId) {
+                if (targetAgentId && targetSkills.indexOf(String(skillId)) !== -1) {
                     const info = countAgentsWithSkill(skillId);
                     if (info.count === 1 && info.soleAgentId === targetAgentId) {
                         autoChecked = true;
+                        autoCount++;
                     }
                 }
 
@@ -5383,10 +5408,19 @@ function purgeReplacementArchives() {
                     '<span class="badge" style="background:' + (sk.color || '#3498db') + '; color:#fff; padding:2px 6px; border-radius:3px;">' + sk.id + '</span>' +
                     '<span>' + (sk.name || sk.id) + '</span>' +
                     (autoChecked
-                        ? ' <span style="font-size:0.68rem; color:#1e8449; font-weight:bold;" title="Seul détenteur de cette compétence">★ seul détenteur</span>'
+                        ? ' <span style="font-size:0.68rem; color:#1e8449; font-weight:bold;" title="Seul détenteur — compétence manquante en cas d'absence">★ seul détenteur</span>'
                         : '');
                 container.appendChild(label);
             });
+
+            // Rappel sous les cases si au moins une a été pré-cochée
+            if (autoCount > 0) {
+                const hint = document.createElement('p');
+                hint.style.cssText = 'width:100%; margin:8px 0 0 0; font-size:0.72rem; color:#1e8449;';
+                hint.textContent = '★ ' + autoCount + ' compétence(s) pré-cochée(s) : l'agent est le seul détenteur (compétence manquante en cas d'absence).';
+                container.appendChild(hint);
+            }
+
             box.style.display = any ? 'block' : 'none';
         }
 
