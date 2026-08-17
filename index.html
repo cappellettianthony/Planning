@@ -4846,7 +4846,7 @@ function openVolunteerModal() {
     if (subEl) {
         subEl.innerHTML =
             'Agents liés : <strong>' + myAgents.map(function(a) { return a.name; }).join(', ') + '</strong>. ' +
-            'Cochez vos choix puis validez. Sans choix, la fiche n’est ni renseignée ni marquée comme vue.';
+            'Fiches où vous êtes volontaire, ou nouvelles fiches éligibles non encore vues. Les fiches vues sans candidature sont masquées.';
     }
 
     const rplItems = collectAllRplItems();
@@ -4894,8 +4894,14 @@ function openVolunteerModal() {
                 }
             }
 
-            // Afficher si éligible OU déjà volontaire OU déjà vu
-            if (!eligible && !alreadyVolunteer && !alreadySeen) return;
+            // Afficher :
+            //  - fiches où l'agent s'est déjà porté volontaire
+            //  - fiches pas encore vues où il est éligible (peut encore se proposer)
+            // Masquer :
+            //  - fiches déjà vues sans être dans la liste des volontaires
+            //  - fiches non éligibles (sauf s'il est déjà volontaire)
+            if (alreadySeen && !alreadyVolunteer) return;
+            if (!alreadyVolunteer && !eligible) return;
 
             const shiftLabel = getRplShiftLabel(item.isTeam, item.targetId, item.dateStr);
             // Équipe qui a besoin d'un remplaçant (équipe cible ou équipe de l'agent cible)
@@ -4927,7 +4933,7 @@ function openVolunteerModal() {
     });
 
     if (rows.length === 0) {
-        listEl.innerHTML = '<div class="vol-empty">Aucune fiche de remplacement pour laquelle vous êtes disponible ou déjà volontaire.</div>';
+        listEl.innerHTML = '<div class="vol-empty">Aucune fiche à afficher (volontariat en cours ou nouvelles opportunités éligibles).</div>';
     } else {
         listEl.innerHTML = '';
         rows.forEach(function(row, idx) {
