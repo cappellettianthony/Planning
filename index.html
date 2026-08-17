@@ -174,6 +174,22 @@
             display: block;
             margin-top: 1px;
         }
+        /* Vacances scolaires zone A (bleu) — priorité inférieure aux fériés */
+        #planningTable th .th-date.date-vacances {
+            color: #5dade2 !important;
+            text-shadow: 0 0 1px rgba(0,0,0,0.35);
+        }
+        /* Jours fériés (rouge) — prioritaire sur vacances */
+        #planningTable th .th-date.date-ferie {
+            color: #ff5252 !important;
+            text-shadow: 0 0 1px rgba(0,0,0,0.4);
+        }
+        #planningTable th .th-dayname.date-vacances {
+            color: #85c1e9 !important;
+        }
+        #planningTable th .th-dayname.date-ferie {
+            color: #ff8a80 !important;
+        }
         /* Séparateur visuel samedi → dimanche */
         #planningTable th.sunday-col,
         #planningTable td.sunday-col {
@@ -877,6 +893,7 @@
             <button class="btn btn-secondary" onclick="openArchiveModal()" id="archiveBtn">📁 Archives Alertes</button>
             <button class="btn btn-secondary" onclick="openModificationLogModal()" id="modLogBtn" style="display:none;">📝 Suivi des modifications</button>
             <button class="btn" onclick="openSettings()" id="settingsBtn">⚙️ Tâches & Minimas</button>
+            <button class="btn btn-purple" onclick="openSchoolHolidaysModal()" id="schoolHolidaysBtn">📅 Vacances scolaires</button>
             <button class="btn btn-logout" onclick="logout()" id="logoutBtn" style="display: none;">Déconnexion</button>
         </div>
     </header>
@@ -960,7 +977,7 @@
 
     <!-- Modale Deadline de traitement RPL -->
     <div class="modal" id="rplDeadlineModal">
-        <div class="modal-content" style="width: 420px;">
+        <div class="modal-content" style="width: 480px;">
             <h2>Date limite de traitement de la fiche RPL</h2>
             <p style="font-size: 0.85rem; margin-bottom: 12px; color: var(--primary);" id="rplDeadlineModalInfo"></p>
             <div class="form-group">
@@ -968,6 +985,11 @@
                 <input type="date" id="rplDeadlineDateInput">
             </div>
             <p style="font-size: 0.75rem; color: #666;">Par défaut : nombre de jours paramétré avant la date du remplacement. Le panneau latéral passera en jaune la veille de cette date.</p>
+            <div id="rplRecommendedSkillsBox" style="display:none; margin-top: 12px; padding: 12px; border: 2px solid #3498db; border-radius: 8px; background: #eef7fc;">
+                <label style="font-weight: bold; font-size: 0.85rem; color: #2980b9; display: block; margin-bottom: 8px;">Compétences recommandées pour ce remplacement :</label>
+                <p style="font-size: 0.72rem; color: #666; margin-bottom: 8px;">Cochez les compétences souhaitées. Les agents volontaires qui ne les possèdent pas seront annotés (sans bloquer la candidature).</p>
+                <div id="rplRecommendedSkillsCheckboxes" style="display: flex; flex-wrap: wrap; gap: 10px;"></div>
+            </div>
             <div class="modal-actions">
                 <button class="btn btn-secondary" onclick="cancelRplDeadlineModal()">Annuler</button>
                 <button class="btn btn-success" onclick="confirmRplDeadlineAndSave()">Valider</button>
@@ -1271,6 +1293,45 @@
         </div>
     </div>
 
+    <!-- Modale Vacances scolaires Zone A -->
+    <div class="modal" id="schoolHolidaysModal">
+        <div class="modal-content" style="width: 720px; max-width: 96%;">
+            <h2>📅 Vacances scolaires — Zone A</h2>
+            <p style="font-size:0.8rem; color:#666; margin-bottom:12px;">
+                Saisissez les dates de chaque période (inclusives). Ces dates colorent en <strong style="color:#5dade2;">bleu</strong> les en-têtes du planning.
+                Les jours fériés restent en <strong style="color:#e74c3c;">rouge</strong> et sont prioritaires.
+            </p>
+            <div class="form-group" style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px;">
+                <label for="schoolYearSelect" style="font-weight:bold; margin:0;">Année scolaire :</label>
+                <select id="schoolYearSelect" onchange="onSchoolYearChange()" style="padding:6px 10px; border-radius:5px; border:1px solid #ccc; font-weight:bold;"></select>
+                <button type="button" class="btn btn-secondary" style="font-size:0.8rem;" onclick="addSchoolYearOption()">+ Année</button>
+            </div>
+            <div style="overflow-x:auto;">
+                <table class="archive-table" style="margin-top:0;">
+                    <thead>
+                        <tr>
+                            <th style="width:28%;">Période</th>
+                            <th style="width:30%;">Date de début</th>
+                            <th style="width:30%;">Date de fin (incluse)</th>
+                            <th style="width:12%;">Effacer</th>
+                        </tr>
+                    </thead>
+                    <tbody id="schoolHolidaysTableBody"></tbody>
+                </table>
+            </div>
+            <p style="font-size:0.72rem; color:#888; margin-top:10px;">
+                Convention : du premier jour de vacances au dernier jour de congé (veille de la reprise des cours).
+            </p>
+            <div class="modal-actions" style="justify-content:space-between; flex-wrap:wrap; gap:8px;">
+                <button type="button" class="btn btn-danger" onclick="clearCurrentSchoolYearHolidays()">Vider cette année</button>
+                <div style="display:flex; gap:8px;">
+                    <button type="button" class="btn btn-secondary" onclick="closeSchoolHolidaysModal()">Annuler</button>
+                    <button type="button" class="btn btn-success" onclick="saveSchoolHolidaysModal()" id="saveSchoolHolidaysBtn">Enregistrer</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Modale Paramètres -->
     <div class="modal" id="settingsModal">
         <div class="modal-content">
@@ -1307,6 +1368,13 @@
                 <label for="rplDeadlineDefaultDays">Jours avant la date RPL (défaut) :</label>
                 <input type="number" id="rplDeadlineDefaultDays" min="1" max="90" value="15" style="width:100px;">
             </div>
+
+            <h3>3.2 Compétences recommandées pour les fiches de remplacement</h3>
+            <p style="font-size: 0.75rem; color: #666; margin-bottom: 8px;">
+                Cochez les compétences qui pourront être proposées comme « recommandées » lors de la création d'une fiche RPL.
+                Seules les compétences cochées ici apparaîtront comme cases à cocher dans la fenêtre de date limite.
+            </p>
+            <div id="rplTrackableSkillsConfigContainer" style="display:flex; flex-wrap:wrap; gap:10px; padding:10px; border:1px solid #e0e0e0; border-radius:6px; background:#fafbfc; margin-bottom:15px;"></div>
 
             <h3>4. Liaison Agents ↔ E-mail & Rôles</h3>
             <p style="font-size: 0.75rem; color: #666; margin-bottom: 8px;">
@@ -1482,7 +1550,7 @@
         // Ordre explicite des tâches (Firebase ne préserve pas l'ordre des clés d'objet)
         let taskOrder = Object.keys(TASKS);
 
-        let settings = { thresholds: { M: { orange: 5, green: 7 }, A: { orange: 5, green: 7 }, N: { orange: 3, green: 5 } }, rplDeadlineDefaultDays: 15 };
+        let settings = { thresholds: { M: { orange: 5, green: 7 }, A: { orange: 5, green: 7 }, N: { orange: 3, green: 5 } }, rplDeadlineDefaultDays: 15, rplTrackableSkillIds: [] };
 
         // Liaison agentId → adresse e-mail (paramétrage admin)
         let agentEmailLinks = {};
@@ -1563,7 +1631,7 @@ function ensureReplacementSheet(sheetKey) {
         replacementSheets = {};
     }
     if (!sheetKey) {
-        return { volunteers: [], selectedVolunteers: [], createdAt: '', createdBy: '', seenByEmails: [], seenByAgents: {}, deadlineDate: '' };
+        return { volunteers: [], selectedVolunteers: [], createdAt: '', createdBy: '', seenByEmails: [], seenByAgents: {}, deadlineDate: '', recommendedSkills: [] };
     }
     if (!replacementSheets[sheetKey] || typeof replacementSheets[sheetKey] !== 'object') {
         replacementSheets[sheetKey] = {
@@ -1573,7 +1641,8 @@ function ensureReplacementSheet(sheetKey) {
             createdBy: currentUser ? currentUser.email : 'inconnu',
             seenByEmails: [],
             seenByAgents: {},
-            deadlineDate: ''
+            deadlineDate: '',
+            recommendedSkills: []
         };
     }
     const sheet = replacementSheets[sheetKey];
@@ -1585,6 +1654,7 @@ function ensureReplacementSheet(sheetKey) {
     if (sheet.deadlineDate === undefined || sheet.deadlineDate === null) {
         sheet.deadlineDate = '';
     }
+    sheet.recommendedSkills = toArraySafe(sheet.recommendedSkills);
     // Toujours des tableaux / objets propres (persistance Firebase)
     sheet.seenByEmails = normalizeSeenByEmails(sheet.seenByEmails);
     sheet.seenByAgents = normalizeSeenByAgents(sheet.seenByAgents);
@@ -1753,7 +1823,8 @@ function getAppState() {
         agentRoles: agentRoles,
         replacementSheets: replacementSheets,
         replacementArchives: replacementArchives,
-        modificationLog: modificationLog
+        modificationLog: modificationLog,
+        schoolHolidaysZoneA: schoolHolidaysZoneA
     };
 }
 
@@ -1798,6 +1869,9 @@ function loadAppState(data) {
     if (settings && (settings.rplDeadlineDefaultDays === undefined || settings.rplDeadlineDefaultDays === null)) {
         settings.rplDeadlineDefaultDays = 15;
     }
+    if (settings && !Array.isArray(settings.rplTrackableSkillIds)) {
+        settings.rplTrackableSkillIds = [];
+    }
     agentEmailLinks = data.agentEmailLinks || agentEmailLinks || {};
     agentRoles = data.agentRoles || agentRoles || {};
 
@@ -1812,6 +1886,11 @@ function loadAppState(data) {
     }
     replacementArchives = Array.isArray(data.replacementArchives) ? data.replacementArchives : [];
     modificationLog = Array.isArray(data.modificationLog) ? data.modificationLog : [];
+
+    if (data.schoolHolidaysZoneA && typeof data.schoolHolidaysZoneA === 'object') {
+        schoolHolidaysZoneA = data.schoolHolidaysZoneA;
+        if (typeof clearCalendarDayTypeCache === 'function') clearCalendarDayTypeCache();
+    }
 
     // Recalcul des droits après chargement des rôles / e-mails
     if (typeof refreshUserRoles === 'function') refreshUserRoles();
@@ -1970,6 +2049,13 @@ function loadAppState(data) {
                 settingsBtn.style.opacity = !isAdmin ? '0.5' : '1';
                 settingsBtn.title = !isAdmin ? "Accès réservé aux Administrateurs" : "Paramétrage Général";
             }
+            const schoolHolidaysBtn = document.getElementById('schoolHolidaysBtn');
+            if (schoolHolidaysBtn) {
+                schoolHolidaysBtn.disabled = !isAdmin;
+                schoolHolidaysBtn.style.opacity = !isAdmin ? '0.5' : '1';
+                schoolHolidaysBtn.style.display = isAdmin ? 'inline-block' : 'none';
+                schoolHolidaysBtn.title = !isAdmin ? "Accès réservé aux Administrateurs" : "Vacances scolaires Zone A";
+            }
             if (importBtn) {
                 importBtn.disabled = isReadOnly;
                 importBtn.style.opacity = isReadOnly ? '0.6' : '1';
@@ -2014,7 +2100,8 @@ if (resetAckBtn) {
         agentRoles: agentRoles,
         replacementSheets: replacementSheets,
         replacementArchives: replacementArchives,
-        modificationLog: modificationLog
+        modificationLog: modificationLog,
+        schoolHolidaysZoneA: schoolHolidaysZoneA
     };
 }
 
@@ -2059,6 +2146,9 @@ if (resetAckBtn) {
     if (settings && (settings.rplDeadlineDefaultDays === undefined || settings.rplDeadlineDefaultDays === null)) {
         settings.rplDeadlineDefaultDays = 15;
     }
+    if (settings && !Array.isArray(settings.rplTrackableSkillIds)) {
+        settings.rplTrackableSkillIds = [];
+    }
     agentEmailLinks = data.agentEmailLinks || agentEmailLinks || {};
     agentRoles = data.agentRoles || agentRoles || {};
 
@@ -2073,6 +2163,11 @@ if (resetAckBtn) {
     }
     replacementArchives = Array.isArray(data.replacementArchives) ? data.replacementArchives : [];
     modificationLog = Array.isArray(data.modificationLog) ? data.modificationLog : [];
+
+    if (data.schoolHolidaysZoneA && typeof data.schoolHolidaysZoneA === 'object') {
+        schoolHolidaysZoneA = data.schoolHolidaysZoneA;
+        if (typeof clearCalendarDayTypeCache === 'function') clearCalendarDayTypeCache();
+    }
 
     // Recalcul des droits après chargement des rôles / e-mails
     if (typeof refreshUserRoles === 'function') refreshUserRoles();
@@ -2585,6 +2680,169 @@ if (resetAckBtn) {
         }
 
         // Dates visibles sur le planning = mois courant OU année entière
+        /**
+         * Jours fériés français (fixes + mobiles basés sur Pâques — algorithme de Meeus/Jones/Butcher).
+         * @returns {string[]} dates YYYY-MM-DD
+         */
+        function getFrenchPublicHolidays(year) {
+            const y = parseInt(year, 10);
+            // Pâques (dimanche)
+            const a = y % 19;
+            const b = Math.floor(y / 100);
+            const c = y % 100;
+            const d = Math.floor(b / 4);
+            const e = b % 4;
+            const f = Math.floor((b + 8) / 25);
+            const g = Math.floor((b - f + 1) / 3);
+            const h = (19 * a + b - d - g + 15) % 30;
+            const i = Math.floor(c / 4);
+            const k = c % 4;
+            const l = (32 + 2 * e + 2 * i - h - k) % 7;
+            const m = Math.floor((a + 11 * h + 22 * l) / 451);
+            const month = Math.floor((h + l - 7 * m + 114) / 31); // 3=mars, 4=avril
+            const day = ((h + l - 7 * m + 114) % 31) + 1;
+            const easter = new Date(y, month - 1, day);
+
+            function addDays(date, n) {
+                const d = new Date(date.getTime());
+                d.setDate(d.getDate() + n);
+                return d;
+            }
+            function ymd(date) {
+                return formatDate(date);
+            }
+
+            const holidays = [
+                ymd(new Date(y, 0, 1)),   // Jour de l'An
+                ymd(addDays(easter, 1)),  // Lundi de Pâques
+                ymd(new Date(y, 4, 1)),   // Fête du Travail
+                ymd(new Date(y, 4, 8)),   // Victoire 1945
+                ymd(addDays(easter, 39)), // Ascension
+                ymd(addDays(easter, 50)), // Lundi de Pentecôte
+                ymd(new Date(y, 6, 14)),  // Fête nationale
+                ymd(new Date(y, 7, 15)),  // Assomption
+                ymd(new Date(y, 10, 1)),  // Toussaint
+                ymd(new Date(y, 10, 11)), // Armistice
+                ymd(new Date(y, 11, 25))  // Noël
+            ];
+            return holidays;
+        }
+
+        /** Noms prédéfinis des périodes de vacances (zone A) */
+        const SCHOOL_HOLIDAY_PERIOD_NAMES = [
+            'Toussaint',
+            'Noël',
+            'Hiver',
+            'Printemps',
+            "Pont de l'Ascension",
+            'Grandes vacances'
+        ];
+
+        /**
+         * Vacances scolaires Zone A par année scolaire.
+         * Structure : { "2026-2027": [ { name, start, end }, ... ] }
+         * Dates inclusives (dernier jour de congé = veille de la reprise).
+         * Pré-rempli avec les calendriers officiels connus ; modifiable par les Admins.
+         */
+        let schoolHolidaysZoneA = {
+            '2023-2024': [
+                { name: 'Toussaint', start: '2023-10-21', end: '2023-11-05' },
+                { name: 'Noël', start: '2023-12-23', end: '2024-01-07' },
+                { name: 'Hiver', start: '2024-02-17', end: '2024-03-03' },
+                { name: 'Printemps', start: '2024-04-13', end: '2024-04-28' },
+                { name: "Pont de l'Ascension", start: '2024-05-08', end: '2024-05-12' },
+                { name: 'Grandes vacances', start: '2024-07-06', end: '2024-09-01' }
+            ],
+            '2024-2025': [
+                { name: 'Toussaint', start: '2024-10-19', end: '2024-11-03' },
+                { name: 'Noël', start: '2024-12-21', end: '2025-01-05' },
+                { name: 'Hiver', start: '2025-02-22', end: '2025-03-09' },
+                { name: 'Printemps', start: '2025-04-19', end: '2025-05-04' },
+                { name: "Pont de l'Ascension", start: '2025-05-28', end: '2025-06-01' },
+                { name: 'Grandes vacances', start: '2025-07-05', end: '2025-08-31' }
+            ],
+            '2025-2026': [
+                { name: 'Toussaint', start: '2025-10-18', end: '2025-11-02' },
+                { name: 'Noël', start: '2025-12-20', end: '2026-01-04' },
+                { name: 'Hiver', start: '2026-02-07', end: '2026-02-22' },
+                { name: 'Printemps', start: '2026-04-04', end: '2026-04-19' },
+                { name: "Pont de l'Ascension", start: '2026-05-14', end: '2026-05-17' },
+                { name: 'Grandes vacances', start: '2026-07-04', end: '2026-08-31' }
+            ],
+            '2026-2027': [
+                { name: 'Toussaint', start: '2026-10-17', end: '2026-11-01' },
+                { name: 'Noël', start: '2026-12-19', end: '2027-01-03' },
+                { name: 'Hiver', start: '2027-02-13', end: '2027-02-28' },
+                { name: 'Printemps', start: '2027-04-10', end: '2027-04-25' },
+                { name: "Pont de l'Ascension", start: '2027-05-05', end: '2027-05-09' },
+                { name: 'Grandes vacances', start: '2027-07-03', end: '2027-09-01' }
+            ],
+            '2027-2028': [
+                { name: 'Toussaint', start: '2027-10-23', end: '2027-11-07' },
+                { name: 'Noël', start: '2027-12-18', end: '2028-01-02' },
+                { name: 'Hiver', start: '2028-02-19', end: '2028-03-05' },
+                { name: 'Printemps', start: '2028-04-22', end: '2028-05-08' },
+                { name: "Pont de l'Ascension", start: '2028-05-24', end: '2028-05-28' },
+                { name: 'Grandes vacances', start: '2028-07-04', end: '2028-09-03' }
+            ]
+        };
+
+        /** Cache par année des sets de dates (feriés + vacances) */
+        let _calendarDayTypeCache = {};
+
+        function clearCalendarDayTypeCache() {
+            _calendarDayTypeCache = {};
+        }
+
+        /** Liste plate de toutes les périodes de vacances configurées */
+        function getAllSchoolHolidayPeriods() {
+            const periods = [];
+            const data = schoolHolidaysZoneA || {};
+            Object.keys(data).forEach(function(yearKey) {
+                const list = data[yearKey];
+                if (!Array.isArray(list)) return;
+                list.forEach(function(p) {
+                    if (p && p.start && p.end) {
+                        periods.push({ name: p.name || '', start: p.start, end: p.end });
+                    }
+                });
+            });
+            return periods;
+        }
+
+        /**
+         * Type de jour calendaire pour une date YYYY-MM-DD.
+         * @returns {'ferie'|'vacances'|null} — férié prioritaire sur vacances
+         */
+        function getCalendarDayType(dateStr) {
+            if (!dateStr) return null;
+            const year = parseInt(dateStr.slice(0, 4), 10);
+            if (!_calendarDayTypeCache[year]) {
+                const feries = {};
+                getFrenchPublicHolidays(year).forEach(function(d) { feries[d] = true; });
+                getFrenchPublicHolidays(year - 1).forEach(function(d) { feries[d] = true; });
+                getFrenchPublicHolidays(year + 1).forEach(function(d) { feries[d] = true; });
+                const vacances = {};
+                getAllSchoolHolidayPeriods().forEach(function(period) {
+                    try {
+                        const start = parseDate(period.start);
+                        const end = parseDate(period.end);
+                        if (!start || !end || isNaN(start.getTime()) || isNaN(end.getTime())) return;
+                        const cur = new Date(start.getTime());
+                        while (cur <= end) {
+                            vacances[formatDate(cur)] = true;
+                            cur.setDate(cur.getDate() + 1);
+                        }
+                    } catch (e) { /* ignore période invalide */ }
+                });
+                _calendarDayTypeCache[year] = { feries: feries, vacances: vacances };
+            }
+            const pack = _calendarDayTypeCache[year];
+            if (pack.feries[dateStr]) return 'ferie';
+            if (pack.vacances[dateStr]) return 'vacances';
+            return null;
+        }
+
         function getVisibleDates() {
             if (planningViewMode === 'year') {
                 const year = currentYear;
@@ -2700,15 +2958,22 @@ if (resetAckBtn) {
 
                 th.setAttribute('data-date', dateStr);
                 if (d.getDay() === 0) th.classList.add('sunday-col');
+
+                const calType = (typeof getCalendarDayType === 'function') ? getCalendarDayType(dateStr) : null;
+                const calClass = calType === 'ferie' ? ' date-ferie' : (calType === 'vacances' ? ' date-vacances' : '');
+                let calTitleExtra = '';
+                if (calType === 'ferie') calTitleExtra = ' — Jour férié';
+                else if (calType === 'vacances') calTitleExtra = ' — Vacances scolaires (zone A)';
+
                 if (isYear) {
                     // Jour de la semaine (lun, mar, mer...) + date jj/mm
                     const weekdayShort = d.toLocaleDateString('fr-FR', { weekday: 'short' })
                         .replace(/\.$/, '').toLowerCase();
-                    th.innerHTML = `<span class="th-dayname">${weekdayShort}</span><span class="th-date">${displayDateShort}</span>${badgeHtml}`;
+                    th.innerHTML = `<span class="th-dayname${calClass}">${weekdayShort}</span><span class="th-date${calClass}">${displayDateShort}</span>${badgeHtml}`;
                 } else {
-                    th.innerHTML = `<span class="th-dayname">${dayName}</span><span class="th-date">${displayDateShort}</span>${badgeHtml}`;
+                    th.innerHTML = `<span class="th-dayname${calClass}">${dayName}</span><span class="th-date${calClass}">${displayDateShort}</span>${badgeHtml}`;
                 }
-                th.title = displayDateFull + ' — Cliquer pour sélectionner la colonne';
+                th.title = displayDateFull + calTitleExtra + ' — Cliquer pour sélectionner la colonne';
                 th.style.cursor = 'pointer';
                 if (dateStr === todayStr) th.classList.add('today-col');
                 if (selectedColumnDate === dateStr) th.classList.add('selected-col');
@@ -3691,6 +3956,18 @@ function populateRplAgentSelect(showAll) {
         if (seenByAgents[a.id]) {
             text += ' 👁 Vu';
         }
+        // Compétences recommandées manquantes
+        const agentObj = (teams || []).reduce(function(found, t) {
+            if (found) return found;
+            return (t.agents || []).find(function(ag) { return ag.id === a.id; }) || null;
+        }, null);
+        const missingSkills = (typeof getMissingRecommendedSkillLabels === 'function')
+            ? getMissingRecommendedSkillLabels(agentObj, sheet.recommendedSkills)
+            : [];
+        if (missingSkills.length) {
+            text += ' ⚠ Compétences requises : ' + missingSkills.join(', ');
+            if (!opt.style.color) opt.style.color = '#d68910';
+        }
         if (!eligible && showAll) {
             text += ' ⚠ non éligible';
             opt.style.color = '#c0392b';
@@ -3798,6 +4075,15 @@ function openReplacementModal(isTeam, targetId, targetName, dateStr) {
             '<span style="color:#c0392b;">Quart d\'absence à combler : <strong>' + shiftLabel + '</strong></span><br>' +
             '<span style="color:#7f8c8d; font-size:0.8rem;">Fiche créée le : <strong>' + createdAtLabel + '</strong></span><br>' +
             '<span style="color:#d68910; font-size:0.85rem; font-weight:bold;">⏱ Date limite de traitement : <strong>' + deadlineLabel + '</strong></span>' +
+            (function() {
+                const rec = toArraySafe(sheet.recommendedSkills);
+                if (!rec.length) return '';
+                const labels = rec.map(function(id) {
+                    const sk = (skillDefinitions || []).find(function(s) { return s.id === id; });
+                    return sk ? (sk.name || sk.id) : id;
+                });
+                return '<br><span style="color:#2980b9; font-size:0.85rem; font-weight:bold;">★ Compétences recommandées : <strong>' + labels.join(', ') + '</strong></span>';
+            })() +
             (isRETarget ? '<br><span style="color:#8e44ad; font-size:0.8rem;">Remplacement RE : seuls les agents RE peuvent se porter volontaires.</span>' : '');
     }
 
@@ -4071,10 +4357,18 @@ function renderVolunteersList() {
 
             const left = document.createElement('div');
             left.style.cssText = 'flex:1; min-width:0;';
+            const missingSkills = (typeof getMissingRecommendedSkillLabels === 'function')
+                ? getMissingRecommendedSkillLabels(entry.info.agent, sheet.recommendedSkills)
+                : [];
+            let missingHtml = '';
+            if (missingSkills.length) {
+                missingHtml = ' <span style="font-size:0.7rem; font-weight:bold; color:#c0392b; background:#fdecea; border:1px solid #e74c3c; padding:1px 6px; border-radius:10px; white-space:nowrap;" title="Compétences recommandées non détenues">⚠ Compétences requises : ' +
+                    missingSkills.join(', ') + '</span>';
+            }
             left.innerHTML = checkHtml +
                 '<strong>' + entry.info.agent.name + '</strong> ' +
                 '<span style="font-size:0.75rem; color:#666;">(' + entry.count +
-                ' remplacements) — ' + entry.info.taskCode + '</span>';
+                ' remplacements) — ' + entry.info.taskCode + '</span>' + missingHtml;
 
             div.appendChild(left);
 
@@ -4665,13 +4959,30 @@ function openVolunteerModal() {
                 statusBadge = ' <span class="rpl-seen-badge">👁 Déjà vu</span>';
             }
 
+            // Annotation compétences recommandées manquantes
+            let missingBadge = '';
+            const sheetForSkills = (replacementSheets && replacementSheets[row.sheetKey])
+                ? ensureReplacementSheet(row.sheetKey)
+                : null;
+            const agentObj = (teams || []).reduce(function(found, t) {
+                if (found) return found;
+                return (t.agents || []).find(function(ag) { return ag.id === row.agentId; }) || null;
+            }, null);
+            const missingLabels = (sheetForSkills && typeof getMissingRecommendedSkillLabels === 'function')
+                ? getMissingRecommendedSkillLabels(agentObj, sheetForSkills.recommendedSkills)
+                : [];
+            if (missingLabels.length) {
+                missingBadge = ' <span style="font-size:0.68rem; font-weight:bold; color:#c0392b; background:#fdecea; border:1px solid #e74c3c; padding:1px 6px; border-radius:10px;">⚠ Compétences requises : ' +
+                    missingLabels.join(', ') + '</span>';
+            }
+
             div.innerHTML =
                 '<div class="vol-row-main">' +
                     '<strong>' + formatDateStrDisplay(row.dateStr) + '</strong> — ' +
                     'Quart : <strong>' + row.shiftLabel + '</strong><br>' +
                     'Équipe concernée : <strong>' + (row.needingTeamName || '—') + '</strong>' +
                     (row.isTeam ? '' : ' — Agent : ' + row.targetName) + multiAgent +
-                    statusBadge +
+                    statusBadge + missingBadge +
                 '</div>' +
                 '<div class="vol-row-choices">' +
                     '<label><input type="checkbox" id="vol_yes_' + rowId + '" ' +
@@ -5004,6 +5315,99 @@ function purgeReplacementArchives() {
         // Elle récupère le choix de l'utilisateur, met à jour les données du planning, enregistre éventuellement un commentaire, puis rafraîchit l'application.
         let pendingRplTaskAssignment = null;
 
+        /**
+         * Compte combien d'agents (toutes équipes) possèdent une compétence donnée.
+         * @returns {{ count: number, soleAgentId: string|null }}
+         */
+        function countAgentsWithSkill(skillId) {
+            let count = 0;
+            let soleAgentId = null;
+            (teams || []).forEach(function(t) {
+                (t.agents || []).forEach(function(a) {
+                    const skills = Array.isArray(a.skills) ? a.skills : [];
+                    if (skills.indexOf(skillId) !== -1) {
+                        count++;
+                        soleAgentId = a.id;
+                    }
+                });
+            });
+            if (count !== 1) soleAgentId = null;
+            return { count: count, soleAgentId: soleAgentId };
+        }
+
+        /**
+         * Remplit les cases « compétences recommandées » dans la modale de deadline RPL
+         * à partir de settings.rplTrackableSkillIds.
+         * Si la cible est un agent seul détenteur d'une compétence suivie, la case est pré-cochée.
+         */
+        function populateRplRecommendedSkillsCheckboxes() {
+            const box = document.getElementById('rplRecommendedSkillsBox');
+            const container = document.getElementById('rplRecommendedSkillsCheckboxes');
+            if (!box || !container) return;
+            container.innerHTML = '';
+            const tracked = (settings && Array.isArray(settings.rplTrackableSkillIds))
+                ? settings.rplTrackableSkillIds
+                : [];
+            if (!tracked.length) {
+                box.style.display = 'none';
+                return;
+            }
+
+            // Cible agent (pas équipe) : pré-cocher les compétences dont il est le seul détenteur
+            let targetAgentId = null;
+            const ctx = pendingRplTaskAssignment || activeTaskCellSelection;
+            if (ctx && !ctx.isTeam && ctx.targetId) {
+                targetAgentId = ctx.targetId;
+            }
+
+            let any = false;
+            tracked.forEach(function(skillId) {
+                const sk = (skillDefinitions || []).find(function(s) { return s.id === skillId; });
+                if (!sk) return;
+                any = true;
+
+                let autoChecked = false;
+                if (targetAgentId) {
+                    const info = countAgentsWithSkill(skillId);
+                    if (info.count === 1 && info.soleAgentId === targetAgentId) {
+                        autoChecked = true;
+                    }
+                }
+
+                const label = document.createElement('label');
+                label.style.cssText = 'display:inline-flex; align-items:center; gap:6px; font-size:0.82rem; cursor:pointer; padding:4px 8px; background:#fff; border:1px solid ' +
+                    (autoChecked ? '#27ae60' : '#b8c0c8') + '; border-radius:6px;' +
+                    (autoChecked ? ' box-shadow:0 0 0 1px rgba(39,174,96,0.25);' : '');
+                label.innerHTML =
+                    '<input type="checkbox" value="' + sk.id + '"' + (autoChecked ? ' checked' : '') + '>' +
+                    '<span class="badge" style="background:' + (sk.color || '#3498db') + '; color:#fff; padding:2px 6px; border-radius:3px;">' + sk.id + '</span>' +
+                    '<span>' + (sk.name || sk.id) + '</span>' +
+                    (autoChecked
+                        ? ' <span style="font-size:0.68rem; color:#1e8449; font-weight:bold;" title="Seul détenteur de cette compétence">★ seul détenteur</span>'
+                        : '');
+                container.appendChild(label);
+            });
+            box.style.display = any ? 'block' : 'none';
+        }
+
+        /**
+         * Retourne les libellés des compétences recommandées manquantes pour un agent.
+         * @returns {string[]} noms (ou codes) des compétences absentes
+         */
+        function getMissingRecommendedSkillLabels(agent, recommendedSkillIds) {
+            const missing = [];
+            const ids = Array.isArray(recommendedSkillIds) ? recommendedSkillIds : [];
+            if (!ids.length || !agent) return missing;
+            const agentSkills = Array.isArray(agent.skills) ? agent.skills : [];
+            ids.forEach(function(skillId) {
+                if (agentSkills.indexOf(skillId) === -1) {
+                    const sk = (skillDefinitions || []).find(function(s) { return s.id === skillId; });
+                    missing.push(sk ? (sk.name || sk.id) : skillId);
+                }
+            });
+            return missing;
+        }
+
         /** Calcule la date limite par défaut (N jours avant la date RPL) */
         function computeDefaultRplDeadline(dateStr) {
             const days = (settings && settings.rplDeadlineDefaultDays) ? parseInt(settings.rplDeadlineDefaultDays, 10) : 15;
@@ -5044,6 +5448,9 @@ function purgeReplacementArchives() {
                 }
                 const input = document.getElementById('rplDeadlineDateInput');
                 if (input) input.value = defaultDeadline;
+                if (typeof populateRplRecommendedSkillsCheckboxes === 'function') {
+                    populateRplRecommendedSkillsCheckboxes();
+                }
                 document.getElementById('taskModal').style.display = 'none';
                 document.getElementById('rplDeadlineModal').style.display = 'flex';
                 return;
@@ -5092,10 +5499,17 @@ function purgeReplacementArchives() {
                 return;
             }
 
+            // Compétences recommandées cochées
+            const recommendedSkills = [];
+            document.querySelectorAll('#rplRecommendedSkillsCheckboxes input[type="checkbox"]:checked').forEach(function(cb) {
+                if (cb.value) recommendedSkills.push(cb.value);
+            });
+
             const { isTeam, targetId, dateStr, taskCode, descValue, descKey } = pendingRplTaskAssignment;
 
             if (isTeam) {
-                promptTeamRotation(targetId, dateStr, taskCode);
+                // Passer deadline + compétences recommandées à la récurrence d'équipe
+                promptTeamRotation(targetId, dateStr, taskCode, deadlineDate, recommendedSkills);
                 if (descValue) {
                     taskDescriptions[descKey] = descValue;
                 } else {
@@ -5111,18 +5525,20 @@ function purgeReplacementArchives() {
                 } else {
                     delete taskDescriptions[descKey];
                 }
-            }
 
-            // Créer / mettre à jour la fiche RPL avec la deadline
-            const sheetKey = targetId + '_' + dateStr;
-            const sheet = ensureReplacementSheet(sheetKey);
-            sheet.deadlineDate = deadlineDate;
-            replacementSheets[sheetKey] = sheet;
+                // Fiche RPL agent
+                const sheetKey = targetId + '_' + dateStr;
+                const sheet = ensureReplacementSheet(sheetKey);
+                sheet.deadlineDate = deadlineDate;
+                sheet.recommendedSkills = recommendedSkills;
+                replacementSheets[sheetKey] = sheet;
+            }
 
             document.getElementById('rplDeadlineModal').style.display = 'none';
             pendingRplTaskAssignment = null;
             closeTaskModal();
-            renderAll(true);
+            // Pour équipe : le render se fait après applyTeamRotation
+            if (!isTeam) renderAll(true);
         }
 
         function clearTaskAndDesc() {
@@ -5655,9 +6071,15 @@ function resetAcknowledgedAlerts() {
 
         // sert à préparer la modification du roulement d'une équipe et ouvrir une fenêtre de confirmation pour savoir jusqu'à quelle date appliquer cette modification.
         // Elle ne modifie pas directement le planning. Elle stocke les informations nécessaires puis affiche une modale de répétition.
-        function promptTeamRotation(teamId, dateStr, taskCode) {
+        function promptTeamRotation(teamId, dateStr, taskCode, deadlineDate, recommendedSkills) {
             if (isReadOnly) return;
-            pendingRotation = { teamId, dateStr, taskCode };
+            pendingRotation = {
+                teamId: teamId,
+                dateStr: dateStr,
+                taskCode: taskCode,
+                deadlineDate: deadlineDate || '',
+                recommendedSkills: Array.isArray(recommendedSkills) ? recommendedSkills.slice() : []
+            };
             document.getElementById('repeatDateText').innerText = dateStr;
             document.getElementById('repeatModal').style.display = 'flex';
         }
@@ -5689,6 +6111,8 @@ function resetAcknowledgedAlerts() {
             endDate.setDate(endDate.getDate() + totalDays);
 
             const isRplTask = TASKS[taskCode] && TASKS[taskCode].isReplacement;
+            const rotDeadline = pendingRotation.deadlineDate || '';
+            const rotSkills = Array.isArray(pendingRotation.recommendedSkills) ? pendingRotation.recommendedSkills : [];
             while (current <= endDate) {
                 const dStr = formatDate(current);
                 const beforeCode = getCellTaskCode(true, teamId, dStr);
@@ -5697,10 +6121,15 @@ function resetAcknowledgedAlerts() {
                 if (isRplTask) {
                     const sheetKey = teamId + '_' + dStr;
                     const sheet = ensureReplacementSheet(sheetKey);
-                    if (!sheet.deadlineDate) {
+                    if (rotDeadline) {
+                        sheet.deadlineDate = rotDeadline;
+                    } else if (!sheet.deadlineDate) {
                         sheet.deadlineDate = computeDefaultRplDeadline(dStr);
-                        replacementSheets[sheetKey] = sheet;
                     }
+                    if (rotSkills.length) {
+                        sheet.recommendedSkills = rotSkills.slice();
+                    }
+                    replacementSheets[sheetKey] = sheet;
                 }
                 current.setDate(current.getDate() + stepDays);
             }
@@ -5971,6 +6400,220 @@ function resetAcknowledgedAlerts() {
 
         // sert à ouvrir et précharger entièrement la fenêtre de configuration de l'application réservée aux administrateurs.
         // point d'entrée du module d'administration.
+
+        // ---------- Vacances scolaires Zone A (Admin) ----------
+        let _schoolHolidaysDraft = null;
+        let _schoolHolidaysSelectedYear = null;
+
+        function getDefaultSchoolYearKey() {
+            const now = new Date();
+            const y = now.getFullYear();
+            const m = now.getMonth(); // 0-11
+            // Année scolaire : sept N → août N+1
+            if (m >= 8) return y + '-' + (y + 1);
+            return (y - 1) + '-' + y;
+        }
+
+        function ensureSchoolYearInDraft(yearKey) {
+            if (!_schoolHolidaysDraft) _schoolHolidaysDraft = {};
+            if (!Array.isArray(_schoolHolidaysDraft[yearKey])) {
+                _schoolHolidaysDraft[yearKey] = SCHOOL_HOLIDAY_PERIOD_NAMES.map(function(name) {
+                    return { name: name, start: '', end: '' };
+                });
+            } else {
+                // Garantir toutes les périodes nommées
+                const existing = _schoolHolidaysDraft[yearKey];
+                const byName = {};
+                existing.forEach(function(p) {
+                    if (p && p.name) byName[p.name] = p;
+                });
+                _schoolHolidaysDraft[yearKey] = SCHOOL_HOLIDAY_PERIOD_NAMES.map(function(name) {
+                    if (byName[name]) {
+                        return {
+                            name: name,
+                            start: byName[name].start || '',
+                            end: byName[name].end || ''
+                        };
+                    }
+                    return { name: name, start: '', end: '' };
+                });
+            }
+        }
+
+        function openSchoolHolidaysModal() {
+            if (!isAdmin) {
+                alert('Accès réservé aux Administrateurs.');
+                return;
+            }
+            // Copie de travail
+            _schoolHolidaysDraft = JSON.parse(JSON.stringify(schoolHolidaysZoneA || {}));
+            const select = document.getElementById('schoolYearSelect');
+            if (!select) return;
+
+            const years = Object.keys(_schoolHolidaysDraft).sort();
+            if (years.length === 0) {
+                const def = getDefaultSchoolYearKey();
+                ensureSchoolYearInDraft(def);
+                years.push(def);
+            }
+
+            select.innerHTML = '';
+            years.forEach(function(yk) {
+                const opt = document.createElement('option');
+                opt.value = yk;
+                opt.textContent = yk;
+                select.appendChild(opt);
+            });
+
+            let selected = getDefaultSchoolYearKey();
+            if (years.indexOf(selected) === -1) selected = years[years.length - 1];
+            select.value = selected;
+            _schoolHolidaysSelectedYear = selected;
+            ensureSchoolYearInDraft(selected);
+            renderSchoolHolidaysTable();
+            document.getElementById('schoolHolidaysModal').style.display = 'flex';
+        }
+
+        function closeSchoolHolidaysModal() {
+            document.getElementById('schoolHolidaysModal').style.display = 'none';
+            _schoolHolidaysDraft = null;
+            _schoolHolidaysSelectedYear = null;
+        }
+
+        /** Sauvegarde les dates visibles dans le draft avant changement d'année */
+        function flushSchoolHolidaysTableToDraft() {
+            if (!_schoolHolidaysSelectedYear || !_schoolHolidaysDraft) return;
+            const rows = document.querySelectorAll('#schoolHolidaysTableBody tr');
+            const list = [];
+            rows.forEach(function(tr) {
+                const name = tr.getAttribute('data-period-name') || '';
+                const startInput = tr.querySelector('.sh-start');
+                const endInput = tr.querySelector('.sh-end');
+                list.push({
+                    name: name,
+                    start: startInput ? startInput.value : '',
+                    end: endInput ? endInput.value : ''
+                });
+            });
+            _schoolHolidaysDraft[_schoolHolidaysSelectedYear] = list;
+        }
+
+        function onSchoolYearChange() {
+            flushSchoolHolidaysTableToDraft();
+            const select = document.getElementById('schoolYearSelect');
+            if (!select) return;
+            _schoolHolidaysSelectedYear = select.value;
+            ensureSchoolYearInDraft(_schoolHolidaysSelectedYear);
+            renderSchoolHolidaysTable();
+        }
+
+        function addSchoolYearOption() {
+            const base = prompt(
+                'Indiquer l\'année de début de l\'année scolaire (ex: 2028 pour 2028-2029) :',
+                String(new Date().getFullYear() + 1)
+            );
+            if (!base) return;
+            const y = parseInt(base, 10);
+            if (isNaN(y) || y < 2000 || y > 2100) {
+                alert('Année invalide.');
+                return;
+            }
+            const yearKey = y + '-' + (y + 1);
+            flushSchoolHolidaysTableToDraft();
+            ensureSchoolYearInDraft(yearKey);
+            const select = document.getElementById('schoolYearSelect');
+            let exists = false;
+            Array.prototype.forEach.call(select.options, function(opt) {
+                if (opt.value === yearKey) exists = true;
+            });
+            if (!exists) {
+                const opt = document.createElement('option');
+                opt.value = yearKey;
+                opt.textContent = yearKey;
+                select.appendChild(opt);
+            }
+            // Trier les options
+            const opts = Array.prototype.slice.call(select.options);
+            opts.sort(function(a, b) { return a.value.localeCompare(b.value); });
+            select.innerHTML = '';
+            opts.forEach(function(o) { select.appendChild(o); });
+            select.value = yearKey;
+            _schoolHolidaysSelectedYear = yearKey;
+            renderSchoolHolidaysTable();
+        }
+
+        function renderSchoolHolidaysTable() {
+            const tbody = document.getElementById('schoolHolidaysTableBody');
+            if (!tbody || !_schoolHolidaysSelectedYear) return;
+            ensureSchoolYearInDraft(_schoolHolidaysSelectedYear);
+            const list = _schoolHolidaysDraft[_schoolHolidaysSelectedYear] || [];
+            tbody.innerHTML = '';
+            list.forEach(function(p, idx) {
+                const tr = document.createElement('tr');
+                tr.setAttribute('data-period-name', p.name || '');
+                tr.innerHTML =
+                    '<td style="font-weight:bold; text-align:left;">' + (p.name || ('Période ' + (idx + 1))) + '</td>' +
+                    '<td><input type="date" class="sh-start" value="' + (p.start || '') + '" style="width:100%; padding:5px; border:1px solid #ccc; border-radius:4px;"></td>' +
+                    '<td><input type="date" class="sh-end" value="' + (p.end || '') + '" style="width:100%; padding:5px; border:1px solid #ccc; border-radius:4px;"></td>' +
+                    '<td style="text-align:center;"><button type="button" class="btn btn-danger" style="padding:2px 8px; font-size:0.75rem;" onclick="clearSchoolHolidayRow(this)">✕</button></td>';
+                tbody.appendChild(tr);
+            });
+        }
+
+        function clearSchoolHolidayRow(btn) {
+            const tr = btn.closest('tr');
+            if (!tr) return;
+            const start = tr.querySelector('.sh-start');
+            const end = tr.querySelector('.sh-end');
+            if (start) start.value = '';
+            if (end) end.value = '';
+        }
+
+        function clearCurrentSchoolYearHolidays() {
+            if (!confirm('Vider toutes les dates de l\'année ' + _schoolHolidaysSelectedYear + ' ?')) return;
+            ensureSchoolYearInDraft(_schoolHolidaysSelectedYear);
+            _schoolHolidaysDraft[_schoolHolidaysSelectedYear] = SCHOOL_HOLIDAY_PERIOD_NAMES.map(function(name) {
+                return { name: name, start: '', end: '' };
+            });
+            renderSchoolHolidaysTable();
+        }
+
+        function saveSchoolHolidaysModal() {
+            if (!isAdmin) return;
+            flushSchoolHolidaysTableToDraft();
+
+            // Validation légère
+            const cleaned = {};
+            Object.keys(_schoolHolidaysDraft || {}).forEach(function(yearKey) {
+                const list = (_schoolHolidaysDraft[yearKey] || []).map(function(p) {
+                    return {
+                        name: p.name || '',
+                        start: (p.start || '').trim(),
+                        end: (p.end || '').trim()
+                    };
+                });
+                // Garder l'année même si vide (structure prête)
+                for (let i = 0; i < list.length; i++) {
+                    const p = list[i];
+                    if ((p.start && !p.end) || (!p.start && p.end)) {
+                        alert('Année ' + yearKey + ' — période « ' + p.name + ' » : renseignez début ET fin, ou laissez les deux vides.');
+                        return;
+                    }
+                    if (p.start && p.end && p.start > p.end) {
+                        alert('Année ' + yearKey + ' — période « ' + p.name + ' » : la date de début doit être antérieure ou égale à la date de fin.');
+                        return;
+                    }
+                }
+                cleaned[yearKey] = list;
+            });
+
+            schoolHolidaysZoneA = cleaned;
+            clearCalendarDayTypeCache();
+            closeSchoolHolidaysModal();
+            renderAll(true);
+            alert('✅ Vacances scolaires Zone A enregistrées.');
+        }
+
         function openSettings() {
     if (!isAdmin) return;
 
@@ -6007,10 +6650,37 @@ function resetAcknowledgedAlerts() {
             : 15;
     }
 
+    // Compétences suivies pour fiches RPL
+    renderRplTrackableSkillsConfig();
+
     // Liaison agents ↔ e-mails
     renderAgentEmailLinksConfig();
 
     document.getElementById('settingsModal').style.display = 'flex';
+}
+
+/** Affiche les cases à cocher des compétences suivies pour les fiches RPL (paramétrage) */
+function renderRplTrackableSkillsConfig() {
+    const container = document.getElementById('rplTrackableSkillsConfigContainer');
+    if (!container) return;
+    container.innerHTML = '';
+    const tracked = (settings && Array.isArray(settings.rplTrackableSkillIds))
+        ? settings.rplTrackableSkillIds
+        : [];
+    if (!skillDefinitions || skillDefinitions.length === 0) {
+        container.innerHTML = '<span style="font-size:0.8rem;color:#999;">Aucune compétence définie.</span>';
+        return;
+    }
+    skillDefinitions.forEach(function(sk) {
+        const label = document.createElement('label');
+        label.style.cssText = 'display:inline-flex; align-items:center; gap:6px; font-size:0.82rem; cursor:pointer; padding:4px 8px; background:#fff; border:1px solid #ddd; border-radius:6px;';
+        const checked = tracked.indexOf(sk.id) !== -1 ? 'checked' : '';
+        label.innerHTML =
+            '<input type="checkbox" class="rpl-trackable-skill-cb" value="' + sk.id + '" ' + checked + '>' +
+            '<span class="badge" style="background:' + (sk.color || '#3498db') + '; color:#fff; padding:2px 6px; border-radius:3px;">' + sk.id + '</span>' +
+            '<span>' + (sk.name || sk.id) + '</span>';
+        container.appendChild(label);
+    });
 }
 
 /** Affiche le tableau de liaison agent ↔ e-mail dans les paramètres */
@@ -6328,6 +6998,13 @@ function renderMonitoredGroupRow(group = []) {
 
     const deadlineDaysVal = parseInt(document.getElementById('rplDeadlineDefaultDays').value, 10);
     settings.rplDeadlineDefaultDays = (!isNaN(deadlineDaysVal) && deadlineDaysVal >= 1) ? deadlineDaysVal : 15;
+
+    // 4b. Compétences suivies pour fiches RPL
+    const trackedIds = [];
+    document.querySelectorAll('.rpl-trackable-skill-cb:checked').forEach(function(cb) {
+        if (cb.value) trackedIds.push(cb.value);
+    });
+    settings.rplTrackableSkillIds = trackedIds;
 
     // 5. Liaisons agent ↔ e-mail + rôles
     const newLinks = {};
