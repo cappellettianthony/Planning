@@ -855,6 +855,91 @@
             content: '•';
             font-size: 0.8rem;
         }
+
+        /* Fenêtre Paramètres — barre d'outils + onglets */
+        #settingsModal .modal-content {
+            width: 900px;
+            max-width: 98%;
+            max-height: 92vh;
+            display: flex;
+            flex-direction: column;
+            padding: 0;
+            overflow: hidden;
+        }
+        #settingsModal .settings-header {
+            padding: 14px 18px 10px;
+            border-bottom: 1px solid var(--border-color);
+            background: #fafbfc;
+            flex-shrink: 0;
+        }
+        #settingsModal .settings-header h2 {
+            margin: 0 0 10px 0;
+            border-bottom: none;
+            padding-bottom: 0;
+            font-size: 1.15rem;
+        }
+        #settingsModal .settings-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+        #settingsModal .settings-tabs {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            border-bottom: 2px solid var(--border-color);
+            margin: 0;
+            padding: 0 18px;
+            background: #fff;
+            flex-shrink: 0;
+        }
+        #settingsModal .settings-tab-btn {
+            border: none;
+            background: transparent;
+            padding: 10px 14px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 0.82rem;
+            color: #5d6d7e;
+            border-bottom: 3px solid transparent;
+            margin-bottom: -2px;
+        }
+        #settingsModal .settings-tab-btn:hover {
+            color: var(--primary);
+            background: #f4f6f7;
+        }
+        #settingsModal .settings-tab-btn.active {
+            color: var(--accent);
+            border-bottom-color: var(--accent);
+            background: #eef6fc;
+        }
+        #settingsModal .settings-tab-panels {
+            overflow-y: auto;
+            flex: 1;
+            padding: 14px 18px 10px;
+            min-height: 200px;
+        }
+        #settingsModal .settings-tab-panel {
+            display: none;
+        }
+        #settingsModal .settings-tab-panel.active {
+            display: block;
+        }
+        #settingsModal .settings-footer {
+            padding: 12px 18px;
+            border-top: 1px solid var(--border-color);
+            background: #fafbfc;
+            flex-shrink: 0;
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+        .btn-blue {
+            background-color: #2980b9 !important;
+            color: white !important;
+        }
+        .btn-blue:hover { opacity: 0.92; }
     </style>
 </head>
 <body>
@@ -875,8 +960,6 @@
                 <button type="button" id="viewModeYearBtn" onclick="setPlanningViewMode('year')">Année</button>
             </div>
 
-            <button class="btn btn-purple" onclick="openArchiveRemplacementModal()" id="archiveRplBtn">📋 Archives Remplacements</button>
-
             <button class="btn btn-secondary" id="monthNavPrev" onclick="navigateMonths(-1)" title="Mois précédent">◄ Mois</button>
             <span id="currentMonthLabel" style="font-weight:bold; min-width:110px; text-align:center;"></span>
             <button class="btn btn-secondary" id="monthNavNext" onclick="navigateMonths(1)" title="Mois suivant">Mois ►</button>
@@ -886,14 +969,12 @@
 
         <div style="display:flex; gap:8px; flex-wrap: wrap;">
             <button class="btn btn-purple" onclick="openPrintModal()">🖨️ Imprimer Mois</button>
-            <button class="btn btn-success" onclick="exportData()" title="Sauvegarder les données dans un fichier">💾 Exporter JSON</button>
-            <button class="btn btn-purple" onclick="document.getElementById('importFile').click()" title="Charger un fichier de sauvegarde" id="importBtn">📂 Importer JSON</button>
+            <button class="btn btn-secondary" onclick="openArchiveRemplacementModal()" id="archiveRplBtn">📋 Archives Remplacements</button>
             <input type="file" id="importFile" style="display:none" accept=".json" onchange="importData(event)">
             
             <button class="btn btn-secondary" onclick="openArchiveModal()" id="archiveBtn">📁 Archives Alertes</button>
             <button class="btn btn-secondary" onclick="openModificationLogModal()" id="modLogBtn" style="display:none;">📝 Suivi des modifications</button>
-            <button class="btn" onclick="openSettings()" id="settingsBtn">⚙️ Tâches & Minimas</button>
-            <button class="btn btn-purple" onclick="openSchoolHolidaysModal()" id="schoolHolidaysBtn">📅 Vacances scolaires</button>
+            <button class="btn" onclick="openSettings()" id="settingsBtn">⚙️ Paramètres</button>
             <button class="btn btn-logout" onclick="logout()" id="logoutBtn" style="display: none;">Déconnexion</button>
         </div>
     </header>
@@ -1335,60 +1416,83 @@
     <!-- Modale Paramètres -->
     <div class="modal" id="settingsModal">
         <div class="modal-content">
-            <h2>Paramétrage Général (Accès Administrateur)</h2>
-            
-            <h3>1. Intitulés et Minimas des Compétences</h3>
-            <div id="skillsConfigContainer"></div>
-            <button class="btn btn-secondary" style="margin-top: 5px; font-size: 0.75rem; margin-bottom: 15px;" onclick="addSkillRow()" id="addSkillBtn">+ Ajouter une compétence</button>
-
-            <h3>1.1 Surveillance des Cumuls d'Exclusivité de Compétences</h3>
-            <p style="font-size: 0.75rem; color: #666; margin-bottom: 8px;">
-                Alertes si un agent cumule seul toutes les compétences d'un groupe ci-dessous pendant un quart sans qu'un autre agent présent ne les possède.
-            </p>
-            <div id="monitoredSkillsConfigContainer"></div>
-            <button class="btn btn-secondary" style="margin-top: 5px; font-size: 0.75rem; margin-bottom: 15px;" onclick="addMonitoredSkillGroupRow()" id="addMonitoredSkillBtn">+ Ajouter une règle de surveillance</button>
-
-            <h3>2. Gestion des Tâches</h3>
-            <div class="task-header"><span>Code</span><span>Libellé</span><span>Quart</span><span>Début</span><span>Fin</span><span>Repos?</span><span>RPL?</span><span>Fond</span><span>Texte</span><span>Ordre</span></div>
-
-            <div id="tasksContainer"></div>
-            <button class="btn btn-secondary" style="margin-top: 5px; font-size: 0.75rem;" onclick="addTaskRow()" id="addTaskBtn">+ Ajouter une tâche</button>
-            
-            <h3>3. Seuils d'Effectifs Globaux</h3>
-            <div class="form-group"><label>Matin (Or / Vert)</label><div style="display:flex; gap:10px;"><input type="number" id="th_M_orange" value="5"><input type="number" id="th_M_green" value="7"></div></div>
-            <div class="form-group"><label>Après-midi (Or / Vert)</label><div style="display:flex; gap:10px;"><input type="number" id="th_A_orange" value="5"><input type="number" id="th_A_green" value="7"></div></div>
-            <div class="form-group"><label>Nuit (Or / Vert)</label><div style="display:flex; gap:10px;"><input type="number" id="th_N_orange" value="3"><input type="number" id="th_N_green" value="5"></div></div>
-
-            <h3>3.1 Deadline de traitement des fiches RPL</h3>
-            <p style="font-size: 0.75rem; color: #666; margin-bottom: 8px;">
-                Nombre de jours avant la date du remplacement proposés par défaut comme date limite de traitement de la fiche.
-                Le panneau latéral passe en jaune la veille de cette date limite.
-            </p>
-            <div class="form-group">
-                <label for="rplDeadlineDefaultDays">Jours avant la date RPL (défaut) :</label>
-                <input type="number" id="rplDeadlineDefaultDays" min="1" max="90" value="15" style="width:100px;">
-            </div>
-
-            <h3>3.2 Compétences recommandées pour les fiches de remplacement</h3>
-            <p style="font-size: 0.75rem; color: #666; margin-bottom: 8px;">
-                Cochez les compétences qui pourront être proposées comme « recommandées » lors de la création d'une fiche RPL.
-                Seules les compétences cochées ici apparaîtront comme cases à cocher dans la fenêtre de date limite.
-            </p>
-            <div id="rplTrackableSkillsConfigContainer" style="display:flex; flex-wrap:wrap; gap:10px; padding:10px; border:1px solid #e0e0e0; border-radius:6px; background:#fafbfc; margin-bottom:15px;"></div>
-
-            <h3>4. Liaison Agents ↔ E-mail & Rôles</h3>
-            <p style="font-size: 0.75rem; color: #666; margin-bottom: 8px;">
-                Associez chaque agent à l'adresse e-mail de connexion et définissez les rôles (Admin / RE).
-                Au moins un rôle <strong>Admin</strong> est obligatoire pour pouvoir enregistrer.
-            </p>
-            <div style="max-height: 260px; overflow-y: auto; border: 1px solid #e0e0e0; border-radius: 6px; padding: 8px; margin-bottom: 12px;">
-                <div style="display:grid; grid-template-columns: 1.2fr 1.4fr 52px 52px; gap:6px; font-weight:bold; font-size:0.75rem; color:var(--primary); margin-bottom:6px; align-items:center;">
-                    <span>Agent</span><span>Adresse e-mail</span><span style="text-align:center;">Admin</span><span style="text-align:center;">RE</span>
+            <div class="settings-header">
+                <h2>⚙️ Paramètres (Administrateur)</h2>
+                <div class="settings-toolbar">
+                    <button type="button" class="btn btn-success" onclick="exportData()" title="Sauvegarder les données dans un fichier" id="exportBtn">💾 Exporter JSON</button>
+                    <button type="button" class="btn btn-purple" onclick="document.getElementById('importFile').click()" title="Charger un fichier de sauvegarde" id="importBtn">📂 Importer JSON</button>
+                    <button type="button" class="btn btn-blue" onclick="openSchoolHolidaysModal()" id="schoolHolidaysBtn">📅 Vacances scolaires</button>
                 </div>
-                <div id="agentEmailLinksContainer"></div>
             </div>
 
-            <div class="modal-actions">
+            <div class="settings-tabs" role="tablist">
+                <button type="button" class="settings-tab-btn active" data-tab="skills" onclick="switchSettingsTab('skills')">Compétences</button>
+                <button type="button" class="settings-tab-btn" data-tab="tasks" onclick="switchSettingsTab('tasks')">Tâches</button>
+                <button type="button" class="settings-tab-btn" data-tab="effectifs" onclick="switchSettingsTab('effectifs')">Effectifs &amp; RPL</button>
+                <button type="button" class="settings-tab-btn" data-tab="agents" onclick="switchSettingsTab('agents')">Agents &amp; Rôles</button>
+            </div>
+
+            <div class="settings-tab-panels">
+                <div class="settings-tab-panel active" id="settingsTab-skills">
+                    <h3>Intitulés et minimas des compétences</h3>
+                    <div id="skillsConfigContainer"></div>
+                    <button class="btn btn-secondary" style="margin-top: 5px; font-size: 0.75rem; margin-bottom: 15px;" onclick="addSkillRow()" id="addSkillBtn">+ Ajouter une compétence</button>
+
+                    <h3>Surveillance des cumuls d'exclusivité</h3>
+                    <p style="font-size: 0.75rem; color: #666; margin-bottom: 8px;">
+                        Alertes si un agent cumule seul toutes les compétences d'un groupe ci-dessous pendant un quart sans qu'un autre agent présent ne les possède.
+                    </p>
+                    <div id="monitoredSkillsConfigContainer"></div>
+                    <button class="btn btn-secondary" style="margin-top: 5px; font-size: 0.75rem; margin-bottom: 15px;" onclick="addMonitoredSkillGroupRow()" id="addMonitoredSkillBtn">+ Ajouter une règle de surveillance</button>
+                </div>
+
+                <div class="settings-tab-panel" id="settingsTab-tasks">
+                    <h3>Gestion des tâches</h3>
+                    <div class="task-header"><span>Code</span><span>Libellé</span><span>Quart</span><span>Début</span><span>Fin</span><span>Repos?</span><span>RPL?</span><span>Fond</span><span>Texte</span><span>Ordre</span></div>
+                    <div id="tasksContainer"></div>
+                    <button class="btn btn-secondary" style="margin-top: 5px; font-size: 0.75rem;" onclick="addTaskRow()" id="addTaskBtn">+ Ajouter une tâche</button>
+                </div>
+
+                <div class="settings-tab-panel" id="settingsTab-effectifs">
+                    <h3>Seuils d'effectifs globaux</h3>
+                    <div class="form-group"><label>Matin (Or / Vert)</label><div style="display:flex; gap:10px;"><input type="number" id="th_M_orange" value="5"><input type="number" id="th_M_green" value="7"></div></div>
+                    <div class="form-group"><label>Après-midi (Or / Vert)</label><div style="display:flex; gap:10px;"><input type="number" id="th_A_orange" value="5"><input type="number" id="th_A_green" value="7"></div></div>
+                    <div class="form-group"><label>Nuit (Or / Vert)</label><div style="display:flex; gap:10px;"><input type="number" id="th_N_orange" value="3"><input type="number" id="th_N_green" value="5"></div></div>
+
+                    <h3>Deadline de traitement des fiches RPL</h3>
+                    <p style="font-size: 0.75rem; color: #666; margin-bottom: 8px;">
+                        Nombre de jours avant la date du remplacement proposés par défaut comme date limite de traitement de la fiche.
+                        Le panneau latéral passe en jaune la veille de cette date limite.
+                    </p>
+                    <div class="form-group">
+                        <label for="rplDeadlineDefaultDays">Jours avant la date RPL (défaut) :</label>
+                        <input type="number" id="rplDeadlineDefaultDays" min="1" max="90" value="15" style="width:100px;">
+                    </div>
+
+                    <h3>Compétences recommandées pour les fiches de remplacement</h3>
+                    <p style="font-size: 0.75rem; color: #666; margin-bottom: 8px;">
+                        Cochez les compétences qui pourront être proposées comme « recommandées » lors de la création d'une fiche RPL.
+                        Seules les compétences cochées ici apparaîtront comme cases à cocher dans la fenêtre de date limite.
+                    </p>
+                    <div id="rplTrackableSkillsConfigContainer" style="display:flex; flex-wrap:wrap; gap:10px; padding:10px; border:1px solid #e0e0e0; border-radius:6px; background:#fafbfc; margin-bottom:15px;"></div>
+                </div>
+
+                <div class="settings-tab-panel" id="settingsTab-agents">
+                    <h3>Liaison Agents ↔ E-mail &amp; Rôles</h3>
+                    <p style="font-size: 0.75rem; color: #666; margin-bottom: 8px;">
+                        Associez chaque agent à l'adresse e-mail de connexion et définissez les rôles (Admin / RE).
+                        Au moins un rôle <strong>Admin</strong> est obligatoire pour pouvoir enregistrer.
+                    </p>
+                    <div style="max-height: 360px; overflow-y: auto; border: 1px solid #e0e0e0; border-radius: 6px; padding: 8px; margin-bottom: 12px;">
+                        <div style="display:grid; grid-template-columns: 1.2fr 1.4fr 52px 52px; gap:6px; font-weight:bold; font-size:0.75rem; color:var(--primary); margin-bottom:6px; align-items:center;">
+                            <span>Agent</span><span>Adresse e-mail</span><span style="text-align:center;">Admin</span><span style="text-align:center;">RE</span>
+                        </div>
+                        <div id="agentEmailLinksContainer"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="settings-footer">
                 <button class="btn btn-secondary" onclick="closeSettings()">Annuler</button>
                 <button class="btn" onclick="saveSettings()" id="saveSettingsBtn">Enregistrer Tout</button>
             </div>
@@ -2047,18 +2151,22 @@ function loadAppState(data) {
             if (settingsBtn) {
                 settingsBtn.disabled = !isAdmin;
                 settingsBtn.style.opacity = !isAdmin ? '0.5' : '1';
-                settingsBtn.title = !isAdmin ? "Accès réservé aux Administrateurs" : "Paramétrage Général";
+                settingsBtn.title = !isAdmin ? "Accès réservé aux Administrateurs" : "Paramètres";
             }
             const schoolHolidaysBtn = document.getElementById('schoolHolidaysBtn');
             if (schoolHolidaysBtn) {
                 schoolHolidaysBtn.disabled = !isAdmin;
                 schoolHolidaysBtn.style.opacity = !isAdmin ? '0.5' : '1';
-                schoolHolidaysBtn.style.display = isAdmin ? 'inline-block' : 'none';
                 schoolHolidaysBtn.title = !isAdmin ? "Accès réservé aux Administrateurs" : "Vacances scolaires Zone A";
             }
             if (importBtn) {
                 importBtn.disabled = isReadOnly;
                 importBtn.style.opacity = isReadOnly ? '0.6' : '1';
+            }
+            const exportBtn = document.getElementById('exportBtn');
+            if (exportBtn) {
+                exportBtn.disabled = false;
+                exportBtn.style.opacity = '1';
             }
             // Suivi des modifications : RE + Admin uniquement
             if (modLogBtn) {
@@ -6746,8 +6854,20 @@ function resetAcknowledgedAlerts() {
             alert('✅ Vacances scolaires Zone A enregistrées.');
         }
 
+        function switchSettingsTab(tabId) {
+            const buttons = document.querySelectorAll('#settingsModal .settings-tab-btn');
+            const panels = document.querySelectorAll('#settingsModal .settings-tab-panel');
+            buttons.forEach(function(btn) {
+                btn.classList.toggle('active', btn.getAttribute('data-tab') === tabId);
+            });
+            panels.forEach(function(panel) {
+                panel.classList.toggle('active', panel.id === 'settingsTab-' + tabId);
+            });
+        }
+
         function openSettings() {
     if (!isAdmin) return;
+    if (typeof switchSettingsTab === 'function') switchSettingsTab('skills');
 
     // Remplissage des compétences
     const skillsContainer = document.getElementById('skillsConfigContainer');
