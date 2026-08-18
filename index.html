@@ -25,6 +25,11 @@
         header {
             display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;
             background: var(--card-bg); padding: 12px 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); flex-wrap: wrap; gap: 10px;
+            transition: background-color 0.25s ease, box-shadow 0.25s ease;
+        }
+        header.planning-edit-active {
+            background: #d5f5e3;
+            box-shadow: 0 2px 6px rgba(39, 174, 96, 0.2);
         }
         h1 { font-size: 1.2rem; color: var(--primary); }
 
@@ -2206,6 +2211,10 @@ function loadAppState(data) {
             } else {
                 btn.title = 'Édition du planning verrouillée — cliquer pour déverrouiller (RE / Admin)';
                 btn.setAttribute('aria-pressed', 'false');
+            }
+            const hdr = document.querySelector('header');
+            if (hdr) {
+                hdr.classList.toggle('planning-edit-active', !!planningEditUnlocked && canUse);
             }
         }
 
@@ -6015,18 +6024,28 @@ function purgeReplacementArchives() {
         }
 
         function clearTaskAndDesc() {
-            if (isReadOnly || !activeTaskCellSelection) return;
+            if ((typeof canModifyPlanning === 'function' ? !canModifyPlanning() : isReadOnly) || !activeTaskCellSelection) return;
             const { isTeam, targetId, dateStr } = activeTaskCellSelection;
-            const descKey = `${targetId}_${dateStr}`;
-            const beforeCode = getCellTaskCode(isTeam, targetId, dateStr);
+            const dateStrs = (activeTaskCellSelection.dateStrs && activeTaskCellSelection.dateStrs.length)
+                ? activeTaskCellSelection.dateStrs
+                : [dateStr];
 
-            delete taskDescriptions[descKey];
-            if (isTeam) {
-                if (teamSchedules[targetId]) delete teamSchedules[targetId][dateStr];
-            } else {
-                if (agentSchedules[targetId]) delete agentSchedules[targetId][dateStr];
-            }
-            logCellModification(isTeam, targetId, dateStr, beforeCode, '');
+            dateStrs.forEach(function(dStr) {
+                const descKey = targetId + '_' + dStr;
+                const beforeCode = getCellTaskCode(isTeam, targetId, dStr);
+                delete taskDescriptions[descKey];
+                if (isTeam) {
+                    if (teamSchedules[targetId]) delete teamSchedules[targetId][dStr];
+                } else {
+                    if (agentSchedules[targetId]) delete agentSchedules[targetId][dStr];
+                    // Supprimer aussi la fiche RPL associée si présente
+                    const sheetKey = targetId + '_' + dStr;
+                    if (replacementSheets && replacementSheets[sheetKey]) {
+                        delete replacementSheets[sheetKey];
+                    }
+                }
+                logCellModification(isTeam, targetId, dStr, beforeCode, '');
+            });
 
             closeTaskModal();
             renderAll(true);
