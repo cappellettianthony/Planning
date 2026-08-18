@@ -1374,45 +1374,6 @@
         </div>
     </div>
 
-    <!-- Modale Vacances scolaires Zone A -->
-    <div class="modal" id="schoolHolidaysModal">
-        <div class="modal-content" style="width: 720px; max-width: 96%;">
-            <h2>📅 Vacances scolaires — Zone A</h2>
-            <p style="font-size:0.8rem; color:#666; margin-bottom:12px;">
-                Saisissez les dates de chaque période (inclusives). Ces dates colorent en <strong style="color:#5dade2;">bleu</strong> les en-têtes du planning.
-                Les jours fériés restent en <strong style="color:#e74c3c;">rouge</strong> et sont prioritaires.
-            </p>
-            <div class="form-group" style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px;">
-                <label for="schoolYearSelect" style="font-weight:bold; margin:0;">Année scolaire :</label>
-                <select id="schoolYearSelect" onchange="onSchoolYearChange()" style="padding:6px 10px; border-radius:5px; border:1px solid #ccc; font-weight:bold;"></select>
-                <button type="button" class="btn btn-secondary" style="font-size:0.8rem;" onclick="addSchoolYearOption()">+ Année</button>
-            </div>
-            <div style="overflow-x:auto;">
-                <table class="archive-table" style="margin-top:0;">
-                    <thead>
-                        <tr>
-                            <th style="width:28%;">Période</th>
-                            <th style="width:30%;">Date de début</th>
-                            <th style="width:30%;">Date de fin (incluse)</th>
-                            <th style="width:12%;">Effacer</th>
-                        </tr>
-                    </thead>
-                    <tbody id="schoolHolidaysTableBody"></tbody>
-                </table>
-            </div>
-            <p style="font-size:0.72rem; color:#888; margin-top:10px;">
-                Convention : du premier jour de vacances au dernier jour de congé (veille de la reprise des cours).
-            </p>
-            <div class="modal-actions" style="justify-content:space-between; flex-wrap:wrap; gap:8px;">
-                <button type="button" class="btn btn-danger" onclick="clearCurrentSchoolYearHolidays()">Vider cette année</button>
-                <div style="display:flex; gap:8px;">
-                    <button type="button" class="btn btn-secondary" onclick="closeSchoolHolidaysModal()">Annuler</button>
-                    <button type="button" class="btn btn-success" onclick="saveSchoolHolidaysModal()" id="saveSchoolHolidaysBtn">Enregistrer</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
     <!-- Modale Paramètres -->
     <div class="modal" id="settingsModal">
         <div class="modal-content">
@@ -1421,7 +1382,6 @@
                 <div class="settings-toolbar">
                     <button type="button" class="btn btn-success" onclick="exportData()" title="Sauvegarder les données dans un fichier" id="exportBtn">💾 Exporter JSON</button>
                     <button type="button" class="btn btn-purple" onclick="document.getElementById('importFile').click()" title="Charger un fichier de sauvegarde" id="importBtn">📂 Importer JSON</button>
-                    <button type="button" class="btn btn-blue" onclick="openSchoolHolidaysModal()" id="schoolHolidaysBtn">📅 Vacances scolaires</button>
                 </div>
             </div>
 
@@ -1430,6 +1390,7 @@
                 <button type="button" class="settings-tab-btn" data-tab="tasks" onclick="switchSettingsTab('tasks')">Tâches</button>
                 <button type="button" class="settings-tab-btn" data-tab="effectifs" onclick="switchSettingsTab('effectifs')">Effectifs &amp; RPL</button>
                 <button type="button" class="settings-tab-btn" data-tab="agents" onclick="switchSettingsTab('agents')">Agents &amp; Rôles</button>
+                <button type="button" class="settings-tab-btn" data-tab="vacances" onclick="switchSettingsTab('vacances')" style="color:#2980b9;">📅 Vacances scolaires</button>
             </div>
 
             <div class="settings-tab-panels">
@@ -1489,6 +1450,37 @@
                         </div>
                         <div id="agentEmailLinksContainer"></div>
                     </div>
+                </div>
+
+                <div class="settings-tab-panel" id="settingsTab-vacances">
+                    <h3 style="color:#2980b9;">📅 Vacances scolaires — Zone A</h3>
+                    <p style="font-size:0.8rem; color:#666; margin-bottom:12px;">
+                        Saisissez les dates de chaque période (inclusives). Ces dates colorent en <strong style="color:#5dade2;">bleu</strong> les en-têtes du planning.
+                        Les jours fériés restent en <strong style="color:#e74c3c;">rouge</strong> et sont prioritaires.
+                    </p>
+                    <div class="form-group" style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px;">
+                        <label for="schoolYearSelect" style="font-weight:bold; margin:0;">Année scolaire :</label>
+                        <select id="schoolYearSelect" onchange="onSchoolYearChange()" style="padding:6px 10px; border-radius:5px; border:1px solid #ccc; font-weight:bold;"></select>
+                        <button type="button" class="btn btn-secondary" style="font-size:0.8rem;" onclick="addSchoolYearOption()">+ Année</button>
+                        <button type="button" class="btn btn-danger" style="font-size:0.8rem;" onclick="clearCurrentSchoolYearHolidays()">Vider cette année</button>
+                    </div>
+                    <div style="overflow-x:auto;">
+                        <table class="archive-table" style="margin-top:0;">
+                            <thead>
+                                <tr>
+                                    <th style="width:28%;">Période</th>
+                                    <th style="width:30%;">Date de début</th>
+                                    <th style="width:30%;">Date de fin (incluse)</th>
+                                    <th style="width:12%;">Effacer</th>
+                                </tr>
+                            </thead>
+                            <tbody id="schoolHolidaysTableBody"></tbody>
+                        </table>
+                    </div>
+                    <p style="font-size: 0.72rem; color:#888; margin-top:10px;">
+                        Convention : du premier jour de vacances au dernier jour de congé (veille de la reprise des cours).
+                        Les modifications de cet onglet sont enregistrées avec le bouton <strong>Enregistrer Tout</strong> en bas de la fenêtre.
+                    </p>
                 </div>
             </div>
 
@@ -2152,12 +2144,6 @@ function loadAppState(data) {
                 settingsBtn.disabled = !isAdmin;
                 settingsBtn.style.opacity = !isAdmin ? '0.5' : '1';
                 settingsBtn.title = !isAdmin ? "Accès réservé aux Administrateurs" : "Paramètres";
-            }
-            const schoolHolidaysBtn = document.getElementById('schoolHolidaysBtn');
-            if (schoolHolidaysBtn) {
-                schoolHolidaysBtn.disabled = !isAdmin;
-                schoolHolidaysBtn.style.opacity = !isAdmin ? '0.5' : '1';
-                schoolHolidaysBtn.title = !isAdmin ? "Accès réservé aux Administrateurs" : "Vacances scolaires Zone A";
             }
             if (importBtn) {
                 importBtn.disabled = isReadOnly;
@@ -6680,13 +6666,11 @@ function resetAcknowledgedAlerts() {
             }
         }
 
-        function openSchoolHolidaysModal() {
-            if (!isAdmin) {
-                alert('Accès réservé aux Administrateurs.');
-                return;
+        /** Initialise l'onglet Vacances scolaires dans Paramètres */
+        function initSchoolHolidaysTab() {
+            if (!_schoolHolidaysDraft) {
+                _schoolHolidaysDraft = JSON.parse(JSON.stringify(schoolHolidaysZoneA || {}));
             }
-            // Copie de travail
-            _schoolHolidaysDraft = JSON.parse(JSON.stringify(schoolHolidaysZoneA || {}));
             const select = document.getElementById('schoolYearSelect');
             if (!select) return;
 
@@ -6697,6 +6681,7 @@ function resetAcknowledgedAlerts() {
                 years.push(def);
             }
 
+            const prev = select.value || _schoolHolidaysSelectedYear;
             select.innerHTML = '';
             years.forEach(function(yk) {
                 const opt = document.createElement('option');
@@ -6705,17 +6690,19 @@ function resetAcknowledgedAlerts() {
                 select.appendChild(opt);
             });
 
-            let selected = getDefaultSchoolYearKey();
-            if (years.indexOf(selected) === -1) selected = years[years.length - 1];
+            let selected = prev;
+            if (!selected || years.indexOf(selected) === -1) {
+                selected = getDefaultSchoolYearKey();
+                if (years.indexOf(selected) === -1) selected = years[years.length - 1];
+            }
             select.value = selected;
             _schoolHolidaysSelectedYear = selected;
             ensureSchoolYearInDraft(selected);
             renderSchoolHolidaysTable();
-            document.getElementById('schoolHolidaysModal').style.display = 'flex';
         }
 
         function closeSchoolHolidaysModal() {
-            document.getElementById('schoolHolidaysModal').style.display = 'none';
+            // Conservé pour compatibilité — l'onglet est dans Paramètres
             _schoolHolidaysDraft = null;
             _schoolHolidaysSelectedYear = null;
         }
@@ -6818,13 +6805,18 @@ function resetAcknowledgedAlerts() {
             renderSchoolHolidaysTable();
         }
 
-        function saveSchoolHolidaysModal() {
-            if (!isAdmin) return;
+        /**
+         * Valide et applique le draft vacances scolaires.
+         * @returns {boolean} false si validation échouée
+         */
+        function applySchoolHolidaysDraft() {
+            if (!_schoolHolidaysDraft) return true;
             flushSchoolHolidaysTableToDraft();
 
-            // Validation légère
             const cleaned = {};
-            Object.keys(_schoolHolidaysDraft || {}).forEach(function(yearKey) {
+            const keys = Object.keys(_schoolHolidaysDraft || {});
+            for (let k = 0; k < keys.length; k++) {
+                const yearKey = keys[k];
                 const list = (_schoolHolidaysDraft[yearKey] || []).map(function(p) {
                     return {
                         name: p.name || '',
@@ -6832,29 +6824,39 @@ function resetAcknowledgedAlerts() {
                         end: (p.end || '').trim()
                     };
                 });
-                // Garder l'année même si vide (structure prête)
                 for (let i = 0; i < list.length; i++) {
                     const p = list[i];
                     if ((p.start && !p.end) || (!p.start && p.end)) {
-                        alert('Année ' + yearKey + ' — période « ' + p.name + ' » : renseignez début ET fin, ou laissez les deux vides.');
-                        return;
+                        alert('Vacances scolaires — année ' + yearKey + ' — période « ' + p.name + ' » : renseignez début ET fin, ou laissez les deux vides.');
+                        if (typeof switchSettingsTab === 'function') switchSettingsTab('vacances');
+                        return false;
                     }
                     if (p.start && p.end && p.start > p.end) {
-                        alert('Année ' + yearKey + ' — période « ' + p.name + ' » : la date de début doit être antérieure ou égale à la date de fin.');
-                        return;
+                        alert('Vacances scolaires — année ' + yearKey + ' — période « ' + p.name + ' » : la date de début doit être antérieure ou égale à la date de fin.');
+                        if (typeof switchSettingsTab === 'function') switchSettingsTab('vacances');
+                        return false;
                     }
                 }
                 cleaned[yearKey] = list;
-            });
+            }
 
             schoolHolidaysZoneA = cleaned;
             clearCalendarDayTypeCache();
-            closeSchoolHolidaysModal();
+            return true;
+        }
+
+        function saveSchoolHolidaysModal() {
+            // Compatibilité : enregistre via le même chemin que Paramètres
+            if (!isAdmin) return;
+            if (!applySchoolHolidaysDraft()) return;
             renderAll(true);
             alert('✅ Vacances scolaires Zone A enregistrées.');
         }
 
         function switchSettingsTab(tabId) {
+            if (typeof flushSchoolHolidaysTableToDraft === 'function') {
+                try { flushSchoolHolidaysTableToDraft(); } catch (e) {}
+            }
             const buttons = document.querySelectorAll('#settingsModal .settings-tab-btn');
             const panels = document.querySelectorAll('#settingsModal .settings-tab-panel');
             buttons.forEach(function(btn) {
@@ -6863,10 +6865,16 @@ function resetAcknowledgedAlerts() {
             panels.forEach(function(panel) {
                 panel.classList.toggle('active', panel.id === 'settingsTab-' + tabId);
             });
+            if (tabId === 'vacances' && typeof initSchoolHolidaysTab === 'function') {
+                initSchoolHolidaysTab();
+            }
         }
 
         function openSettings() {
     if (!isAdmin) return;
+    // Préparer le draft vacances (sans afficher l'onglet)
+    _schoolHolidaysDraft = JSON.parse(JSON.stringify(schoolHolidaysZoneA || {}));
+    _schoolHolidaysSelectedYear = null;
     if (typeof switchSettingsTab === 'function') switchSettingsTab('skills');
 
     // Remplissage des compétences
@@ -6976,6 +6984,8 @@ function renderAgentEmailLinksConfig() {
         // Permet de fermer la fenêtre de paramétrage sans enregistrer
         function closeSettings() {
     document.getElementById('settingsModal').style.display = 'none';
+    _schoolHolidaysDraft = null;
+    _schoolHolidaysSelectedYear = null;
 }
         // afficher dynamiquement la liste des compétences
         function renderSkillsConfig() {
@@ -7257,6 +7267,11 @@ function renderMonitoredGroupRow(group = []) {
         if (cb.value) trackedIds.push(cb.value);
     });
     settings.rplTrackableSkillIds = trackedIds;
+
+    // 4c. Vacances scolaires Zone A (onglet)
+    if (typeof applySchoolHolidaysDraft === 'function') {
+        if (!applySchoolHolidaysDraft()) return;
+    }
 
     // 5. Liaisons agent ↔ e-mail + rôles
     const newLinks = {};
