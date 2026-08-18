@@ -6204,8 +6204,25 @@ function purgeReplacementArchives() {
         }
 
         /**
-         * Si le roulement indique Repos ou Journée, la tâche RPL posée se transforme
-         * en absence correspondante (RPCA→CA, RPFO→F, etc.).
+         * Roulement considéré comme non travaillé (pas de fiche RPL) :
+         * R, H (repos), J (journée), + tout isRest / shift J.
+         * Quarts M / A / N → RPL conservée.
+         */
+        function isRotationRestOrDayCode(rotCode) {
+            if (!rotCode && rotCode !== 0) return false;
+            const c = String(rotCode).trim().toUpperCase();
+            // Repos explicites + Journée
+            if (c === 'R' || c === 'H' || c === 'J' || c === 'RD' || c === 'OFF') return true;
+            const rotDef = TASKS[rotCode] || TASKS[c];
+            if (!rotDef) return false;
+            if (rotDef.isRest) return true;
+            if (rotDef.shift === 'J') return true;
+            return false;
+        }
+
+        /**
+         * Si le roulement indique R / H / J (ou autre repos), la tâche RPL posée
+         * se transforme en absence (RPCA→CA, RPFO→F, etc.). Sinon (M/A/N) inchangée.
          */
         function resolveRplCodeIfRestOrDay(agentId, dateStr, rplTaskCode) {
             const conversionMap = {
@@ -6220,16 +6237,10 @@ function purgeReplacementArchives() {
                 'RPA': 'RPA'
             };
             const rotCode = getTeamRotationCodeForAgent(agentId, dateStr);
-            if (!rotCode) return rplTaskCode;
-            const rotDef = TASKS[rotCode];
-            const isRestOrDay = (rotDef && rotDef.isRest) ||
-                rotCode === 'J' ||
-                (rotDef && rotDef.shift === 'J');
-            if (!isRestOrDay) return rplTaskCode;
-            if (conversionMap.hasOwnProperty(rplTaskCode)) {
+            if (!isRotationRestOrDayCode(rotCode)) return rplTaskCode;
+            if (Object.prototype.hasOwnProperty.call(conversionMap, rplTaskCode)) {
                 return conversionMap[rplTaskCode];
             }
-            // Tâche RPL générique (isReplacement) sans mapping → CA par défaut
             const selDef = TASKS[rplTaskCode];
             if (selDef && selDef.isReplacement) return 'CA';
             return rplTaskCode;
