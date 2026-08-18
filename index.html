@@ -5735,7 +5735,7 @@ function purgeReplacementArchives() {
                         if (multi) {
                             document.getElementById('taskModalDescription').value = '';
                             document.getElementById('taskModalDescription').placeholder =
-                                'Laisser vide = commentaire auto par jour selon les dispos. Saisir un texte = même commentaire sur tous les jours.';
+                                'Laisser vide = commentaire auto par jour. Saisir un texte = ajouté au commentaire auto de chaque jour.';
                         } else {
                             const autoComment = buildRplAvailabilityComment(
                                 activeTaskCellSelection.isTeam,
@@ -6138,8 +6138,10 @@ function purgeReplacementArchives() {
                     let extra = '';
                     if (isMulti) {
                         extra = '<br><span style="font-size:0.8rem;color:#666;">Une fiche RPL par jour. Date limite <strong>identique</strong>. ' +
-                            'Commentaires et compétences recommandées calculés <strong>jour par jour</strong>' +
-                            (userProvidedComment ? ' (commentaire manuel répété sur chaque jour).' : ' (auto selon dispos / équipe).') +
+                            'Commentaires et compétences calculés <strong>jour par jour</strong>' +
+                            (userProvidedComment
+                                ? ' ; votre commentaire sera <strong>ajouté</strong> au texte pré-rempli de chaque jour.'
+                                : ' (auto selon dispos / équipe).') +
                             '</span>';
                     }
                     infoEl.innerHTML = 'Remplacement pour <strong>' + (activeTaskCellSelection.targetName || targetId) +
@@ -6229,12 +6231,15 @@ function purgeReplacementArchives() {
 
                     const dKey = targetId + '_' + dStr;
                     let dayDesc;
-                    if (userProvidedComment) {
-                        // Commentaire manuel → répété sur chaque jour
-                        dayDesc = descValue;
-                    } else if (isMulti) {
+                    if (isMulti) {
                         // Auto personnalisé selon dispos du jour
-                        dayDesc = buildRplAvailabilityComment(false, targetId, dStr);
+                        dayDesc = buildRplAvailabilityComment(false, targetId, dStr) || '';
+                        // Commentaire manuel → ajouté au pré-rempli (répété sur chaque jour)
+                        if (userProvidedComment && descValue) {
+                            dayDesc = dayDesc
+                                ? (dayDesc.replace(/\s+$/, '') + '\n' + descValue)
+                                : descValue;
+                        }
                     } else {
                         dayDesc = descValue || buildRplAvailabilityComment(false, targetId, dStr);
                     }
