@@ -4170,98 +4170,108 @@ function canAgentTakeReplacement(agentId, dateStr, targetShiftCode) {
 
     // ------------------------------------------------------------------
     // 3. Contrôle des 35 h — MÊME algorithme que checkRestAlerts
-    //    (jour de repos = isRest uniquement, pas J ; 24 h + 11 h avant OU après)
+    //    Semaine du remplacement + semaine S+1 (ex. samedi A/N → lundi M
+    //    appartient à S+1 en calendrier dimanche→samedi).
     // ------------------------------------------------------------------
     const targetDateObj = parseDate(dateStr);
+
+    /** valid35h pour une semaine dont sundayOfWeek est le dimanche de début */
+    function weekHasValid35h(sundayOfWeek) {
+        let weekDays = [];
+        for (let i = 0; i < 7; i++) {
+            let d = new Date(sundayOfWeek);
+            d.setDate(d.getDate() + i);
+            weekDays.push({
+                dateStr: formatDate(d),
+                def: getSimulatedDef(info.agent, info.teamId, formatDate(d))
+            });
+        }
+
+        let monTask = weekDays[1].def;
+        let endSunDate = new Date(sundayOfWeek);
+        endSunDate.setDate(endSunDate.getDate() + 7);
+        let endSunDef = getSimulatedDef(info.agent, info.teamId, formatDate(endSunDate));
+        let isSpecialShiftWeek = (monTask.shift === 'M' && endSunDef.shift === 'N');
+        let valid35h = false;
+
+        if (isSpecialShiftWeek) {
+            let prevSatDate = new Date(sundayOfWeek);
+            prevSatDate.setDate(prevSatDate.getDate() - 1);
+            let prevSatDef = getSimulatedDef(info.agent, info.teamId, formatDate(prevSatDate));
+
+            let sunIsFullRest = weekDays[0].def.isRest;
+            let satFinishTime = prevSatDef.isRest ? 0 : timeToDecimal(prevSatDef.end);
+            let satHas11hRest = prevSatDef.isRest || (satFinishTime <= 13);
+
+            if (prevSatDef.shift !== 'N' && sunIsFullRest && satHas11hRest) {
+                valid35h = true;
+            }
+        }
+
+        if (!valid35h) {
+            for (let i = 0; i < 7; i++) {
+                if (weekDays[i].def.isRest) {
+                    let prevShift = 'none';
+                    if (i > 0) {
+                        prevShift = weekDays[i - 1].def.shift;
+                    } else {
+                        let pSatDate = new Date(sundayOfWeek);
+                        pSatDate.setDate(pSatDate.getDate() - 1);
+                        let pSatDef = getSimulatedDef(info.agent, info.teamId, formatDate(pSatDate));
+                        prevShift = pSatDef.shift;
+                    }
+
+                    if (prevShift === 'N') continue;
+
+                    let prevHas11h = false;
+                    let nextHas11h = false;
+
+                    if (i > 0) {
+                        let prevT = weekDays[i - 1].def;
+                        let finish = prevT.isRest ? 0 : timeToDecimal(prevT.end);
+                        if (prevT.isRest || finish <= 13) prevHas11h = true;
+                    } else {
+                        let pSatDate = new Date(sundayOfWeek);
+                        pSatDate.setDate(pSatDate.getDate() - 1);
+                        let pSatDef = getSimulatedDef(info.agent, info.teamId, formatDate(pSatDate));
+                        let finish = pSatDef.isRest ? 0 : timeToDecimal(pSatDef.end);
+                        if (pSatDef.isRest || finish <= 13) prevHas11h = true;
+                    }
+
+                    if (i < 6) {
+                        let nextT = weekDays[i + 1].def;
+                        let start = nextT.isRest ? 24 : timeToDecimal(nextT.start);
+                        if (nextT.isRest || start >= 11) nextHas11h = true;
+                    } else {
+                        let nSunDate = new Date(sundayOfWeek);
+                        nSunDate.setDate(nSunDate.getDate() + 7);
+                        let nSunDef = getSimulatedDef(info.agent, info.teamId, formatDate(nSunDate));
+                        let start = nSunDef.isRest ? 24 : timeToDecimal(nSunDef.start);
+                        if (nSunDef.isRest || start >= 11) nextHas11h = true;
+                    }
+
+                    if (prevHas11h || nextHas11h) {
+                        valid35h = true;
+                        break;
+                    }
+                }
+            }
+        }
+        return valid35h;
+    }
+
     let sundayOfWeek = new Date(targetDateObj);
     while (sundayOfWeek.getDay() !== 0) {
         sundayOfWeek.setDate(sundayOfWeek.getDate() - 1);
     }
 
-    let weekDays = [];
-    for (let i = 0; i < 7; i++) {
-        let d = new Date(sundayOfWeek);
-        d.setDate(d.getDate() + i);
-        let dStr = formatDate(d);
-        weekDays.push({
-            dateStr: dStr,
-            def: getSimulatedDef(info.agent, info.teamId, dStr)
-        });
-    }
+    // Semaine du jour RPL
+    if (!weekHasValid35h(sundayOfWeek)) return false;
 
-    let monTask = weekDays[1].def;
-    let endSunDate = new Date(sundayOfWeek);
-    endSunDate.setDate(endSunDate.getDate() + 7);
-    let endSunDef = getSimulatedDef(info.agent, info.teamId, formatDate(endSunDate));
-    let isSpecialShiftWeek = (monTask.shift === 'M' && endSunDef.shift === 'N');
-    let valid35h = false;
-
-    if (isSpecialShiftWeek) {
-        let prevSatDate = new Date(sundayOfWeek);
-        prevSatDate.setDate(prevSatDate.getDate() - 1);
-        let prevSatDef = getSimulatedDef(info.agent, info.teamId, formatDate(prevSatDate));
-
-        let sunIsFullRest = weekDays[0].def.isRest;
-        let satFinishTime = prevSatDef.isRest ? 0 : timeToDecimal(prevSatDef.end);
-        let satHas11hRest = prevSatDef.isRest || (satFinishTime <= 13);
-
-        if (prevSatDef.shift !== 'N' && sunIsFullRest && satHas11hRest) {
-            valid35h = true;
-        }
-    }
-
-    if (!valid35h) {
-        for (let i = 0; i < 7; i++) {
-            if (weekDays[i].def.isRest) {
-                let prevShift = 'none';
-                if (i > 0) {
-                    prevShift = weekDays[i - 1].def.shift;
-                } else {
-                    let pSatDate = new Date(sundayOfWeek);
-                    pSatDate.setDate(pSatDate.getDate() - 1);
-                    let pSatDef = getSimulatedDef(info.agent, info.teamId, formatDate(pSatDate));
-                    prevShift = pSatDef.shift;
-                }
-
-                if (prevShift === 'N') continue;
-
-                let prevHas11h = false;
-                let nextHas11h = false;
-
-                if (i > 0) {
-                    let prevT = weekDays[i - 1].def;
-                    let finish = prevT.isRest ? 0 : timeToDecimal(prevT.end);
-                    if (prevT.isRest || finish <= 13) prevHas11h = true;
-                } else {
-                    let pSatDate = new Date(sundayOfWeek);
-                    pSatDate.setDate(pSatDate.getDate() - 1);
-                    let pSatDef = getSimulatedDef(info.agent, info.teamId, formatDate(pSatDate));
-                    let finish = pSatDef.isRest ? 0 : timeToDecimal(pSatDef.end);
-                    if (pSatDef.isRest || finish <= 13) prevHas11h = true;
-                }
-
-                if (i < 6) {
-                    let nextT = weekDays[i + 1].def;
-                    let start = nextT.isRest ? 24 : timeToDecimal(nextT.start);
-                    if (nextT.isRest || start >= 11) nextHas11h = true;
-                } else {
-                    let nSunDate = new Date(sundayOfWeek);
-                    nSunDate.setDate(nSunDate.getDate() + 7);
-                    let nSunDef = getSimulatedDef(info.agent, info.teamId, formatDate(nSunDate));
-                    let start = nSunDef.isRest ? 24 : timeToDecimal(nSunDef.start);
-                    if (nSunDef.isRest || start >= 11) nextHas11h = true;
-                }
-
-                // Identique au planning : 11h avant OU après
-                if (prevHas11h || nextHas11h) {
-                    valid35h = true;
-                    break;
-                }
-            }
-        }
-    }
-
-    if (!valid35h) return false;
+    // Semaine S+1 (obligatoire : un samedi A/N impacte le repos avant le lundi suivant)
+    let sundayNextWeek = new Date(sundayOfWeek);
+    sundayNextWeek.setDate(sundayNextWeek.getDate() + 7);
+    if (!weekHasValid35h(sundayNextWeek)) return false;
 
     // ------------------------------------------------------------------
     // 4. Max 11 jours consécutifs — comme le planning (!isRest coupe la série)
