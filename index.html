@@ -6169,8 +6169,13 @@ function purgeReplacementArchives() {
                 if (!agentSchedules[targetId]) agentSchedules[targetId] = {};
                 dateStrs.forEach(function(dStr) {
                     const beforeCode = getCellTaskCode(false, targetId, dStr);
-                    agentSchedules[targetId][dStr] = selectedTaskCodeInModal;
-                    logCellModification(false, targetId, dStr, beforeCode, selectedTaskCodeInModal);
+                    let codeToWrite = selectedTaskCodeInModal;
+                    // Formation multi-jours : samedi/dimanche → R
+                    if (dateStrs.length > 1) {
+                        codeToWrite = applyWeekendFormationRule(dStr, codeToWrite, selectedTaskCodeInModal);
+                    }
+                    agentSchedules[targetId][dStr] = codeToWrite;
+                    logCellModification(false, targetId, dStr, beforeCode, codeToWrite);
                     const dKey = targetId + '_' + dStr;
                     if (descValue) {
                         taskDescriptions[dKey] = descValue;
@@ -6229,6 +6234,44 @@ function purgeReplacementArchives() {
          * Si le roulement indique R / H / J (ou autre repos), la tâche RPL posée
          * se transforme en absence (RPCA→CA, RPFO→F, etc.). Sinon (M/A/N) inchangée.
          */
+        /** true si samedi (6) ou dimanche (0) */
+        function isWeekendDateStr(dateStr) {
+            try {
+                const d = parseDate(dateStr);
+                if (!d || isNaN(d.getTime())) return false;
+                const day = d.getDay();
+                return day === 0 || day === 6;
+            } catch (e) {
+                return false;
+            }
+        }
+
+        /** Tâche de type formation (F, RPFO, RPF, libellé formation…) */
+        function isFormationTaskCode(code) {
+            if (!code) return false;
+            const c = String(code).trim().toUpperCase();
+            if (c === 'F' || c === 'RPFO' || c === 'RPF' || c === 'FORM' || c === 'FORMATION') return true;
+            const def = TASKS[code] || TASKS[c];
+            if (!def) return false;
+            const label = String(def.label || '').toLowerCase();
+            if (label.indexOf('formation') !== -1) return true;
+            // RPL formation → se convertit en F
+            if (def.isReplacement && (c.indexOf('FO') !== -1 || c.indexOf('FORM') !== -1)) return true;
+            return false;
+        }
+
+        /**
+         * Pour une sélection multi : formation interdite le week-end → R.
+         * Appliqué après résolution RPL→CA/F éventuelle.
+         */
+        function applyWeekendFormationRule(dateStr, codeToWrite, originalTaskCode) {
+            if (!isWeekendDateStr(dateStr)) return codeToWrite;
+            if (isFormationTaskCode(codeToWrite) || isFormationTaskCode(originalTaskCode)) {
+                return 'R';
+            }
+            return codeToWrite;
+        }
+
         function resolveRplCodeIfRestOrDay(agentId, dateStr, rplTaskCode) {
             const conversionMap = {
                 'RPCA': 'CA',
@@ -6286,9 +6329,14 @@ function purgeReplacementArchives() {
                     const beforeCode = getCellTaskCode(false, targetId, dStr);
                     // Si roulement = Repos ou Journée → CA/F/... ; si M/A/N → RPL inchangée
                     const rotCode = getTeamRotationCodeForAgent(targetId, dStr);
-                    const codeToWrite = resolveRplCodeIfRestOrDay(targetId, dStr, taskCode);
-                    // Fiche RPL seulement si le roulement est un vrai quart M/A/N (pas R/H/J)
-                    const isWorkShiftRpl = !isRotationRestOrDayCode(rotCode);
+                    let codeToWrite = resolveRplCodeIfRestOrDay(targetId, dStr, taskCode);
+                    // Formation : pas le week-end → R
+                    codeToWrite = applyWeekendFormationRule(dStr, codeToWrite, taskCode);
+                    // Fiche RPL seulement si quart M/A/N ET code toujours de type remplacement
+                    const writtenDef = TASKS[codeToWrite];
+                    const isWorkShiftRpl = !isRotationRestOrDayCode(rotCode) &&
+                        codeToWrite === taskCode &&
+                        writtenDef && writtenDef.isReplacement;
                     agentSchedules[targetId][dStr] = codeToWrite;
                     logCellModification(false, targetId, dStr, beforeCode, codeToWrite);
 
@@ -7196,9 +7244,13 @@ function resetAcknowledgedAlerts() {
                 while (curr <= endDate) {
                     const dStr = formatDate(curr);
                     const beforeCode = getCellTaskCode(false, agentId, dStr);
-                    agentSchedules[agentId][dStr] = taskCode;
-                    logCellModification(false, agentId, dStr, beforeCode, taskCode);
-                    if (desc) taskDescriptions[`${agentId}_${dStr}`] = desc;
+                    let codeToWrite = taskCode;
+                    if (typeof applyWeekendFormationRule === 'function') {
+                        codeToWrite = applyWeekendFormationRule(dStr, codeToWrite, taskCode);
+                    }
+                    agentSchedules[agentId][dStr] = codeToWrite;
+                    logCellModification(false, agentId, dStr, beforeCode, codeToWrite);
+                    if (desc) taskDescriptions[agentId + '_' + dStr] = desc;
                     curr.setDate(curr.getDate() + 1);
                 }
             } else {
@@ -7213,9 +7265,13 @@ function resetAcknowledgedAlerts() {
                 while (curr <= endDate) {
                     const dStr = formatDate(curr);
                     const beforeCode = getCellTaskCode(false, agentId, dStr);
-                    agentSchedules[agentId][dStr] = taskCode;
-                    logCellModification(false, agentId, dStr, beforeCode, taskCode);
-                    if (desc) taskDescriptions[`${agentId}_${dStr}`] = desc;
+                    let codeToWrite = taskCode;
+                    if (typeof applyWeekendFormationRule === 'function') {
+                        codeToWrite = applyWeekendFormationRule(dStr, codeToWrite, taskCode);
+                    }
+                    agentSchedules[agentId][dStr] = codeToWrite;
+                    logCellModification(false, agentId, dStr, beforeCode, codeToWrite);
+                    if (desc) taskDescriptions[agentId + '_' + dStr] = desc;
                     curr.setDate(curr.getDate() + stepDays);
                 }
             }
