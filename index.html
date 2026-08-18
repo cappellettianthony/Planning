@@ -4181,8 +4181,9 @@ function canAgentTakeReplacement(agentId, dateStr, targetShiftCode) {
     }
 
     // ------------------------------------------------------------------
-    // 3. Contrôle des 35 h de repos hebdomadaire
-    //    Les J sont traités comme des repos
+    // 3. Contrôle des 35 h de repos hebdomadaire (repos CONTINU >= 35 h)
+    //    Les J sont traités comme des repos. Simulation du quart de remplacement.
+    //    Ex. : samedi A/N + lundi M → repos samedi fin → lundi début souvent < 35 h.
     // ------------------------------------------------------------------
     const targetDateObj = parseDate(dateStr);
     let sundayOfWeek = new Date(targetDateObj);
@@ -4190,93 +4191,56 @@ function canAgentTakeReplacement(agentId, dateStr, targetShiftCode) {
         sundayOfWeek.setDate(sundayOfWeek.getDate() - 1);
     }
 
-    let weekDays = [];
-    for (let i = 0; i < 7; i++) {
-        let d = new Date(sundayOfWeek);
-        d.setDate(d.getDate() + i);
-        let dStr = formatDate(d);
-        weekDays.push({
-            dateStr: dStr,
-            def: getSimulatedDef(info.agent, info.teamId, dStr)
-        });
+    /**
+     * Intervalle de travail [start, end] en heures depuis le dimanche 00:00 de la semaine
+     * (dayOffset : 0 = dimanche de la semaine, 6 = samedi, -1 = samedi précédent, 7 = dimanche suivant…).
+     */
+    function workIntervalFromDef(def, dayOffset) {
+        if (!def || isRestLike(def)) return null;
+        let startH = timeToDecimal(def.start);
+        let endH = timeToDecimal(def.end);
+        const base = dayOffset * 24;
+        // Nuit ou fin < début → se termine le calendrier suivant
+        if (def.shift === 'N' || endH < startH) {
+            return { start: base + startH, end: base + endH + 24 };
+        }
+        return { start: base + startH, end: base + endH };
     }
 
-    let monTask = weekDays[1].def;
-    let endSunDate = new Date(sundayOfWeek);
-    endSunDate.setDate(endSunDate.getDate() + 7);
-    let endSunDef = getSimulatedDef(info.agent, info.teamId, formatDate(endSunDate));
-    let isSpecialShiftWeek = (monTask.shift === 'M' && endSunDef.shift === 'N');
-    let valid35h = false;
+    // Intervalles de travail : samedi précédent → dimanche suivant (marge)
+    const workIntervals = [];
+    for (let dayOffset = -1; dayOffset <= 8; dayOffset++) {
+        const d = new Date(sundayOfWeek);
+        d.setDate(d.getDate() + dayOffset);
+        const dStr = formatDate(d);
+        const def = getSimulatedDef(info.agent, info.teamId, dStr);
+        const iv = workIntervalFromDef(def, dayOffset);
+        if (iv) workIntervals.push(iv);
+    }
+    workIntervals.sort(function(a, b) { return a.start - b.start; });
 
-    if (isSpecialShiftWeek) {
-        let prevSatDate = new Date(sundayOfWeek);
-        prevSatDate.setDate(prevSatDate.getDate() - 1);
-        let prevSatDef = getSimulatedDef(info.agent, info.teamId, formatDate(prevSatDate));
+    // Fusionner les chevauchements
+    const merged = [];
+    workIntervals.forEach(function(iv) {
+        if (!merged.length || iv.start > merged[merged.length - 1].end) {
+            merged.push({ start: iv.start, end: iv.end });
+        } else if (iv.end > merged[merged.length - 1].end) {
+            merged[merged.length - 1].end = iv.end;
+        }
+    });
 
-        let sunIsFullRest = isRestLike(weekDays[0].def);
-        let satFinishTime = isRestLike(prevSatDef) ? 0 : timeToDecimal(prevSatDef.end);
-        let satHas11hRest = isRestLike(prevSatDef) || (satFinishTime <= 13);
-
-        if (prevSatDef.shift !== 'N' && sunIsFullRest && satHas11hRest) {
-            valid35h = true;
+    // Plus grand trou de repos entre deux périodes de travail (dans la fenêtre de la semaine élargie)
+    let maxRestH = 0;
+    if (merged.length === 0) {
+        maxRestH = 999; // semaine sans travail
+    } else {
+        for (let i = 0; i < merged.length - 1; i++) {
+            const gap = merged[i + 1].start - merged[i].end;
+            if (gap > maxRestH) maxRestH = gap;
         }
     }
 
-    if (!valid35h) {
-        for (let i = 0; i < 7; i++) {
-            if (isRestLike(weekDays[i].def)) {
-                // Quart précédent
-                let prevShift = 'none';
-                if (i > 0) {
-                    prevShift = weekDays[i - 1].def.shift;
-                } else {
-                    let pSatDate = new Date(sundayOfWeek);
-                    pSatDate.setDate(pSatDate.getDate() - 1);
-                    let pSatDef = getSimulatedDef(info.agent, info.teamId, formatDate(pSatDate));
-                    prevShift = pSatDef.shift;
-                }
-
-                // Nuit la veille → ne compte pas comme 24 h plein
-                if (prevShift === 'N') continue;
-
-                let prevHas11h = false;
-                let nextHas11h = false;
-
-                // 11 h avant
-                if (i > 0) {
-                    let prevT = weekDays[i - 1].def;
-                    let finish = isRestLike(prevT) ? 0 : timeToDecimal(prevT.end);
-                    if (isRestLike(prevT) || finish <= 13) prevHas11h = true;
-                } else {
-                    let pSatDate = new Date(sundayOfWeek);
-                    pSatDate.setDate(pSatDate.getDate() - 1);
-                    let pSatDef = getSimulatedDef(info.agent, info.teamId, formatDate(pSatDate));
-                    let finish = isRestLike(pSatDef) ? 0 : timeToDecimal(pSatDef.end);
-                    if (isRestLike(pSatDef) || finish <= 13) prevHas11h = true;
-                }
-
-                // 11 h après
-                if (i < 6) {
-                    let nextT = weekDays[i + 1].def;
-                    let start = isRestLike(nextT) ? 24 : timeToDecimal(nextT.start);
-                    if (isRestLike(nextT) || start >= 11) nextHas11h = true;
-                } else {
-                    let nSunDate = new Date(sundayOfWeek);
-                    nSunDate.setDate(nSunDate.getDate() + 7);
-                    let nSunDef = getSimulatedDef(info.agent, info.teamId, formatDate(nSunDate));
-                    let start = isRestLike(nSunDef) ? 24 : timeToDecimal(nSunDef.start);
-                    if (isRestLike(nSunDef) || start >= 11) nextHas11h = true;
-                }
-
-                if (prevHas11h || nextHas11h) {
-                    valid35h = true;
-                    break;
-                }
-            }
-        }
-    }
-
-    if (!valid35h) return false;
+    if (maxRestH < 35) return false;
 
     // ------------------------------------------------------------------
     // 4. Contrôle des 11 jours de travail consécutifs max
