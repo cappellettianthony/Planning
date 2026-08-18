@@ -6268,17 +6268,16 @@ function purgeReplacementArchives() {
                 if (!agentSchedules[targetId]) agentSchedules[targetId] = {};
                 dateStrs.forEach(function(dStr) {
                     const beforeCode = getCellTaskCode(false, targetId, dStr);
-                    // Si roulement = Repos ou Journée → transformer RPL en CA / F / RC...
+                    // Si roulement = Repos ou Journée → CA/F/... ; si M/A/N → RPL inchangée
                     const codeToWrite = resolveRplCodeIfRestOrDay(targetId, dStr, taskCode);
+                    const isWorkShiftRpl = (codeToWrite === taskCode); // pas transformé = quart M/A/N
                     agentSchedules[targetId][dStr] = codeToWrite;
                     logCellModification(false, targetId, dStr, beforeCode, codeToWrite);
 
                     const dKey = targetId + '_' + dStr;
                     let dayDesc;
                     if (isMulti) {
-                        // Auto personnalisé selon dispos du jour
                         dayDesc = buildRplAvailabilityComment(false, targetId, dStr) || '';
-                        // Commentaire manuel → ajouté au pré-rempli (répété sur chaque jour)
                         if (userProvidedComment && descValue) {
                             dayDesc = dayDesc
                                 ? (dayDesc.replace(/\s+$/, '') + '\n' + descValue)
@@ -6293,19 +6292,26 @@ function purgeReplacementArchives() {
                         delete taskDescriptions[dKey];
                     }
 
-                    // Compétences : auto par jour si multi, sinon choix manuel
-                    let daySkills;
-                    if (isMulti) {
-                        daySkills = computeAutoRecommendedSkillsForAbsence(targetId, dStr);
+                    // Fiche RPL uniquement si le roulement est un quart travaillé (M/A/N)
+                    // En repos / journée : simple absence (CA, F...) sans fiche de remplacement
+                    if (isWorkShiftRpl) {
+                        let daySkills;
+                        if (isMulti) {
+                            daySkills = computeAutoRecommendedSkillsForAbsence(targetId, dStr);
+                        } else {
+                            daySkills = manualRecommendedSkills.slice();
+                        }
+                        const sheetKey = targetId + '_' + dStr;
+                        const sheet = ensureReplacementSheet(sheetKey);
+                        sheet.deadlineDate = deadlineDate;
+                        sheet.recommendedSkills = daySkills;
+                        replacementSheets[sheetKey] = sheet;
                     } else {
-                        daySkills = manualRecommendedSkills.slice();
+                        const sheetKey = targetId + '_' + dStr;
+                        if (replacementSheets && replacementSheets[sheetKey]) {
+                            delete replacementSheets[sheetKey];
+                        }
                     }
-
-                    const sheetKey = targetId + '_' + dStr;
-                    const sheet = ensureReplacementSheet(sheetKey);
-                    sheet.deadlineDate = deadlineDate;
-                    sheet.recommendedSkills = daySkills;
-                    replacementSheets[sheetKey] = sheet;
                 });
             }
 
