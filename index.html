@@ -940,6 +940,43 @@
             color: white !important;
         }
         .btn-blue:hover { opacity: 0.92; }
+
+        /* Bouton main : verrouillage édition planning */
+        #planningEditToggleBtn {
+            font-size: 1.15rem;
+            min-width: 42px;
+            padding: 6px 10px;
+            border: 2px solid #95a5a6;
+            background: #ecf0f1;
+            color: #7f8c8d;
+        }
+        #planningEditToggleBtn.active {
+            border-color: #27ae60;
+            background: #d5f5e3;
+            color: #1e8449;
+            box-shadow: 0 0 0 2px rgba(39,174,96,0.25);
+        }
+        #planningEditToggleBtn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        /* Sélection multi-jours (clic-glisser) */
+        .task-cell.task-cell-range-selected {
+            outline: 3px solid #2980b9 !important;
+            outline-offset: -2px;
+            box-shadow: inset 0 0 0 2px rgba(41,128,185,0.45);
+            position: relative;
+            z-index: 2;
+        }
+        body.planning-dragging {
+            user-select: none;
+            -webkit-user-select: none;
+            cursor: crosshair !important;
+        }
+        body.planning-dragging .task-cell {
+            cursor: crosshair !important;
+        }
     </style>
 </head>
 <body>
@@ -975,6 +1012,7 @@
             <button class="btn btn-secondary" onclick="openArchiveModal()" id="archiveBtn">📁 Archives Alertes</button>
             <button class="btn btn-secondary" onclick="openModificationLogModal()" id="modLogBtn" style="display:none;">📝 Suivi des modifications</button>
             <button class="btn" onclick="openSettings()" id="settingsBtn">⚙️ Paramètres</button>
+            <button type="button" class="btn" id="planningEditToggleBtn" onclick="togglePlanningEditMode()" title="Édition du planning verrouillée — cliquer pour déverrouiller" style="display:none;">✋</button>
             <button class="btn btn-logout" onclick="logout()" id="logoutBtn" style="display: none;">Déconnexion</button>
         </div>
     </header>
@@ -1599,6 +1637,10 @@
         let currentUser = null;
         let isReadOnly = true;
         let isAdmin = false;
+        /** Édition planning déverrouillée via le bouton ✋ (RE / Admin uniquement). Défaut : verrouillé. */
+        let planningEditUnlocked = false;
+        /** Sélection multi-jours (clic-glisser) */
+        let multiSelectState = null; // { isTeam, targetId, targetName, dates: string[], startDate }
 
         let currentYear = new Date().getFullYear();
         let minYearAvailable = currentYear - 1;
@@ -2035,6 +2077,7 @@ function loadAppState(data) {
                     document.getElementById('logoutBtn').style.display = 'none';
                     isReadOnly = true;
                     isAdmin = false;
+                    planningEditUnlocked = false;
                     applyReadOnlyMode();
                 }
             });
@@ -2134,6 +2177,38 @@ function loadAppState(data) {
             }
         }
 
+        /** Édition des cellules du planning autorisée ? (RE/Admin + main activée) */
+        function canModifyPlanning() {
+            return !isReadOnly && !!planningEditUnlocked;
+        }
+
+        function togglePlanningEditMode() {
+            if (isReadOnly) return; // lecture seule pure : pas d'accès
+            planningEditUnlocked = !planningEditUnlocked;
+            updatePlanningEditToggleBtn();
+            // Re-render pour activer/désactiver les cellules
+            if (typeof renderAll === 'function') renderAll(false);
+        }
+
+        function updatePlanningEditToggleBtn() {
+            const btn = document.getElementById('planningEditToggleBtn');
+            if (!btn) return;
+            const canUse = !isReadOnly; // RE ou Admin
+            btn.style.display = canUse ? 'inline-block' : 'none';
+            btn.disabled = !canUse;
+            if (!canUse) {
+                planningEditUnlocked = false;
+            }
+            btn.classList.toggle('active', !!planningEditUnlocked);
+            if (planningEditUnlocked) {
+                btn.title = 'Édition du planning activée — cliquer pour verrouiller';
+                btn.setAttribute('aria-pressed', 'true');
+            } else {
+                btn.title = 'Édition du planning verrouillée — cliquer pour déverrouiller (RE / Admin)';
+                btn.setAttribute('aria-pressed', 'false');
+            }
+        }
+
         // sert à adapter l'interface utilisateur en fonction des droits de l'utilisateur : Administrateur (isAdmin) Lecture seule (isReadOnly) Elle active ou désactive certains boutons et modifie leur apparence.
         function applyReadOnlyMode() {
             const settingsBtn = document.getElementById('settingsBtn');
@@ -2160,6 +2235,8 @@ function loadAppState(data) {
                 modLogBtn.style.display = canSeeLog ? 'inline-block' : 'none';
                 modLogBtn.disabled = !canSeeLog;
             }
+
+            updatePlanningEditToggleBtn();
             
             const resetAckBtn = document.getElementById('resetAckBtn');
 if (resetAckBtn) {
@@ -3390,8 +3467,9 @@ if (resetAckBtn) {
 
             const cellDiv = document.createElement('div');
             const isRplTeamCell = taskDef.isReplacement;
-            // Lecture seule : cellules RPL cliquables (double-clic / appui long), le reste désactivé
-            cellDiv.className = `task-cell ${(isReadOnly && !isRplTeamCell) ? 'task-cell-disabled' : ''} ${desc ? 'has-desc-indicator' : ''}`;
+            // Planning verrouillé (main) : seules les cellules RPL restent consultables
+            const planningLocked = typeof canModifyPlanning === 'function' ? !canModifyPlanning() : isReadOnly;
+            cellDiv.className = `task-cell ${(planningLocked && !isRplTeamCell) ? 'task-cell-disabled' : ''} ${desc ? 'has-desc-indicator' : ''}`;
             cellDiv.setAttribute('data-target-id', team.id);
             cellDiv.setAttribute('data-date', dateStr);
             cellDiv.setAttribute('data-is-team', '1');
@@ -3399,7 +3477,7 @@ if (resetAckBtn) {
             cellDiv.style.color = taskDef.text;
             cellDiv.innerText = currentVal;
 
-            if (!isReadOnly || isRplTeamCell) {
+            if (!planningLocked || isRplTeamCell) {
                 bindCellEvents(cellDiv, true, team.id, team.name, dateStr, currentVal, desc);
             }
             attachCellHoverEvents(cellDiv, desc);
@@ -3456,7 +3534,8 @@ if (resetAckBtn) {
                 if (d.getDay() === 0) td.classList.add('sunday-col');
                 const cellDiv = document.createElement('div');
                 const isRplAgentCell = hasIndividual && taskDef.isReplacement;
-                cellDiv.className = `task-cell ${(isReadOnly && !isRplAgentCell) ? 'task-cell-disabled' : ''} ${desc && hasIndividual ? 'has-desc-indicator' : ''} ${!hasIndividual ? 'task-cell-inherited' : ''}`;
+                const planningLockedA = typeof canModifyPlanning === 'function' ? !canModifyPlanning() : isReadOnly;
+                cellDiv.className = `task-cell ${(planningLockedA && !isRplAgentCell) ? 'task-cell-disabled' : ''} ${desc && hasIndividual ? 'has-desc-indicator' : ''} ${!hasIndividual ? 'task-cell-inherited' : ''}`;
                 cellDiv.setAttribute('data-target-id', agent.id);
                 cellDiv.setAttribute('data-date', dateStr);
                 cellDiv.setAttribute('data-is-team', '0');
@@ -3474,7 +3553,7 @@ if (resetAckBtn) {
                     cellDiv.title = 'Roulement équipe : ' + taskCode + (taskDef.label ? ' (' + taskDef.label + ')' : '');
                 }
 
-                if (!isReadOnly || isRplAgentCell) {
+                if (!planningLockedA || isRplAgentCell) {
                     // currentTaskCode = code affiché si individuel, sinon effectif pour l'attribution
                     bindCellEvents(cellDiv, false, agent.id, agent.name, dateStr, hasIndividual ? taskCode : taskCode, desc);
                 }
@@ -3493,6 +3572,73 @@ if (resetAckBtn) {
 
         // gestionnaire d'interactions sur une cellule du planning. Elle gère à la fois : 
         // les clics souris (PC), les interactions tactiles (mobile/tablette), l'ouverture de fenêtres de modification, l'ouverture d'une fiche de remplacement selon le type de tâche.
+function clearMultiSelectHighlights() {
+    document.querySelectorAll('.task-cell.task-cell-range-selected').forEach(function(el) {
+        el.classList.remove('task-cell-range-selected');
+    });
+}
+
+function highlightMultiSelectRange(targetId, isTeam, dateA, dateB) {
+    clearMultiSelectHighlights();
+    if (!dateA || !dateB) return;
+    const start = dateA < dateB ? dateA : dateB;
+    const end = dateA < dateB ? dateB : dateA;
+    const selector = '.task-cell[data-target-id="' + targetId + '"][data-is-team="' + (isTeam ? '1' : '0') + '"]';
+    document.querySelectorAll(selector).forEach(function(el) {
+        const d = el.getAttribute('data-date');
+        if (d && d >= start && d <= end) {
+            el.classList.add('task-cell-range-selected');
+        }
+    });
+}
+
+function getDateRangeInclusive(dateA, dateB) {
+    const start = dateA < dateB ? dateA : dateB;
+    const end = dateA < dateB ? dateB : dateA;
+    const out = [];
+    try {
+        const cur = parseDate(start);
+        const last = parseDate(end);
+        if (!cur || !last) return [dateA];
+        while (cur <= last) {
+            out.push(formatDate(cur));
+            cur.setDate(cur.getDate() + 1);
+        }
+    } catch (e) {
+        return [dateA];
+    }
+    return out.length ? out : [dateA];
+}
+
+function finishMultiSelectDrag() {
+    document.body.classList.remove('planning-dragging');
+    if (!multiSelectState) {
+        clearMultiSelectHighlights();
+        return;
+    }
+    const st = multiSelectState;
+    multiSelectState = null;
+    const dates = getDateRangeInclusive(st.startDate, st.endDate || st.startDate);
+    clearMultiSelectHighlights();
+
+    if (!dates.length) return;
+    // Une seule date : comportement normal
+    if (dates.length === 1) {
+        if (typeof canModifyPlanning === 'function' && !canModifyPlanning()) return;
+        openTaskModal(st.isTeam, st.targetId, st.targetName, dates[0], st.currentTaskCode, st.currentDesc);
+        return;
+    }
+    // Plusieurs dates : uniquement agents (pas équipe / RPL multi)
+    if (st.isTeam) {
+        // Pour l'équipe : ouvrir sur la première date (rotation déjà gérée ailleurs)
+        if (typeof canModifyPlanning === 'function' && !canModifyPlanning()) return;
+        openTaskModal(true, st.targetId, st.targetName, dates[0], st.currentTaskCode, st.currentDesc);
+        return;
+    }
+    if (typeof canModifyPlanning === 'function' && !canModifyPlanning()) return;
+    openTaskModal(false, st.targetId, st.targetName, dates[0], st.currentTaskCode, st.currentDesc, dates);
+}
+
 function bindCellEvents(cellDiv, isTeam, targetId, targetName, dateStr, currentTaskCode, currentDesc) {
     const isRplTask = TASKS[currentTaskCode] && TASKS[currentTaskCode].isReplacement;
 
@@ -3524,10 +3670,48 @@ function bindCellEvents(cellDiv, isTeam, targetId, targetName, dateStr, currentT
         }
     };
 
+    // --- CLIC-GLISSER multi-jours (agents, édition déverrouillée) ---
+    cellDiv.onmousedown = (e) => {
+        if (e.button !== 0) return;
+        if (isRplTask) return; // RPL : garder double-clic / long press
+        if (typeof canModifyPlanning === 'function' && !canModifyPlanning()) return;
+        // Annuler le simple clic différé
+        if (clickTimer) {
+            clearTimeout(clickTimer);
+            clickTimer = null;
+        }
+        multiSelectState = {
+            isTeam: isTeam,
+            targetId: targetId,
+            targetName: targetName,
+            startDate: dateStr,
+            endDate: dateStr,
+            currentTaskCode: currentTaskCode,
+            currentDesc: currentDesc,
+            moved: false
+        };
+        document.body.classList.add('planning-dragging');
+        highlightMultiSelectRange(targetId, isTeam, dateStr, dateStr);
+        e.preventDefault();
+    };
+
+    cellDiv.onmouseenter = () => {
+        if (!multiSelectState) return;
+        if (multiSelectState.targetId !== targetId || multiSelectState.isTeam !== isTeam) return;
+        multiSelectState.endDate = dateStr;
+        multiSelectState.moved = multiSelectState.startDate !== dateStr;
+        highlightMultiSelectRange(targetId, isTeam, multiSelectState.startDate, dateStr);
+    };
+
     // --- GESTION DU DOUBLE-CLIC (PC / SOURIS) ---
     cellDiv.onclick = (e) => {
         if (touchPreventClick) {
             touchPreventClick = false;
+            return;
+        }
+        // Si un drag vient de se terminer, ne pas rouvrir via clic
+        if (cellDiv._skipNextClick) {
+            cellDiv._skipNextClick = false;
             return;
         }
 
@@ -3537,19 +3721,38 @@ function bindCellEvents(cellDiv, isTeam, targetId, targetName, dateStr, currentT
             // DOUBLE CLIC : ouvrir la fiche si tâche configurée comme remplacement
             if (isRplTask) {
                 openReplacementModal(isTeam, targetId, targetName, dateStr);
-            } else if (!isReadOnly) {
+            } else if (typeof canModifyPlanning === 'function' ? canModifyPlanning() : !isReadOnly) {
                 openTaskModal(isTeam, targetId, targetName, dateStr, currentTaskCode, currentDesc);
             }
         } else {
             clickTimer = setTimeout(() => {
                 clickTimer = null;
-                // SIMPLE CLIC :
-                if (!isReadOnly) {
+                // SIMPLE CLIC (sans drag) :
+                if (typeof canModifyPlanning === 'function' ? canModifyPlanning() : !isReadOnly) {
                     openTaskModal(isTeam, targetId, targetName, dateStr, currentTaskCode, currentDesc);
                 }
             }, 250);
         }
     };
+}
+
+// Fin globale du drag (mouseup n'importe où)
+if (typeof window !== 'undefined' && !window._planningDragMouseUpBound) {
+    window._planningDragMouseUpBound = true;
+    document.addEventListener('mouseup', function() {
+        if (!multiSelectState) return;
+        const st = multiSelectState;
+        // Marquer les cellules pour éviter le clic fantôme
+        const selector = '.task-cell[data-target-id="' + st.targetId + '"]';
+        document.querySelectorAll(selector).forEach(function(el) {
+            el._skipNextClick = true;
+        });
+        if (clickTimer) {
+            clearTimeout(clickTimer);
+            clickTimer = null;
+        }
+        finishMultiSelectDrag();
+    });
 }
 
 
@@ -5354,14 +5557,26 @@ function purgeReplacementArchives() {
 
         // sert à ouvrir la fenêtre de modification d'une tâche du planning (équipe ou agent), en préchargeant les informations existantes et en affichant toutes les tâches disponibles.
         // C'est la fonction centrale d'édition des affectations.
-        function openTaskModal(isTeam, targetId, targetName, dateStr, currentTaskCode, currentDesc) {
-            if (isReadOnly) return;
-            activeTaskCellSelection = { isTeam, targetId, targetName, dateStr };
+        function openTaskModal(isTeam, targetId, targetName, dateStr, currentTaskCode, currentDesc, dateStrs) {
+            if (typeof canModifyPlanning === 'function' ? !canModifyPlanning() : isReadOnly) return;
+            const dates = (Array.isArray(dateStrs) && dateStrs.length)
+                ? dateStrs.slice().sort()
+                : [dateStr];
+            activeTaskCellSelection = {
+                isTeam: isTeam,
+                targetId: targetId,
+                targetName: targetName,
+                dateStr: dates[0],
+                dateStrs: dates
+            };
             selectedTaskCodeInModal = currentTaskCode || 'R';
 
-            document.getElementById('taskModalTargetInfo').innerHTML = `
-                Cible: <strong>${targetName}</strong> | Date: <strong>${dateStr}</strong>
-            `;
+            let dateLabel = dates[0];
+            if (dates.length > 1) {
+                dateLabel = dates[0] + ' → ' + dates[dates.length - 1] + ' <span style="color:#2980b9;">(' + dates.length + ' jours)</span>';
+            }
+            document.getElementById('taskModalTargetInfo').innerHTML =
+                'Cible: <strong>' + targetName + '</strong> | Date: <strong>' + dateLabel + '</strong>';
             document.getElementById('taskModalDescription').value = currentDesc || '';
 
             const grid = document.getElementById('taskPickerGrid');
@@ -5408,6 +5623,7 @@ function purgeReplacementArchives() {
             document.getElementById('taskModal').style.display = 'none';
             activeTaskCellSelection = null;
             selectedTaskCodeInModal = null;
+            if (typeof clearMultiSelectHighlights === 'function') clearMultiSelectHighlights();
         }
 
         // fonction de validation/sauvegarde d'une modification de tâche effectuée dans la fenêtre taskModal.
@@ -5643,11 +5859,14 @@ function purgeReplacementArchives() {
         }
 
         function confirmTaskSelection() {
-            if (isReadOnly || !activeTaskCellSelection) return;
+            if ((typeof canModifyPlanning === 'function' ? !canModifyPlanning() : isReadOnly) || !activeTaskCellSelection) return;
 
             const { isTeam, targetId, dateStr } = activeTaskCellSelection;
+            const dateStrs = (activeTaskCellSelection.dateStrs && activeTaskCellSelection.dateStrs.length)
+                ? activeTaskCellSelection.dateStrs
+                : [dateStr];
             let descValue = document.getElementById('taskModalDescription').value.trim();
-            const descKey = `${targetId}_${dateStr}`;
+            const descKey = targetId + '_' + dateStr;
 
             // Si tâche de type remplacement et description vide → générer automatiquement
             const selectedDef = TASKS[selectedTaskCodeInModal];
@@ -5655,22 +5874,30 @@ function purgeReplacementArchives() {
                 descValue = buildRplAvailabilityComment(isTeam, targetId, dateStr);
             }
 
-            // Tâche de remplacement : demander la date limite de traitement avant d'enregistrer
+            // Tâche de remplacement : demander la date limite (une seule fois pour N jours)
             if (selectedDef && selectedDef.isReplacement) {
+                const sortedDates = dateStrs.slice().sort();
                 pendingRplTaskAssignment = {
                     isTeam: isTeam,
                     targetId: targetId,
                     targetName: activeTaskCellSelection.targetName,
-                    dateStr: dateStr,
+                    dateStr: sortedDates[0],
+                    dateStrs: sortedDates,
                     taskCode: selectedTaskCodeInModal,
                     descValue: descValue,
                     descKey: descKey
                 };
-                const defaultDeadline = computeDefaultRplDeadline(dateStr);
+                // Deadline par défaut basée sur le premier jour de la plage
+                const defaultDeadline = computeDefaultRplDeadline(sortedDates[0]);
                 const infoEl = document.getElementById('rplDeadlineModalInfo');
                 if (infoEl) {
+                    let dateHtml = formatDateStrDisplay(sortedDates[0]);
+                    if (sortedDates.length > 1) {
+                        dateHtml = formatDateStrDisplay(sortedDates[0]) + ' → ' + formatDateStrDisplay(sortedDates[sortedDates.length - 1]) +
+                            ' <span style="color:#2980b9;">(' + sortedDates.length + ' jours)</span>';
+                    }
                     infoEl.innerHTML = 'Remplacement pour <strong>' + (activeTaskCellSelection.targetName || targetId) +
-                        '</strong> le <strong>' + formatDateStrDisplay(dateStr) + '</strong>.';
+                        '</strong> le <strong>' + dateHtml + '</strong>.<br><span style="font-size:0.8rem;color:#666;">Une fiche RPL sera créée pour chaque jour, avec la même date limite et les mêmes compétences.</span>';
                 }
                 const input = document.getElementById('rplDeadlineDateInput');
                 if (input) input.value = defaultDeadline;
@@ -5691,16 +5918,18 @@ function purgeReplacementArchives() {
                     delete taskDescriptions[descKey];
                 }
             } else {
-                const beforeCode = getCellTaskCode(false, targetId, dateStr);
                 if (!agentSchedules[targetId]) agentSchedules[targetId] = {};
-                agentSchedules[targetId][dateStr] = selectedTaskCodeInModal;
-                logCellModification(false, targetId, dateStr, beforeCode, selectedTaskCodeInModal);
-
-                if (descValue) {
-                    taskDescriptions[descKey] = descValue;
-                } else {
-                    delete taskDescriptions[descKey];
-                }
+                dateStrs.forEach(function(dStr) {
+                    const beforeCode = getCellTaskCode(false, targetId, dStr);
+                    agentSchedules[targetId][dStr] = selectedTaskCodeInModal;
+                    logCellModification(false, targetId, dStr, beforeCode, selectedTaskCodeInModal);
+                    const dKey = targetId + '_' + dStr;
+                    if (descValue) {
+                        taskDescriptions[dKey] = descValue;
+                    } else {
+                        delete taskDescriptions[dKey];
+                    }
+                });
             }
 
             closeTaskModal();
@@ -5717,7 +5946,7 @@ function purgeReplacementArchives() {
         }
 
         function confirmRplDeadlineAndSave() {
-            if (isReadOnly || !pendingRplTaskAssignment) return;
+            if ((typeof canModifyPlanning === 'function' ? !canModifyPlanning() : isReadOnly) || !pendingRplTaskAssignment) return;
             const deadlineInput = document.getElementById('rplDeadlineDateInput');
             let deadlineDate = deadlineInput ? deadlineInput.value : '';
             if (!deadlineDate) {
@@ -5732,6 +5961,9 @@ function purgeReplacementArchives() {
             });
 
             const { isTeam, targetId, dateStr, taskCode, descValue, descKey } = pendingRplTaskAssignment;
+            const dateStrs = (pendingRplTaskAssignment.dateStrs && pendingRplTaskAssignment.dateStrs.length)
+                ? pendingRplTaskAssignment.dateStrs
+                : [dateStr];
 
             if (isTeam) {
                 // Passer deadline + compétences recommandées à la récurrence d'équipe
@@ -5742,22 +5974,37 @@ function purgeReplacementArchives() {
                     delete taskDescriptions[descKey];
                 }
             } else {
-                const beforeCode = getCellTaskCode(false, targetId, dateStr);
                 if (!agentSchedules[targetId]) agentSchedules[targetId] = {};
-                agentSchedules[targetId][dateStr] = taskCode;
-                logCellModification(false, targetId, dateStr, beforeCode, taskCode);
-                if (descValue) {
-                    taskDescriptions[descKey] = descValue;
-                } else {
-                    delete taskDescriptions[descKey];
-                }
+                dateStrs.forEach(function(dStr) {
+                    const beforeCode = getCellTaskCode(false, targetId, dStr);
+                    agentSchedules[targetId][dStr] = taskCode;
+                    logCellModification(false, targetId, dStr, beforeCode, taskCode);
 
-                // Fiche RPL agent
-                const sheetKey = targetId + '_' + dateStr;
-                const sheet = ensureReplacementSheet(sheetKey);
-                sheet.deadlineDate = deadlineDate;
-                sheet.recommendedSkills = recommendedSkills;
-                replacementSheets[sheetKey] = sheet;
+                    // Commentaire : fourni ou auto généré pour chaque jour
+                    const dKey = targetId + '_' + dStr;
+                    let dayDesc = descValue;
+                    if (!dayDesc || dateStrs.length > 1) {
+                        // Pour multi-jours, régénérer la liste de dispo du jour si pas de commentaire custom unique
+                        // Si l'utilisateur a saisi un commentaire, on le réplique sur chaque jour
+                        if (!pendingRplTaskAssignment.descValue) {
+                            dayDesc = buildRplAvailabilityComment(false, targetId, dStr);
+                        } else {
+                            dayDesc = pendingRplTaskAssignment.descValue;
+                        }
+                    }
+                    if (dayDesc) {
+                        taskDescriptions[dKey] = dayDesc;
+                    } else {
+                        delete taskDescriptions[dKey];
+                    }
+
+                    // Fiche RPL agent pour ce jour
+                    const sheetKey = targetId + '_' + dStr;
+                    const sheet = ensureReplacementSheet(sheetKey);
+                    sheet.deadlineDate = deadlineDate;
+                    sheet.recommendedSkills = recommendedSkills.slice();
+                    replacementSheets[sheetKey] = sheet;
+                });
             }
 
             document.getElementById('rplDeadlineModal').style.display = 'none';
