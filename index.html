@@ -5717,14 +5717,21 @@ function purgeReplacementArchives() {
                     btn.classList.add('selected');
                     selectedTaskCodeInModal = code;
 
-                    // Si tâche de type remplacement : préremplir le commentaire avec les agents disponibles
+                    // Si tâche de type remplacement : préremplir le commentaire (sauf multi-jours → auto à la validation)
                     if (task.isReplacement && activeTaskCellSelection) {
-                        const autoComment = buildRplAvailabilityComment(
-                            activeTaskCellSelection.isTeam,
-                            activeTaskCellSelection.targetId,
-                            activeTaskCellSelection.dateStr
-                        );
-                        document.getElementById('taskModalDescription').value = autoComment;
+                        const multi = activeTaskCellSelection.dateStrs && activeTaskCellSelection.dateStrs.length > 1;
+                        if (multi) {
+                            document.getElementById('taskModalDescription').value = '';
+                            document.getElementById('taskModalDescription').placeholder =
+                                'Laisser vide = commentaire auto par jour selon les dispos. Saisir un texte = même commentaire sur tous les jours.';
+                        } else {
+                            const autoComment = buildRplAvailabilityComment(
+                                activeTaskCellSelection.isTeam,
+                                activeTaskCellSelection.targetId,
+                                activeTaskCellSelection.dateStr
+                            );
+                            document.getElementById('taskModalDescription').value = autoComment;
+                        }
                     }
                 };
                 grid.appendChild(btn);
@@ -5794,6 +5801,79 @@ function purgeReplacementArchives() {
          * Si la cible est un agent et qu'il est le SEUL à posséder une de ces compétences,
          * la case est pré-cochée (compétence manquante suite à son absence).
          */
+        /**
+         * Compétences recommandées auto pour une absence agent un jour donné
+         * (seul détenteur dans l'équipe, hors remplaçants déjà présents).
+         * @returns {string[]} ids de compétences
+         */
+        function computeAutoRecommendedSkillsForAbsence(agentId, dateStr) {
+            const result = [];
+            const tracked = (settings && Array.isArray(settings.rplTrackableSkillIds))
+                ? settings.rplTrackableSkillIds
+                : [];
+            if (!agentId || !dateStr || !tracked.length) return result;
+
+            const agent = findAgentById(agentId);
+            if (!agent) return result;
+            const agentSkills = Array.isArray(agent.skills) ? agent.skills.map(String) : [];
+
+            let team = null;
+            (teams || []).forEach(function(t) {
+                if ((t.agents || []).some(function(a) { return a && a.id === agentId; })) team = t;
+            });
+            if (!team) return result;
+
+            function agentHasSkillLocal(ag, skillId) {
+                if (!ag) return false;
+                const skills = Array.isArray(ag.skills) ? ag.skills : [];
+                return skills.some(function(s) { return String(s) === String(skillId); });
+            }
+
+            function otherHoldersPresent(skillId) {
+                const holders = [];
+                const memberIds = {};
+                (team.agents || []).forEach(function(a) {
+                    if (a && a.id) memberIds[a.id] = true;
+                });
+                (team.agents || []).forEach(function(a) {
+                    if (!a || !a.id || a.id === agentId) return;
+                    if (!agentHasSkillLocal(a, skillId)) return;
+                    const code = (typeof getEffectiveAgentTask === 'function')
+                        ? getEffectiveAgentTask(a, team.id, dateStr) : null;
+                    const def = (code && TASKS[code]) ? TASKS[code] : null;
+                    if (def && !def.isRest) holders.push(a.id);
+                });
+                (teams || []).forEach(function(t) {
+                    (t.agents || []).forEach(function(a) {
+                        if (!a || !a.id || a.id === agentId) return;
+                        if (memberIds[a.id]) return;
+                        if (!agentHasSkillLocal(a, skillId)) return;
+                        const personal = (agentSchedules && agentSchedules[a.id])
+                            ? agentSchedules[a.id][dateStr] : null;
+                        if (personal === null || personal === undefined || personal === '') return;
+                        const def = TASKS[personal];
+                        if (!def || def.isRest) return;
+                        holders.push(a.id);
+                    });
+                });
+                return holders;
+            }
+
+            tracked.forEach(function(skillId) {
+                if (agentSkills.indexOf(String(skillId)) === -1) return;
+                // Autre membre de l'équipe avec la compétence ?
+                let otherMembers = 0;
+                (team.agents || []).forEach(function(a) {
+                    if (!a || !a.id || a.id === agentId) return;
+                    if (agentHasSkillLocal(a, skillId)) otherMembers++;
+                });
+                if (otherMembers > 0) return;
+                if (otherHoldersPresent(skillId).length > 0) return;
+                result.push(skillId);
+            });
+            return result;
+        }
+
         function populateRplRecommendedSkillsCheckboxes() {
             const box = document.getElementById('rplRecommendedSkillsBox');
             const container = document.getElementById('rplRecommendedSkillsCheckboxes');
@@ -5807,9 +5887,31 @@ function purgeReplacementArchives() {
                 return;
             }
 
+            const ctx = pendingRplTaskAssignment || activeTaskCellSelection || null;
+            // Multi-jours : compétences auto par jour (pas de validation manuelle RE)
+            if (ctx && ctx.multiDay && ctx.dateStrs && ctx.dateStrs.length > 1 && !ctx.isTeam) {
+                box.style.display = 'block';
+                let preview = '';
+                ctx.dateStrs.forEach(function(dStr) {
+                    const skills = computeAutoRecommendedSkillsForAbsence(ctx.targetId, dStr);
+                    const labels = skills.map(function(id) {
+                        const sk = (skillDefinitions || []).find(function(s) { return String(s.id) === String(id); });
+                        return sk ? (sk.name || sk.id) : id;
+                    });
+                    preview += '<div style="font-size:0.78rem; margin:4px 0; padding:4px 6px; background:#fff; border-radius:4px; border:1px solid #d6eaf8;">' +
+                        '<strong>' + formatDateStrDisplay(dStr) + '</strong> : ' +
+                        (labels.length ? labels.join(', ') : '<em style="color:#888;">aucune</em>') +
+                        '</div>';
+                });
+                container.innerHTML =
+                    '<p style="margin:0 0 8px 0; font-size:0.8rem; color:#1a5276;">' +
+                    'Compétences recommandées calculées automatiquement pour chaque jour (selon composition d\'équipe et remplaçants déjà présents). ' +
+                    'Vous n\'avez qu\'à valider la <strong>date limite</strong> ci-dessus.</p>' + preview;
+                return;
+            }
+
             // Cible agent (pas équipe)
             let targetAgentId = null;
-            const ctx = pendingRplTaskAssignment || activeTaskCellSelection || null;
             if (ctx && !ctx.isTeam && ctx.targetId) {
                 targetAgentId = ctx.targetId;
             }
@@ -5989,15 +6091,18 @@ function purgeReplacementArchives() {
             let descValue = document.getElementById('taskModalDescription').value.trim();
             const descKey = targetId + '_' + dateStr;
 
-            // Si tâche de type remplacement et description vide → générer automatiquement
+            // Tâche de remplacement
             const selectedDef = TASKS[selectedTaskCodeInModal];
-            if (selectedDef && selectedDef.isReplacement && !descValue) {
-                descValue = buildRplAvailabilityComment(isTeam, targetId, dateStr);
-            }
-
-            // Tâche de remplacement : demander la date limite (une seule fois pour N jours)
             if (selectedDef && selectedDef.isReplacement) {
                 const sortedDates = dateStrs.slice().sort();
+                const isMulti = sortedDates.length > 1;
+                // Commentaire manuel utilisateur (répété sur tous les jours) vs auto par jour
+                const userProvidedComment = !!descValue;
+                // Jour unique sans commentaire → préremplir auto pour ce jour
+                if (!isMulti && !descValue) {
+                    descValue = buildRplAvailabilityComment(isTeam, targetId, dateStr);
+                }
+
                 pendingRplTaskAssignment = {
                     isTeam: isTeam,
                     targetId: targetId,
@@ -6006,19 +6111,27 @@ function purgeReplacementArchives() {
                     dateStrs: sortedDates,
                     taskCode: selectedTaskCodeInModal,
                     descValue: descValue,
-                    descKey: descKey
+                    descKey: descKey,
+                    userProvidedComment: userProvidedComment,
+                    multiDay: isMulti
                 };
-                // Deadline par défaut basée sur le premier jour de la plage
                 const defaultDeadline = computeDefaultRplDeadline(sortedDates[0]);
                 const infoEl = document.getElementById('rplDeadlineModalInfo');
                 if (infoEl) {
                     let dateHtml = formatDateStrDisplay(sortedDates[0]);
-                    if (sortedDates.length > 1) {
+                    if (isMulti) {
                         dateHtml = formatDateStrDisplay(sortedDates[0]) + ' → ' + formatDateStrDisplay(sortedDates[sortedDates.length - 1]) +
                             ' <span style="color:#2980b9;">(' + sortedDates.length + ' jours)</span>';
                     }
+                    let extra = '';
+                    if (isMulti) {
+                        extra = '<br><span style="font-size:0.8rem;color:#666;">Une fiche RPL par jour. Date limite <strong>identique</strong>. ' +
+                            'Commentaires et compétences recommandées calculés <strong>jour par jour</strong>' +
+                            (userProvidedComment ? ' (commentaire manuel répété sur chaque jour).' : ' (auto selon dispos / équipe).') +
+                            '</span>';
+                    }
                     infoEl.innerHTML = 'Remplacement pour <strong>' + (activeTaskCellSelection.targetName || targetId) +
-                        '</strong> le <strong>' + dateHtml + '</strong>.<br><span style="font-size:0.8rem;color:#666;">Une fiche RPL sera créée pour chaque jour, avec la même date limite et les mêmes compétences.</span>';
+                        '</strong> le <strong>' + dateHtml + '</strong>.' + extra;
                 }
                 const input = document.getElementById('rplDeadlineDateInput');
                 if (input) input.value = defaultDeadline;
@@ -6075,20 +6188,21 @@ function purgeReplacementArchives() {
                 return;
             }
 
-            // Compétences recommandées cochées
-            const recommendedSkills = [];
+            // Compétences cochées manuellement (jour unique)
+            const manualRecommendedSkills = [];
             document.querySelectorAll('#rplRecommendedSkillsCheckboxes input[type="checkbox"]:checked').forEach(function(cb) {
-                if (cb.value) recommendedSkills.push(cb.value);
+                if (cb.value) manualRecommendedSkills.push(cb.value);
             });
 
             const { isTeam, targetId, dateStr, taskCode, descValue, descKey } = pendingRplTaskAssignment;
             const dateStrs = (pendingRplTaskAssignment.dateStrs && pendingRplTaskAssignment.dateStrs.length)
                 ? pendingRplTaskAssignment.dateStrs
                 : [dateStr];
+            const isMulti = !!(pendingRplTaskAssignment.multiDay && dateStrs.length > 1);
+            const userProvidedComment = !!pendingRplTaskAssignment.userProvidedComment;
 
             if (isTeam) {
-                // Passer deadline + compétences recommandées à la récurrence d'équipe
-                promptTeamRotation(targetId, dateStr, taskCode, deadlineDate, recommendedSkills);
+                promptTeamRotation(targetId, dateStr, taskCode, deadlineDate, manualRecommendedSkills);
                 if (descValue) {
                     taskDescriptions[descKey] = descValue;
                 } else {
@@ -6101,17 +6215,16 @@ function purgeReplacementArchives() {
                     agentSchedules[targetId][dStr] = taskCode;
                     logCellModification(false, targetId, dStr, beforeCode, taskCode);
 
-                    // Commentaire : fourni ou auto généré pour chaque jour
                     const dKey = targetId + '_' + dStr;
-                    let dayDesc = descValue;
-                    if (!dayDesc || dateStrs.length > 1) {
-                        // Pour multi-jours, régénérer la liste de dispo du jour si pas de commentaire custom unique
-                        // Si l'utilisateur a saisi un commentaire, on le réplique sur chaque jour
-                        if (!pendingRplTaskAssignment.descValue) {
-                            dayDesc = buildRplAvailabilityComment(false, targetId, dStr);
-                        } else {
-                            dayDesc = pendingRplTaskAssignment.descValue;
-                        }
+                    let dayDesc;
+                    if (userProvidedComment) {
+                        // Commentaire manuel → répété sur chaque jour
+                        dayDesc = descValue;
+                    } else if (isMulti) {
+                        // Auto personnalisé selon dispos du jour
+                        dayDesc = buildRplAvailabilityComment(false, targetId, dStr);
+                    } else {
+                        dayDesc = descValue || buildRplAvailabilityComment(false, targetId, dStr);
                     }
                     if (dayDesc) {
                         taskDescriptions[dKey] = dayDesc;
@@ -6119,11 +6232,18 @@ function purgeReplacementArchives() {
                         delete taskDescriptions[dKey];
                     }
 
-                    // Fiche RPL agent pour ce jour
+                    // Compétences : auto par jour si multi, sinon choix manuel
+                    let daySkills;
+                    if (isMulti) {
+                        daySkills = computeAutoRecommendedSkillsForAbsence(targetId, dStr);
+                    } else {
+                        daySkills = manualRecommendedSkills.slice();
+                    }
+
                     const sheetKey = targetId + '_' + dStr;
                     const sheet = ensureReplacementSheet(sheetKey);
                     sheet.deadlineDate = deadlineDate;
-                    sheet.recommendedSkills = recommendedSkills.slice();
+                    sheet.recommendedSkills = daySkills;
                     replacementSheets[sheetKey] = sheet;
                 });
             }
