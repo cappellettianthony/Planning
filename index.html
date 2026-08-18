@@ -2110,6 +2110,11 @@ function loadAppState(data) {
         teams = defaultTeams;
     }
 
+    // Nom court de l'équipe journée (team_7) pour l'affichage planning
+    (teams || []).forEach(function(t) {
+        if (t && t.id === 'team_7') t.name = 'Journée';
+    });
+
     acknowledgedAlerts = data.acknowledgedAlerts || [];
     skillDefinitions = data.skillDefinitions || skillDefinitions;
     exclusiveSkillMonitoredGroups = data.exclusiveSkillMonitoredGroups || exclusiveSkillMonitoredGroups;
@@ -2163,7 +2168,7 @@ function loadAppState(data) {
                 }
                 defaultTeams.push(team);
             }
-            let dayTeam = { id: `team_7`, name: `Équipe 7 (Journée Modulable)`, isDayTeam: true, agents: [] };
+            let dayTeam = { id: `team_7`, name: `Journée`, isDayTeam: true, agents: [] };
             for (let a = 1; a <= 7; a++) {
                 dayTeam.agents.push({ id: `e7_a${a}`, name: `Agent Journée ${a}`, skills: ['C1', 'C4'] });
             }
@@ -2423,6 +2428,11 @@ if (resetAckBtn) {
     } else {
         teams = defaultTeams;
     }
+
+    // Nom court de l'équipe journée (team_7) pour l'affichage planning
+    (teams || []).forEach(function(t) {
+        if (t && t.id === 'team_7') t.name = 'Journée';
+    });
 
     acknowledgedAlerts = data.acknowledgedAlerts || [];
     skillDefinitions = data.skillDefinitions || skillDefinitions;
@@ -3665,14 +3675,15 @@ if (resetAckBtn) {
                     cellDiv.style.backgroundColor = taskDef.color;
                     cellDiv.style.color = taskDef.text;
                     cellDiv.innerText = taskCode;
-                    cellDiv.title = taskDef.label || taskCode;
+                    // Infobulle native navigateur (désactivée) — décommenter pour réactiver :
+                    // cellDiv.title = taskDef.label || taskCode;
                 } else {
                     // Roulement hérité : cellule vide (repos/quarts calculés via l'équipe)
                     cellDiv.style.backgroundColor = 'transparent';
                     cellDiv.style.color = '#bbb';
                     cellDiv.innerText = '';
-                    // La ligne de dessous intègre un commentaire qui indique le roulement natif de la cellule.
-                    //cellDiv.title = 'Roulement équipe : ' + taskCode + (taskDef.label ? ' (' + taskDef.label + ')' : '');
+                    // Infobulle native navigateur (désactivée) — décommenter pour réactiver :
+                    // cellDiv.title = 'Roulement équipe : ' + taskCode + (taskDef.label ? ' (' + taskDef.label + ')' : '');
                 }
 
                 if (!planningLockedA || isRplAgentCell) {
