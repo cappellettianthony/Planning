@@ -4169,109 +4169,24 @@ function canAgentTakeReplacement(agentId, dateStr, targetShiftCode) {
     }
 
     // ------------------------------------------------------------------
-    // 3. Contrôle des 35 h — MÊME algorithme que checkRestAlerts
-    //    Semaine du remplacement + semaine S+1 (ex. samedi A/N → lundi M
-    //    appartient à S+1 en calendrier dimanche→samedi).
+    // 3. Contrôle des 35 h — cumul (fin quart veille) + 24 h repos + (début quart lendemain)
+    //    Identique au planning (weekHasValid35hRest). Semaine du RPL + S+1.
     // ------------------------------------------------------------------
     const targetDateObj = parseDate(dateStr);
-
-    /** valid35h pour une semaine dont sundayOfWeek est le dimanche de début */
-    function weekHasValid35h(sundayOfWeek) {
-        let weekDays = [];
-        for (let i = 0; i < 7; i++) {
-            let d = new Date(sundayOfWeek);
-            d.setDate(d.getDate() + i);
-            weekDays.push({
-                dateStr: formatDate(d),
-                def: getSimulatedDef(info.agent, info.teamId, formatDate(d))
-            });
-        }
-
-        let monTask = weekDays[1].def;
-        let endSunDate = new Date(sundayOfWeek);
-        endSunDate.setDate(endSunDate.getDate() + 7);
-        let endSunDef = getSimulatedDef(info.agent, info.teamId, formatDate(endSunDate));
-        let isSpecialShiftWeek = (monTask.shift === 'M' && endSunDef.shift === 'N');
-        let valid35h = false;
-
-        if (isSpecialShiftWeek) {
-            let prevSatDate = new Date(sundayOfWeek);
-            prevSatDate.setDate(prevSatDate.getDate() - 1);
-            let prevSatDef = getSimulatedDef(info.agent, info.teamId, formatDate(prevSatDate));
-
-            let sunIsFullRest = weekDays[0].def.isRest;
-            let satFinishTime = prevSatDef.isRest ? 0 : timeToDecimal(prevSatDef.end);
-            let satHas11hRest = prevSatDef.isRest || (satFinishTime <= 13);
-
-            if (prevSatDef.shift !== 'N' && sunIsFullRest && satHas11hRest) {
-                valid35h = true;
-            }
-        }
-
-        if (!valid35h) {
-            for (let i = 0; i < 7; i++) {
-                if (weekDays[i].def.isRest) {
-                    let prevShift = 'none';
-                    if (i > 0) {
-                        prevShift = weekDays[i - 1].def.shift;
-                    } else {
-                        let pSatDate = new Date(sundayOfWeek);
-                        pSatDate.setDate(pSatDate.getDate() - 1);
-                        let pSatDef = getSimulatedDef(info.agent, info.teamId, formatDate(pSatDate));
-                        prevShift = pSatDef.shift;
-                    }
-
-                    if (prevShift === 'N') continue;
-
-                    let prevHas11h = false;
-                    let nextHas11h = false;
-
-                    if (i > 0) {
-                        let prevT = weekDays[i - 1].def;
-                        let finish = prevT.isRest ? 0 : timeToDecimal(prevT.end);
-                        if (prevT.isRest || finish <= 13) prevHas11h = true;
-                    } else {
-                        let pSatDate = new Date(sundayOfWeek);
-                        pSatDate.setDate(pSatDate.getDate() - 1);
-                        let pSatDef = getSimulatedDef(info.agent, info.teamId, formatDate(pSatDate));
-                        let finish = pSatDef.isRest ? 0 : timeToDecimal(pSatDef.end);
-                        if (pSatDef.isRest || finish <= 13) prevHas11h = true;
-                    }
-
-                    if (i < 6) {
-                        let nextT = weekDays[i + 1].def;
-                        let start = nextT.isRest ? 24 : timeToDecimal(nextT.start);
-                        if (nextT.isRest || start >= 11) nextHas11h = true;
-                    } else {
-                        let nSunDate = new Date(sundayOfWeek);
-                        nSunDate.setDate(nSunDate.getDate() + 7);
-                        let nSunDef = getSimulatedDef(info.agent, info.teamId, formatDate(nSunDate));
-                        let start = nSunDef.isRest ? 24 : timeToDecimal(nSunDef.start);
-                        if (nSunDef.isRest || start >= 11) nextHas11h = true;
-                    }
-
-                    if (prevHas11h || nextHas11h) {
-                        valid35h = true;
-                        break;
-                    }
-                }
-            }
-        }
-        return valid35h;
-    }
-
     let sundayOfWeek = new Date(targetDateObj);
     while (sundayOfWeek.getDay() !== 0) {
         sundayOfWeek.setDate(sundayOfWeek.getDate() - 1);
     }
 
-    // Semaine du jour RPL
-    if (!weekHasValid35h(sundayOfWeek)) return false;
+    function getSimDefFor35(dStr) {
+        return getSimulatedDef(info.agent, info.teamId, dStr);
+    }
 
-    // Semaine S+1 (obligatoire : un samedi A/N impacte le repos avant le lundi suivant)
+    if (!weekHasValid35hRest(getSimDefFor35, sundayOfWeek)) return false;
+
     let sundayNextWeek = new Date(sundayOfWeek);
     sundayNextWeek.setDate(sundayNextWeek.getDate() + 7);
-    if (!weekHasValid35h(sundayNextWeek)) return false;
+    if (!weekHasValid35hRest(getSimDefFor35, sundayNextWeek)) return false;
 
     // ------------------------------------------------------------------
     // 4. Max 11 jours consécutifs — comme le planning (!isRest coupe la série)
@@ -6442,6 +6357,91 @@ function purgeReplacementArchives() {
             return parseInt(parts[0], 10) + (parseInt(parts[1], 10) / 60);
         }
 
+        /**
+         * Repos hebdo 35 h : pour chaque jour isRest,
+         * total = heures après fin du dernier quart travaillé avant
+         *       + 24 h (journée de repos)
+         *       + heures avant début du prochain quart travaillé après
+         * Ex. samedi A fin 14h + dimanche R + lundi J début 8h → 10+24+8 = 42 h ≥ 35.
+         * getDef(dateStr) → définition de tâche (TASKS[...]).
+         */
+        function weekHasValid35hRest(getDef, sundayOfWeek) {
+            function defOnOffset(dayOffset) {
+                const d = new Date(sundayOfWeek);
+                d.setDate(d.getDate() + dayOffset);
+                return getDef(formatDate(d)) || TASKS['R'];
+            }
+
+            // Cas particulier historique : semaine M … N
+            const monTask = defOnOffset(1);
+            const endSunDef = defOnOffset(7);
+            if (monTask && monTask.shift === 'M' && endSunDef && endSunDef.shift === 'N') {
+                const prevSatDef = defOnOffset(-1);
+                const sunDef = defOnOffset(0);
+                if (sunDef.isRest && prevSatDef.shift !== 'N') {
+                    const satFinish = prevSatDef.isRest ? 0 : timeToDecimal(prevSatDef.end);
+                    if (prevSatDef.isRest || satFinish <= 13) return true;
+                }
+            }
+
+            for (let i = 0; i < 7; i++) {
+                const dayDef = defOnOffset(i);
+                if (!dayDef || !dayDef.isRest) continue;
+
+                // Remonter jusqu'au dernier jour travaillé avant ce repos
+                let hoursBefore = 0;
+                let foundPrevWork = false;
+                for (let back = i - 1; back >= -2; back--) {
+                    const bd = defOnOffset(back);
+                    if (!bd || bd.isRest) continue;
+                    foundPrevWork = true;
+                    // Nuit qui se termine le matin du jour de repos (back+1 == i) : pas de marge avant
+                    let finish = timeToDecimal(bd.end);
+                    const starts = timeToDecimal(bd.start);
+                    if (bd.shift === 'N' || finish < starts) {
+                        // Fin le matin du jour suivant back
+                        if (back + 1 === i) {
+                            hoursBefore = 0;
+                        } else {
+                            // Fin matin de back+1, puis jours de repos jusqu'à i
+                            hoursBefore = (i - (back + 1)) * 24 + (24 - finish);
+                            // finish is morning hour of day back+1, rest from finish to midnight of back+1 = 24-finish? 
+                            // Actually from end of night (morning of back+1 at finish) to start of day i midnight = (i - (back+1))*24 + (24-finish) no...
+                            // From morning finish on day back+1 to midnight start of day i = (i-(back+1))*24 - finish
+                            hoursBefore = Math.max(0, (i - (back + 1)) * 24 - finish);
+                        }
+                    } else {
+                        // Fin le jour back à finish : repos = reste de back + jours full jusqu'à i
+                        hoursBefore = (24 - finish) + (i - back - 1) * 24;
+                    }
+                    break;
+                }
+                if (!foundPrevWork) hoursBefore = 24;
+
+                // Nuit la veille immédiate : ne compte pas comme 24h plein de repos ce jour
+                const prevImm = defOnOffset(i - 1);
+                if (prevImm && !prevImm.isRest && prevImm.shift === 'N') continue;
+
+                // Descendre jusqu'au prochain jour travaillé
+                let hoursAfter = 0;
+                let foundNextWork = false;
+                for (let fwd = i + 1; fwd <= 9; fwd++) {
+                    const fd = defOnOffset(fwd);
+                    if (!fd || fd.isRest) continue;
+                    foundNextWork = true;
+                    const startH = timeToDecimal(fd.start);
+                    // Jours pleins entre i et fwd + heures avant début
+                    hoursAfter = (fwd - i - 1) * 24 + startH;
+                    break;
+                }
+                if (!foundNextWork) hoursAfter = 24;
+
+                const total = hoursBefore + 24 + hoursAfter;
+                if (total >= 35 - 0.001) return true;
+            }
+            return false;
+        }
+
         
         // est le moteur de contrôle réglementaire et de conformité sociale de votre application. Elle analyse l'ensemble de l'année pour chaque agent et génère automatiquement des alertes concernant :
         // le repos quotidien minimum de 11 heures ;
@@ -6498,7 +6498,8 @@ function purgeReplacementArchives() {
                 currentDate.setDate(currentDate.getDate() + 1);
             }
 
-            // 2. RÈGLE DES 35H DE REPOS HEBDOMADAIRE (24h + 11h)
+            // 2. RÈGLE DES 35H DE REPOS HEBDOMADAIRE
+            //    Cumul : repos après fin de quart veille + 24 h de repos + repos avant début quart lendemain
             let sundayIter = new Date(startYearDate);
             while (sundayIter.getDay() !== 0) {
                 sundayIter.setDate(sundayIter.getDate() - 1);
@@ -6506,103 +6507,12 @@ function purgeReplacementArchives() {
 
             while (sundayIter <= endYearDate) {
                 const sundayStr = formatDate(sundayIter);
-
-                let weekDays = [];
-                for (let i = 0; i < 7; i++) {
-                    let d = new Date(sundayIter);
-                    d.setDate(d.getDate() + i);
-                    let dStr = formatDate(d);
-                    let tCode = getEffectiveAgentTask(agent, team.id, dStr);
-                    let tDef = TASKS[tCode] || TASKS['R'];
-                    weekDays.push({ date: d, dateStr: dStr, code: tCode, def: tDef });
-                }
-
-                let monTask = weekDays[1].def;
-                let endSunDate = new Date(sundayIter);
-                endSunDate.setDate(endSunDate.getDate() + 7);
-                let endSunStr = formatDate(endSunDate);
-                let endSunCode = getEffectiveAgentTask(agent, team.id, endSunStr);
-                let endSunTask = TASKS[endSunCode] || TASKS['R'];
-
-                let isSpecialShiftWeek = (monTask.shift === 'M' && endSunTask.shift === 'N');
-                let valid35h = false;
-
-                if (isSpecialShiftWeek) {
-                    let prevSatDate = new Date(sundayIter);
-                    prevSatDate.setDate(prevSatDate.getDate() - 1);
-                    let prevSatStr = formatDate(prevSatDate);
-                    let prevSatCode = getEffectiveAgentTask(agent, team.id, prevSatStr);
-                    let prevSatTask = TASKS[prevSatCode] || TASKS['R'];
-
-                    let sunIsFullRest = weekDays[0].def.isRest;
-                    let satFinishTime = prevSatTask.isRest ? 0 : timeToDecimal(prevSatTask.end);
-                    let satHas11hRest = prevSatTask.isRest || (satFinishTime <= 13);
-
-                    // Si le samedi était de Nuit, le dimanche ne peut pas compter comme 24h plein
-                    if (prevSatTask.shift !== 'N' && sunIsFullRest && satHas11hRest) {
-                        valid35h = true;
-                    }
-                }
-
-                if (!valid35h) {
-                    for (let i = 0; i < 7; i++) {
-                        if (weekDays[i].def.isRest) {
-                            // Vérification du quart du jour précédent
-                            let prevShift = 'none';
-                            if (i > 0) {
-                                prevShift = weekDays[i - 1].def.shift;
-                            } else {
-                                let pSatDate = new Date(sundayIter);
-                                pSatDate.setDate(pSatDate.getDate() - 1);
-                                let pSatCode = getEffectiveAgentTask(agent, team.id, formatDate(pSatDate));
-                                let pSatT = TASKS[pSatCode] || TASKS['R'];
-                                prevShift = pSatT.shift;
-                            }
-
-                            // Si précédé d'une Nuit ('N'), la nuit empiète jusqu'au matin : ne peut PAS valoir 24h plein
-                            if (prevShift === 'N') {
-                                continue;
-                            }
-
-                            let prevHas11h = false;
-                            let nextHas11h = false;
-
-                            // 11h de repos avant la journée pleine de 24h (fin avant ou à 13h)
-                            if (i > 0) {
-                                let prevT = weekDays[i - 1].def;
-                                let finish = prevT.isRest ? 0 : timeToDecimal(prevT.end);
-                                if (prevT.isRest || finish <= 13) prevHas11h = true;
-                            } else {
-                                let pSatDate = new Date(sundayIter);
-                                pSatDate.setDate(pSatDate.getDate() - 1);
-                                let pSatCode = getEffectiveAgentTask(agent, team.id, formatDate(pSatDate));
-                                let pSatT = TASKS[pSatCode] || TASKS['R'];
-                                let finish = pSatT.isRest ? 0 : timeToDecimal(pSatT.end);
-                                if (pSatT.isRest || finish <= 13) prevHas11h = true;
-                            }
-
-                            // 11h de repos après la journée pleine de 24h (début à partir de 11h)
-                            if (i < 6) {
-                                let nextT = weekDays[i + 1].def;
-                                let start = nextT.isRest ? 24 : timeToDecimal(nextT.start);
-                                if (nextT.isRest || start >= 11) nextHas11h = true;
-                            } else {
-                                let nSunDate = new Date(sundayIter);
-                                nSunDate.setDate(nSunDate.getDate() + 7);
-                                let nSunCode = getEffectiveAgentTask(agent, team.id, formatDate(nSunDate));
-                                let nSunT = TASKS[nSunCode] || TASKS['R'];
-                                let start = nSunT.isRest ? 24 : timeToDecimal(nSunT.start);
-                                if (nSunT.isRest || start >= 11) nextHas11h = true;
-                            }
-
-                            // Valide si les 11h sont placées AVANT, APRÈS, OU AVANT ET APRÈS (prevHas11h && nextHas11h)
-                            if (prevHas11h || nextHas11h) {
-                                valid35h = true;
-                                break;
-                            }
-                        }
-                    }
-                }
+                const teamIdForAgent = team.id;
+                const agentRef = agent;
+                const valid35h = weekHasValid35hRest(function(dStr) {
+                    const code = getEffectiveAgentTask(agentRef, teamIdForAgent, dStr);
+                    return TASKS[code] || TASKS['R'];
+                }, sundayIter);
 
                 if (!valid35h) {
                     generatedAlerts.push({
@@ -6611,7 +6521,7 @@ function purgeReplacementArchives() {
                         agentName: agent.name,
                         date: sundayStr,
                         type: 'REPOS_35H',
-                        description: `Repos hebdomadaire de 35h (24h + 11h) non respecté sur la semaine du dimanche ${sundayStr}`
+                        description: `Repos hebdomadaire de 35h non respecté sur la semaine du dimanche ${sundayStr} (cumul avant + 24h repos + après < 35h)`
                     });
                 }
 
