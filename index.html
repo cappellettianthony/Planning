@@ -6193,14 +6193,19 @@ function purgeReplacementArchives() {
             }
         }
 
-        /** Code de roulement d'équipe pour un agent un jour donné (sans override individuel) */
+        /** Code de roulement d'équipe pour un agent un jour donné (sans override individuel).
+         *  Aligné sur l'affichage planning : si aucune valeur stockée → 'R' par défaut.
+         */
         function getTeamRotationCodeForAgent(agentId, dateStr) {
             let teamId = null;
             (teams || []).forEach(function(t) {
                 if ((t.agents || []).some(function(a) { return a && a.id === agentId; })) teamId = t.id;
             });
-            if (!teamId || !teamSchedules[teamId]) return null;
-            return teamSchedules[teamId][dateStr] !== undefined ? teamSchedules[teamId][dateStr] : null;
+            if (!teamId) return 'R';
+            if (!teamSchedules[teamId] || teamSchedules[teamId][dateStr] === undefined || teamSchedules[teamId][dateStr] === null || teamSchedules[teamId][dateStr] === '') {
+                return 'R';
+            }
+            return teamSchedules[teamId][dateStr];
         }
 
         /**
@@ -6280,8 +6285,10 @@ function purgeReplacementArchives() {
                 dateStrs.forEach(function(dStr) {
                     const beforeCode = getCellTaskCode(false, targetId, dStr);
                     // Si roulement = Repos ou Journée → CA/F/... ; si M/A/N → RPL inchangée
+                    const rotCode = getTeamRotationCodeForAgent(targetId, dStr);
                     const codeToWrite = resolveRplCodeIfRestOrDay(targetId, dStr, taskCode);
-                    const isWorkShiftRpl = (codeToWrite === taskCode); // pas transformé = quart M/A/N
+                    // Fiche RPL seulement si le roulement est un vrai quart M/A/N (pas R/H/J)
+                    const isWorkShiftRpl = !isRotationRestOrDayCode(rotCode);
                     agentSchedules[targetId][dStr] = codeToWrite;
                     logCellModification(false, targetId, dStr, beforeCode, codeToWrite);
 
