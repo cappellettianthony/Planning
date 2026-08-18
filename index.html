@@ -750,6 +750,102 @@
         .checkbox-group { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
         .checkbox-group label { font-weight: normal; display: flex; align-items: center; gap: 5px; cursor: pointer; }
 
+        /* Fenêtre agent — onglets */
+        #agentModal .modal-content {
+            width: 620px;
+            max-width: 96%;
+            max-height: 92vh;
+            display: flex;
+            flex-direction: column;
+            padding: 0;
+            overflow: hidden;
+        }
+        #agentModal .agent-modal-header {
+            padding: 14px 18px 8px;
+            border-bottom: 1px solid var(--border-color);
+            background: #fafbfc;
+            flex-shrink: 0;
+        }
+        #agentModal .agent-modal-header h2 {
+            margin: 0;
+            border-bottom: none;
+            padding-bottom: 0;
+            font-size: 1.1rem;
+        }
+        #agentModal .agent-tabs {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            border-bottom: 2px solid var(--border-color);
+            padding: 0 14px;
+            background: #fff;
+            flex-shrink: 0;
+        }
+        #agentModal .agent-tab-btn {
+            border: none;
+            background: transparent;
+            padding: 10px 12px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 0.8rem;
+            color: #5d6d7e;
+            border-bottom: 3px solid transparent;
+            margin-bottom: -2px;
+        }
+        #agentModal .agent-tab-btn:hover { color: var(--primary); background: #f4f6f7; }
+        #agentModal .agent-tab-btn.active {
+            color: var(--accent);
+            border-bottom-color: var(--accent);
+            background: #eef6fc;
+        }
+        #agentModal .agent-tab-panels {
+            overflow-y: auto;
+            flex: 1;
+            padding: 14px 18px 10px;
+            min-height: 180px;
+        }
+        #agentModal .agent-tab-panel { display: none; }
+        #agentModal .agent-tab-panel.active { display: block; }
+        #agentModal .agent-modal-footer {
+            padding: 12px 18px;
+            border-top: 1px solid var(--border-color);
+            background: #fafbfc;
+            flex-shrink: 0;
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+        #agentModal #skillsCheckboxes {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 8px 12px;
+            padding: 10px;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            background: #fafbfc;
+        }
+        #agentModal #skillsCheckboxes label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 0;
+            font-weight: normal;
+            font-size: 0.85rem;
+            cursor: pointer;
+            padding: 6px 8px;
+            border-radius: 5px;
+            border: 1px solid transparent;
+            background: #fff;
+        }
+        #agentModal #skillsCheckboxes label:hover {
+            border-color: #b8c0c8;
+            background: #f8f9fa;
+        }
+        #agentModal #skillsCheckboxes label.skill-checked {
+            border-color: #27ae60;
+            background: #eafaf1;
+        }
+
        .task-row { display: grid; grid-template-columns: 50px 110px 100px 75px 75px 50px 45px 35px 35px 70px; gap: 4px; align-items: center; margin-bottom: 6px; font-size: 0.75rem; }
         .task-row input[type="color"] { padding: 0; height: 26px; cursor: pointer; }
 
@@ -1305,112 +1401,128 @@
 
     <!-- Modale Agent -->
     <div class="modal" id="agentModal">
-        <div class="modal-content" style="width: 550px;">
-            <h2>Édition de l'Agent</h2>
-            <input type="hidden" id="editAgentId">
-            <div class="form-group">
-                <label>Nom & Prénom</label>
-                <input type="text" id="editAgentName">
-            </div>
-            <div class="form-group">
-                <label>Compétences attribuées</label>
-                <div class="checkbox-group" id="skillsCheckboxes"></div>
+        <div class="modal-content">
+            <div class="agent-modal-header">
+                <h2>👤 Fiche agent</h2>
+                <input type="hidden" id="editAgentId">
             </div>
 
-            <!-- Option A : Copier le roulement d'une équipe -->
-            <div class="bulk-box" style="background-color: #eef7fc; border-color: #3498db;">
-                <h3 style="color: #2980b9;">Copier le roulement d'une équipe sur l'agent</h3>
-                <div class="form-group">
-                    <label>Équipe source :</label>
-                    <select id="copyTeamSelect"></select>
-                </div>
-                <div style="display:flex; gap:10px;">
-                    <div class="form-group" style="flex:1;">
-                        <label>Du :</label>
-                        <input type="date" id="copyTeamStartDate">
-                    </div>
-                    <div class="form-group" style="flex:1;">
-                        <label>Au :</label>
-                        <input type="date" id="copyTeamEndDate">
-                    </div>
-                </div>
-                <button class="btn btn-purple" style="width:100%; font-weight:bold; padding: 8px;" onclick="applyCopyTeamSchedule()" id="copyTeamApplyBtn">📋 Copier le roulement de l'équipe</button>
+            <div class="agent-tabs" role="tablist">
+                <button type="button" class="agent-tab-btn active" data-tab="identite" onclick="switchAgentTab('identite')">Nom &amp; compétences</button>
+                <button type="button" class="agent-tab-btn" data-tab="roulement" onclick="switchAgentTab('roulement')">Roulement</button>
+                <button type="button" class="agent-tab-btn" data-tab="periode" onclick="switchAgentTab('periode')">Période / récurrence</button>
             </div>
 
-            <!-- Option B : Copier le roulement d'un agent existant -->
-            <div class="bulk-box" style="background-color: #fcf8e3; border-color: #f39c12;">
-                <h3 style="color: #d35400;">Copier le roulement d'un agent existant</h3>
-                <div class="form-group">
-                    <label>Agent source :</label>
-                    <select id="copyAgentSelect"></select>
-                </div>
-                <div class="form-group">
-                    <label>Commentaire associé (Optionnel - visible au survol 2s) :</label>
-                    <input type="text" id="copyAgentComment" placeholder="Ex: Copie de roulement, Remplacement...">
-                </div>
-                <div style="display:flex; gap:10px;">
-                    <div class="form-group" style="flex:1;">
-                        <label>Du :</label>
-                        <input type="date" id="copyAgentStartDate">
+            <div class="agent-tab-panels">
+                <!-- Onglet 1 : Nom & compétences -->
+                <div class="agent-tab-panel active" id="agentTab-identite">
+                    <div class="form-group">
+                        <label>Nom &amp; Prénom</label>
+                        <input type="text" id="editAgentName">
                     </div>
-                    <div class="form-group" style="flex:1;">
-                        <label>Au :</label>
-                        <input type="date" id="copyAgentEndDate">
-                    </div>
-                </div>
-                <button class="btn btn-ack" style="width:100%; font-weight:bold; padding: 8px;" onclick="applyCopyAgentSchedule()" id="copyAgentApplyBtn">👤 Copier le roulement de l'agent</button>
-            </div>
-
-            <!-- Option C : Affecter une tâche (Période fixe ou récurrence) -->
-            <div class="bulk-box">
-                <h3>Affecter une tâche sur une période</h3>
-                <div class="form-group">
-                    <label>Tâche / Statut :</label>
-                    <select id="bulkAgentTask"></select>
-                </div>
-                <div class="form-group">
-                    <label>Description / Note :</label>
-                    <input type="text" id="bulkAgentDesc" placeholder="Ex: Formation continue, Mission spéciale...">
-                </div>
-                
-                <div style="display:flex; gap:10px;">
-                    <div class="form-group" style="flex:1;">
-                        <label>Date de début :</label>
-                        <input type="date" id="bulkStartDate">
-                    </div>
-                    <div class="form-group" style="flex:1;" id="bulkEndDateGroup">
-                        <label>Date de fin :</label>
-                        <input type="date" id="bulkEndDate">
+                    <div class="form-group">
+                        <label>Compétences attribuées</label>
+                        <div id="skillsCheckboxes"></div>
                     </div>
                 </div>
 
-                <div style="display:flex; gap:10px;">
-                    <div class="form-group" style="flex:1;">
-                        <label>Occurrence / Fréquence :</label>
-                        <select id="bulkAgentFreq" onchange="toggleAgentRecurrenceUI()">
-                            <option value="NONE" selected>Sans récurrence (Période fixe)</option>
-                            <option value="1_DAY">Tous les jours</option>
-                            <option value="1">Toutes les semaines</option>
-                            <option value="2">Toutes les 2 semaines</option>
-                            <option value="6">Toutes les 6 semaines</option>
-                            <option value="8">Toutes les 8 semaines</option>
-                            <option value="12">Toutes les 12 semaines</option>
-                        </select>
+                <!-- Onglet 2 : Roulement -->
+                <div class="agent-tab-panel" id="agentTab-roulement">
+                    <div class="bulk-box" style="background-color: #eef7fc; border-color: #3498db; margin-top:0;">
+                        <h3 style="color: #2980b9;">Copier le roulement d'une équipe</h3>
+                        <div class="form-group">
+                            <label>Équipe source :</label>
+                            <select id="copyTeamSelect"></select>
+                        </div>
+                        <div style="display:flex; gap:10px;">
+                            <div class="form-group" style="flex:1;">
+                                <label>Du :</label>
+                                <input type="date" id="copyTeamStartDate">
+                            </div>
+                            <div class="form-group" style="flex:1;">
+                                <label>Au :</label>
+                                <input type="date" id="copyTeamEndDate">
+                            </div>
+                        </div>
+                        <button class="btn btn-purple" style="width:100%; font-weight:bold; padding: 8px;" onclick="applyCopyTeamSchedule()" id="copyTeamApplyBtn">📋 Copier le roulement de l'équipe</button>
                     </div>
-                    <div class="form-group" style="flex:1; display: none;" id="bulkDurationGroup">
-                        <label>Durée de récurrence :</label>
-                        <select id="bulkAgentDuration">
-                            <option value="1" selected>Sur 1 an</option>
-                            <option value="2">Sur 2 ans</option>
-                            <option value="3">Sur 3 ans</option>
-                            <option value="4">Sur 4 ans</option>
-                            <option value="5">Sur 5 ans</option>
-                        </select>
+
+                    <div class="bulk-box" style="background-color: #fcf8e3; border-color: #f39c12;">
+                        <h3 style="color: #d35400;">Copier le roulement d'un agent</h3>
+                        <div class="form-group">
+                            <label>Agent source :</label>
+                            <select id="copyAgentSelect"></select>
+                        </div>
+                        <div class="form-group">
+                            <label>Commentaire associé (optionnel) :</label>
+                            <input type="text" id="copyAgentComment" placeholder="Ex: Copie de roulement, Remplacement...">
+                        </div>
+                        <div style="display:flex; gap:10px;">
+                            <div class="form-group" style="flex:1;">
+                                <label>Du :</label>
+                                <input type="date" id="copyAgentStartDate">
+                            </div>
+                            <div class="form-group" style="flex:1;">
+                                <label>Au :</label>
+                                <input type="date" id="copyAgentEndDate">
+                            </div>
+                        </div>
+                        <button class="btn btn-ack" style="width:100%; font-weight:bold; padding: 8px;" onclick="applyCopyAgentSchedule()" id="copyAgentApplyBtn">👤 Copier le roulement de l'agent</button>
                     </div>
                 </div>
-                <button class="btn btn-secondary" style="width:100%; font-weight:bold; padding: 8px;" onclick="applyBulkAgentTask()" id="bulkApplyBtn">Appliquer la période / récurrence</button>
+
+                <!-- Onglet 3 : Période / récurrence -->
+                <div class="agent-tab-panel" id="agentTab-periode">
+                    <div class="bulk-box" style="margin-top:0;">
+                        <h3>Affecter une tâche sur une période</h3>
+                        <div class="form-group">
+                            <label>Tâche / Statut :</label>
+                            <select id="bulkAgentTask"></select>
+                        </div>
+                        <div class="form-group">
+                            <label>Description / Note :</label>
+                            <input type="text" id="bulkAgentDesc" placeholder="Ex: Formation continue, Mission spéciale...">
+                        </div>
+                        <div style="display:flex; gap:10px;">
+                            <div class="form-group" style="flex:1;">
+                                <label>Date de début :</label>
+                                <input type="date" id="bulkStartDate">
+                            </div>
+                            <div class="form-group" style="flex:1;" id="bulkEndDateGroup">
+                                <label>Date de fin :</label>
+                                <input type="date" id="bulkEndDate">
+                            </div>
+                        </div>
+                        <div style="display:flex; gap:10px;">
+                            <div class="form-group" style="flex:1;">
+                                <label>Occurrence / Fréquence :</label>
+                                <select id="bulkAgentFreq" onchange="toggleAgentRecurrenceUI()">
+                                    <option value="NONE" selected>Sans récurrence (période fixe)</option>
+                                    <option value="1_DAY">Tous les jours</option>
+                                    <option value="1">Toutes les semaines</option>
+                                    <option value="2">Toutes les 2 semaines</option>
+                                    <option value="6">Toutes les 6 semaines</option>
+                                    <option value="8">Toutes les 8 semaines</option>
+                                    <option value="12">Toutes les 12 semaines</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style="flex:1; display: none;" id="bulkDurationGroup">
+                                <label>Durée de récurrence :</label>
+                                <select id="bulkAgentDuration">
+                                    <option value="1" selected>Sur 1 an</option>
+                                    <option value="2">Sur 2 ans</option>
+                                    <option value="3">Sur 3 ans</option>
+                                    <option value="4">Sur 4 ans</option>
+                                    <option value="5">Sur 5 ans</option>
+                                </select>
+                            </div>
+                        </div>
+                        <button class="btn btn-secondary" style="width:100%; font-weight:bold; padding: 8px;" onclick="applyBulkAgentTask()" id="bulkApplyBtn">Appliquer la période / récurrence</button>
+                    </div>
+                </div>
             </div>
-            <div class="modal-actions">
+
+            <div class="agent-modal-footer">
                 <button class="btn btn-secondary" onclick="closeAgentModal()">Annuler</button>
                 <button class="btn" onclick="saveAgent()" id="saveAgentBtn">Enregistrer</button>
             </div>
@@ -6648,8 +6760,16 @@ function resetAcknowledgedAlerts() {
             skillsContainer.innerHTML = '';
             skillDefinitions.forEach(sk => {
                 const lbl = document.createElement('label');
-                const checked = (foundAgent.skills || []).includes(sk.id) ? 'checked' : '';
-                lbl.innerHTML = `<input type="checkbox" value="${sk.id}" ${checked}> ${sk.id} - ${sk.name}`;
+                const isChecked = (foundAgent.skills || []).includes(sk.id);
+                if (isChecked) lbl.classList.add('skill-checked');
+                lbl.innerHTML =
+                    '<input type="checkbox" value="' + sk.id + '"' + (isChecked ? ' checked' : '') + '>' +
+                    '<span class="badge" style="background:' + (sk.color || '#3498db') + '; color:#fff; padding:2px 7px; border-radius:3px; font-size:0.75rem; min-width:28px; text-align:center;">' + sk.id + '</span>' +
+                    '<span style="flex:1;">' + (sk.name || sk.id) + '</span>';
+                const cb = lbl.querySelector('input');
+                cb.addEventListener('change', function() {
+                    lbl.classList.toggle('skill-checked', cb.checked);
+                });
                 skillsContainer.appendChild(lbl);
             });
 
@@ -6696,7 +6816,17 @@ function resetAcknowledgedAlerts() {
             document.getElementById('bulkAgentFreq').value = 'NONE';
 
             toggleAgentRecurrenceUI();
+            if (typeof switchAgentTab === 'function') switchAgentTab('identite');
             document.getElementById('agentModal').style.display = 'flex';
+        }
+
+        function switchAgentTab(tabId) {
+            document.querySelectorAll('#agentModal .agent-tab-btn').forEach(function(btn) {
+                btn.classList.toggle('active', btn.getAttribute('data-tab') === tabId);
+            });
+            document.querySelectorAll('#agentModal .agent-tab-panel').forEach(function(panel) {
+                panel.classList.toggle('active', panel.id === 'agentTab-' + tabId);
+            });
         }
 
         function closeAgentModal() {
