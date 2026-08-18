@@ -6193,6 +6193,48 @@ function purgeReplacementArchives() {
             }
         }
 
+        /** Code de roulement d'équipe pour un agent un jour donné (sans override individuel) */
+        function getTeamRotationCodeForAgent(agentId, dateStr) {
+            let teamId = null;
+            (teams || []).forEach(function(t) {
+                if ((t.agents || []).some(function(a) { return a && a.id === agentId; })) teamId = t.id;
+            });
+            if (!teamId || !teamSchedules[teamId]) return null;
+            return teamSchedules[teamId][dateStr] !== undefined ? teamSchedules[teamId][dateStr] : null;
+        }
+
+        /**
+         * Si le roulement indique Repos ou Journée, la tâche RPL posée se transforme
+         * en absence correspondante (RPCA→CA, RPFO→F, etc.).
+         */
+        function resolveRplCodeIfRestOrDay(agentId, dateStr, rplTaskCode) {
+            const conversionMap = {
+                'RPCA': 'CA',
+                'RPC': 'CA',
+                'RPFO': 'F',
+                'RPF': 'F',
+                'RPRC': 'RC',
+                'RPR': 'RC',
+                'RPHP': 'HP',
+                'RPL': 'CA',
+                'RPA': 'RPA'
+            };
+            const rotCode = getTeamRotationCodeForAgent(agentId, dateStr);
+            if (!rotCode) return rplTaskCode;
+            const rotDef = TASKS[rotCode];
+            const isRestOrDay = (rotDef && rotDef.isRest) ||
+                rotCode === 'J' ||
+                (rotDef && rotDef.shift === 'J');
+            if (!isRestOrDay) return rplTaskCode;
+            if (conversionMap.hasOwnProperty(rplTaskCode)) {
+                return conversionMap[rplTaskCode];
+            }
+            // Tâche RPL générique (isReplacement) sans mapping → CA par défaut
+            const selDef = TASKS[rplTaskCode];
+            if (selDef && selDef.isReplacement) return 'CA';
+            return rplTaskCode;
+        }
+
         function confirmRplDeadlineAndSave() {
             if ((typeof canModifyPlanning === 'function' ? !canModifyPlanning() : isReadOnly) || !pendingRplTaskAssignment) return;
             const deadlineInput = document.getElementById('rplDeadlineDateInput');
@@ -6226,8 +6268,10 @@ function purgeReplacementArchives() {
                 if (!agentSchedules[targetId]) agentSchedules[targetId] = {};
                 dateStrs.forEach(function(dStr) {
                     const beforeCode = getCellTaskCode(false, targetId, dStr);
-                    agentSchedules[targetId][dStr] = taskCode;
-                    logCellModification(false, targetId, dStr, beforeCode, taskCode);
+                    // Si roulement = Repos ou Journée → transformer RPL en CA / F / RC...
+                    const codeToWrite = resolveRplCodeIfRestOrDay(targetId, dStr, taskCode);
+                    agentSchedules[targetId][dStr] = codeToWrite;
+                    logCellModification(false, targetId, dStr, beforeCode, codeToWrite);
 
                     const dKey = targetId + '_' + dStr;
                     let dayDesc;
