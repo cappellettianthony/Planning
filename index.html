@@ -4978,12 +4978,31 @@ function validateReplacementSheet() {
         'RPFO': 'F',
         'RPRC': 'RC',
         'RPHP': 'HP',
+        'RPL': 'CA',
         'RPA': 'RPA'   // reste inchangé
     };
 
     let rpaMessage = false;
 
-    if (currentTargetCode && conversionMap.hasOwnProperty(currentTargetCode)) {
+    // Week-end + RPL formation → au traitement, conversion en R (repos)
+    const isWeekend = (typeof isWeekendDateStr === 'function') && isWeekendDateStr(dateStr);
+    const isFormRpl = (typeof isFormationTaskCode === 'function') && (
+        isFormationTaskCode(currentTargetCode) ||
+        (currentTargetCode && String(currentTargetCode).toUpperCase().indexOf('FO') !== -1)
+    );
+
+    if (isWeekend && isFormRpl && currentTargetCode) {
+        if (isTeam) {
+            if (!teamSchedules[targetId]) teamSchedules[targetId] = {};
+            teamSchedules[targetId][dateStr] = 'R';
+        } else {
+            if (!agentSchedules[targetId]) agentSchedules[targetId] = {};
+            agentSchedules[targetId][dateStr] = 'R';
+        }
+        if (typeof logCellModification === 'function') {
+            logCellModification(isTeam, targetId, dateStr, currentTargetCode, 'R');
+        }
+    } else if (currentTargetCode && conversionMap.hasOwnProperty(currentTargetCode)) {
         const newCode = conversionMap[currentTargetCode];
 
         if (currentTargetCode === 'RPA') {
@@ -6172,7 +6191,7 @@ function purgeReplacementArchives() {
                     let codeToWrite = selectedTaskCodeInModal;
                     // Formation multi-jours : samedi/dimanche → R
                     if (dateStrs.length > 1) {
-                        codeToWrite = applyWeekendFormationRule(dStr, codeToWrite, selectedTaskCodeInModal);
+                        codeToWrite = applyWeekendFormationRule(dStr, codeToWrite, selectedTaskCodeInModal, targetId);
                     }
                     agentSchedules[targetId][dStr] = codeToWrite;
                     logCellModification(false, targetId, dStr, beforeCode, codeToWrite);
@@ -6261,15 +6280,24 @@ function purgeReplacementArchives() {
         }
 
         /**
-         * Pour une sélection multi : formation interdite le week-end → R.
-         * Appliqué après résolution RPL→CA/F éventuelle.
+         * Formation le week-end :
+         * - roulement M/A/N → on garde la RPL formation (fiche conservée)
+         * - sinon (R/H/J…) → R immédiatement
+         * La conversion week-end → R au *traitement* de la fiche se fait à part.
          */
-        function applyWeekendFormationRule(dateStr, codeToWrite, originalTaskCode) {
+        function applyWeekendFormationRule(dateStr, codeToWrite, originalTaskCode, agentId) {
             if (!isWeekendDateStr(dateStr)) return codeToWrite;
-            if (isFormationTaskCode(codeToWrite) || isFormationTaskCode(originalTaskCode)) {
-                return 'R';
+            if (!(isFormationTaskCode(codeToWrite) || isFormationTaskCode(originalTaskCode))) {
+                return codeToWrite;
             }
-            return codeToWrite;
+            if (agentId) {
+                const rot = getTeamRotationCodeForAgent(agentId, dateStr);
+                // Quart travaillé le samedi/dimanche → laisser la RPL formation
+                if (!isRotationRestOrDayCode(rot)) {
+                    return codeToWrite;
+                }
+            }
+            return 'R';
         }
 
         function resolveRplCodeIfRestOrDay(agentId, dateStr, rplTaskCode) {
@@ -6331,7 +6359,7 @@ function purgeReplacementArchives() {
                     const rotCode = getTeamRotationCodeForAgent(targetId, dStr);
                     let codeToWrite = resolveRplCodeIfRestOrDay(targetId, dStr, taskCode);
                     // Formation : pas le week-end → R
-                    codeToWrite = applyWeekendFormationRule(dStr, codeToWrite, taskCode);
+                    codeToWrite = applyWeekendFormationRule(dStr, codeToWrite, taskCode, targetId);
                     // Fiche RPL seulement si quart M/A/N ET code toujours de type remplacement
                     const writtenDef = TASKS[codeToWrite];
                     const isWorkShiftRpl = !isRotationRestOrDayCode(rotCode) &&
@@ -7246,7 +7274,7 @@ function resetAcknowledgedAlerts() {
                     const beforeCode = getCellTaskCode(false, agentId, dStr);
                     let codeToWrite = taskCode;
                     if (typeof applyWeekendFormationRule === 'function') {
-                        codeToWrite = applyWeekendFormationRule(dStr, codeToWrite, taskCode);
+                        codeToWrite = applyWeekendFormationRule(dStr, codeToWrite, taskCode, agentId);
                     }
                     agentSchedules[agentId][dStr] = codeToWrite;
                     logCellModification(false, agentId, dStr, beforeCode, codeToWrite);
@@ -7267,7 +7295,7 @@ function resetAcknowledgedAlerts() {
                     const beforeCode = getCellTaskCode(false, agentId, dStr);
                     let codeToWrite = taskCode;
                     if (typeof applyWeekendFormationRule === 'function') {
-                        codeToWrite = applyWeekendFormationRule(dStr, codeToWrite, taskCode);
+                        codeToWrite = applyWeekendFormationRule(dStr, codeToWrite, taskCode, agentId);
                     }
                     agentSchedules[agentId][dStr] = codeToWrite;
                     logCellModification(false, agentId, dStr, beforeCode, codeToWrite);
