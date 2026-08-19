@@ -3803,10 +3803,9 @@ function bindCellEvents(cellDiv, isTeam, targetId, targetName, dateStr, currentT
         }
     };
 
-    // --- CLIC-GLISSER multi-jours (agents, édition déverrouillée) ---
+    // --- CLIC-GLISSER multi-jours (y compris depuis une case RPL) ---
     cellDiv.onmousedown = (e) => {
         if (e.button !== 0) return;
-        if (isRplTask) return; // RPL : garder double-clic / long press
         if (typeof canModifyPlanning === 'function' && !canModifyPlanning()) return;
         // Annuler le simple clic différé
         if (clickTimer) {
