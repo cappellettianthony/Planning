@@ -1886,7 +1886,7 @@ function ensureReplacementSheet(sheetKey) {
         replacementSheets = {};
     }
     if (!sheetKey) {
-        return { volunteers: [], selectedVolunteers: [], createdAt: '', createdBy: '', seenByEmails: [], seenByAgents: {}, deadlineDate: '', recommendedSkills: [] };
+        return { volunteers: [], selectedVolunteers: [], createdAt: '', createdBy: '', seenByEmails: [], seenByAgents: {}, deadlineDate: '', recommendedSkills: [], volunteerRestBlocks: {} };
     }
     if (!replacementSheets[sheetKey] || typeof replacementSheets[sheetKey] !== 'object') {
         replacementSheets[sheetKey] = {
@@ -1897,7 +1897,8 @@ function ensureReplacementSheet(sheetKey) {
             seenByEmails: [],
             seenByAgents: {},
             deadlineDate: '',
-            recommendedSkills: []
+            recommendedSkills: [],
+            volunteerRestBlocks: {}
         };
     }
     const sheet = replacementSheets[sheetKey];
@@ -1910,6 +1911,7 @@ function ensureReplacementSheet(sheetKey) {
         sheet.deadlineDate = '';
     }
     sheet.recommendedSkills = toArraySafe(sheet.recommendedSkills);
+    if (!sheet.volunteerRestBlocks || typeof sheet.volunteerRestBlocks !== 'object') sheet.volunteerRestBlocks = {};
     // Toujours des tableaux / objets propres (persistance Firebase)
     sheet.seenByEmails = normalizeSeenByEmails(sheet.seenByEmails);
     sheet.seenByAgents = normalizeSeenByAgents(sheet.seenByAgents);
@@ -4700,10 +4702,14 @@ function renderVolunteersList() {
                 missingHtml = ' <span style="font-size:0.7rem; font-weight:bold; color:#c0392b; background:#fdecea; border:1px solid #e74c3c; padding:1px 6px; border-radius:10px; white-space:nowrap;" title="Compétences recommandées non détenues">⚠ Compétences requises : ' +
                     missingSkills.join(', ') + '</span>';
             }
+            let restBlockHtml = '';
+            if (sheet.volunteerRestBlocks && sheet.volunteerRestBlocks[entry.aId]) {
+                restBlockHtml = ' <span style="font-size:0.68rem; font-weight:bold; color:#6c3483; background:#f5eef8; border:1px solid #8e44ad; padding:1px 6px; border-radius:10px; white-space:nowrap;" title="Non disponible : temps de repos (11h / 35h) non respectés suite à un autre remplacement attribué">⚠ Plus dispo (repos)</span>';
+            }
             left.innerHTML = checkHtml +
                 '<strong>' + entry.info.agent.name + '</strong> ' +
                 '<span style="font-size:0.75rem; color:#666;">(' + entry.count +
-                ' remplacements) — ' + entry.info.taskCode + '</span>' + missingHtml;
+                ' remplacements) — ' + entry.info.taskCode + '</span>' + missingHtml + restBlockHtml;
 
             div.appendChild(left);
 
@@ -4782,6 +4788,65 @@ function toggleVolunteerSelection(agentId, isChecked) {
 
         // sert à clôturer ("solder") une fiche de remplacement RPL, l'archiver dans l'historique puis supprimer la fiche active.
         // C'est la fonction qui transforme une demande de remplacement en un dossier terminé et historisé.
+
+/**
+ * Après attribution d'un remplacement à des agents, recalcule pour chaque fiche
+ * où ils sont volontaires s'ils restent éligibles (11h / 35h). Sinon annotation.
+ */
+function updateVolunteerRestBlocksAfterAssignment(assignedAgentIds) {
+    const ids = Array.isArray(assignedAgentIds) ? assignedAgentIds : [assignedAgentIds];
+    if (!ids.length || !replacementSheets) return;
+
+    Object.keys(replacementSheets).forEach(function(sheetKey) {
+        const sheet = ensureReplacementSheet(sheetKey);
+        const volunteers = toArraySafe(sheet.volunteers);
+        if (!volunteers.length) return;
+
+        // sheetKey = targetId_dateStr (date peut contenir tirets)
+        const lastUnderscore = sheetKey.lastIndexOf('_');
+        if (lastUnderscore < 0) return;
+        const targetId = sheetKey.slice(0, lastUnderscore);
+        const dateStr = sheetKey.slice(lastUnderscore + 1);
+        if (!dateStr || dateStr.length < 8) return;
+
+        let isTeam = false;
+        (teams || []).forEach(function(t) {
+            if (t.id === targetId) isTeam = true;
+        });
+
+        const shiftToFill = (typeof getShiftToFillForRpl === 'function')
+            ? getShiftToFillForRpl(isTeam, targetId, dateStr)
+            : null;
+        if (!shiftToFill) return;
+
+        if (!sheet.volunteerRestBlocks || typeof sheet.volunteerRestBlocks !== 'object') {
+            sheet.volunteerRestBlocks = {};
+        }
+
+        let changed = false;
+        ids.forEach(function(agentId) {
+            if (volunteers.indexOf(agentId) === -1) return;
+            // Ne pas se bloquer soi-même sur la fiche qu'on vient de remplir pour ce jour
+            if (dateStr && agentSchedules[agentId] && agentSchedules[agentId][dateStr] === shiftToFill) {
+                // C'est la fiche du même jour où il est sélectionné : OK
+            }
+            const ok = (typeof canAgentTakeReplacement === 'function')
+                ? canAgentTakeReplacement(agentId, dateStr, shiftToFill)
+                : true;
+            if (!ok) {
+                if (sheet.volunteerRestBlocks[agentId] !== 'rest') {
+                    sheet.volunteerRestBlocks[agentId] = 'rest';
+                    changed = true;
+                }
+            } else if (sheet.volunteerRestBlocks[agentId]) {
+                delete sheet.volunteerRestBlocks[agentId];
+                changed = true;
+            }
+        });
+        if (changed) replacementSheets[sheetKey] = sheet;
+    });
+}
+
 function validateReplacementSheet() {
     if (isReadOnly || !activeRplContext) return;
 
@@ -4845,6 +4910,9 @@ function validateReplacementSheet() {
             const descKey = agentId + '_' + activeRplContext.dateStr;
             taskDescriptions[descKey] = 'RPL validé – ' + comment;
         });
+        if (typeof updateVolunteerRestBlocksAfterAssignment === 'function') {
+            updateVolunteerRestBlocksAfterAssignment(selected);
+        }
     }
     
     // ------------------------------------------------------------------
@@ -4879,14 +4947,12 @@ function validateReplacementSheet() {
 
     // Table de conversion
     const conversionMap = {
-    'RPCA': 'CA',
-    'RPCE': 'CE',
-    'RPFO': 'F',
-    'RPR': 'R',
-    'RPRC': 'RC',
-    'RPHP': 'HP',
-    'RP41': '41',
-    'RPJ': 'J'
+        'RPCA': 'CA',
+        'RPFO': 'F',
+        'RPRC': 'RC',
+        'RPHP': 'HP',
+        'RPL': 'CA',
+        'RPA': 'RPA'   // reste inchangé
     };
 
     let rpaMessage = false;
@@ -5618,6 +5684,85 @@ function purgeReplacementArchives() {
 
         // sert à ouvrir la fenêtre de modification d'une tâche du planning (équipe ou agent), en préchargeant les informations existantes et en affichant toutes les tâches disponibles.
         // C'est la fonction centrale d'édition des affectations.
+        let activeTaskPickerTab = 'presences';
+
+        /** Catégorie d'une tâche pour les onglets du modal */
+        function getTaskPickerCategory(code) {
+            const t = TASKS[code];
+            if (!t) return 'presences';
+            if (t.isReplacement) return 'remplacement';
+            if (t.isRest) return 'absences';
+            const c = String(code).toUpperCase();
+            // Absences courantes sans isRest
+            if (['CA', 'F', 'RC', 'HP', 'OFF', 'MAL', 'AT', 'CSS', 'C'].indexOf(c) !== -1) return 'absences';
+            const label = String(t.label || '').toLowerCase();
+            if (label.indexOf('congé') !== -1 || label.indexOf('formation') !== -1 || label.indexOf('absence') !== -1 || label.indexOf('maladie') !== -1) {
+                return 'absences';
+            }
+            // Présences : quarts travaillés (M/A/N/J) et autres non-repos
+            return 'presences';
+        }
+
+        function switchTaskModalTab(tabId, skipRenderOnly) {
+            activeTaskPickerTab = tabId || 'presences';
+            document.querySelectorAll('.task-modal-tab-btn').forEach(function(btn) {
+                const on = btn.getAttribute('data-task-tab') === activeTaskPickerTab;
+                btn.classList.toggle('active', on);
+                if (on) {
+                    btn.style.color = 'var(--accent)';
+                    btn.style.borderBottomColor = 'var(--accent)';
+                    btn.style.background = '#eef6fc';
+                } else {
+                    btn.style.color = '#5d6d7e';
+                    btn.style.borderBottomColor = 'transparent';
+                    btn.style.background = 'transparent';
+                }
+            });
+            renderTaskPickerGrid(activeTaskPickerTab);
+        }
+
+        function renderTaskPickerGrid(tabId) {
+            const grid = document.getElementById('taskPickerGrid');
+            if (!grid) return;
+            grid.innerHTML = '';
+            const tab = tabId || activeTaskPickerTab || 'presences';
+            getOrderedTaskCodes().forEach(function(code) {
+                if (getTaskPickerCategory(code) !== tab) return;
+                const task = TASKS[code];
+                if (!task) return;
+                const btn = document.createElement('div');
+                btn.className = 'task-picker-btn' + (code === selectedTaskCodeInModal ? ' selected' : '');
+                btn.style.backgroundColor = task.color;
+                btn.style.color = task.text;
+                btn.innerHTML = '<span class="task-code-badge">' + code + '</span>' +
+                    '<span class="task-label-sub">' + (task.label || code) + '</span>';
+                btn.onclick = function() {
+                    document.querySelectorAll('.task-picker-btn').forEach(function(b) { b.classList.remove('selected'); });
+                    btn.classList.add('selected');
+                    selectedTaskCodeInModal = code;
+                    if (task.isReplacement && activeTaskCellSelection) {
+                        const multi = activeTaskCellSelection.dateStrs && activeTaskCellSelection.dateStrs.length > 1;
+                        if (multi) {
+                            document.getElementById('taskModalDescription').value = '';
+                            document.getElementById('taskModalDescription').placeholder =
+                                'Laisser vide = commentaire auto par jour. Saisir un texte = ajouté au commentaire auto de chaque jour.';
+                        } else {
+                            const autoComment = buildRplAvailabilityComment(
+                                activeTaskCellSelection.isTeam,
+                                activeTaskCellSelection.targetId,
+                                activeTaskCellSelection.dateStr
+                            );
+                            document.getElementById('taskModalDescription').value = autoComment;
+                        }
+                    }
+                };
+                grid.appendChild(btn);
+            });
+            if (!grid.children.length) {
+                grid.innerHTML = '<p style="font-size:0.8rem;color:#888;grid-column:1/-1;">Aucune tâche dans cette catégorie.</p>';
+            }
+        }
+
         function openTaskModal(isTeam, targetId, targetName, dateStr, currentTaskCode, currentDesc, dateStrs) {
             if (typeof canModifyPlanning === 'function' ? !canModifyPlanning() : isReadOnly) return;
             const dates = (Array.isArray(dateStrs) && dateStrs.length)
@@ -5640,47 +5785,11 @@ function purgeReplacementArchives() {
                 'Cible: <strong>' + targetName + '</strong> | Date: <strong>' + dateLabel + '</strong>';
             document.getElementById('taskModalDescription').value = currentDesc || '';
 
-            const grid = document.getElementById('taskPickerGrid');
-            grid.innerHTML = '';
-            getOrderedTaskCodes().forEach(code => {
-                const task = TASKS[code];
-                const btn = document.createElement('div');
-                btn.className = `task-picker-btn ${code === selectedTaskCodeInModal ? 'selected' : ''}`;
-                btn.style.backgroundColor = task.color;
-                btn.style.color = task.text;
-                btn.innerHTML = `
-                    <span class="task-code-badge">${code}</span>
-                    <span class="task-label-sub">${task.label}</span>
-                `;
-                btn.onclick = () => {
-                    document.querySelectorAll('.task-picker-btn').forEach(b => b.classList.remove('selected'));
-                    btn.classList.add('selected');
-                    selectedTaskCodeInModal = code;
-
-                    // Si tâche de type remplacement : préremplir le commentaire (sauf multi-jours → auto à la validation)
-                    if (task.isReplacement && activeTaskCellSelection) {
-                        const multi = activeTaskCellSelection.dateStrs && activeTaskCellSelection.dateStrs.length > 1;
-                        if (multi) {
-                            document.getElementById('taskModalDescription').value = '';
-                            document.getElementById('taskModalDescription').placeholder =
-                                'Laisser vide = commentaire auto par jour. Saisir un texte = ajouté au commentaire auto de chaque jour.';
-                        } else {
-                            const autoComment = buildRplAvailabilityComment(
-                                activeTaskCellSelection.isTeam,
-                                activeTaskCellSelection.targetId,
-                                activeTaskCellSelection.dateStr
-                            );
-                            document.getElementById('taskModalDescription').value = autoComment;
-                        }
-                    }
-                };
-                grid.appendChild(btn);
-            });
-
-            // Si la tâche déjà sélectionnée est un remplacement et qu'il n'y a pas encore de description
-            const currentTaskDef = TASKS[selectedTaskCodeInModal];
-            if (currentTaskDef && currentTaskDef.isReplacement && !(currentDesc && currentDesc.trim())) {
-                document.getElementById('taskModalDescription').value = buildRplAvailabilityComment(isTeam, targetId, dateStr);
+            // Onglets Présences / Remplacement / Absences
+            if (typeof switchTaskModalTab === 'function') {
+                switchTaskModalTab(getTaskPickerCategory(selectedTaskCodeInModal), true);
+            } else {
+                renderTaskPickerGrid('presences');
             }
 
             document.getElementById('taskModal').style.display = 'flex';
@@ -6212,13 +6321,14 @@ function purgeReplacementArchives() {
         function resolveRplCodeIfRestOrDay(agentId, dateStr, rplTaskCode) {
             const conversionMap = {
                 'RPCA': 'CA',
-                'RPCE': 'CE',
+                'RPC': 'CA',
                 'RPFO': 'F',
-                'RPR': 'R',
+                'RPF': 'F',
                 'RPRC': 'RC',
+                'RPR': 'RC',
                 'RPHP': 'HP',
-                'RP41': '41',
-                'RPJ': 'J'
+                'RPL': 'CA',
+                'RPA': 'RPA'
             };
             const rotCode = getTeamRotationCodeForAgent(agentId, dateStr);
             if (!isRotationRestOrDayCode(rotCode)) return rplTaskCode;
