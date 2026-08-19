@@ -846,10 +846,10 @@
             background: #eafaf1;
         }
 
-       .task-row { display: grid; grid-template-columns: 50px 110px 100px 75px 75px 50px 45px 35px 35px 70px; gap: 4px; align-items: center; margin-bottom: 6px; font-size: 0.75rem; }
+       .task-row { display: grid; grid-template-columns: 50px 100px 90px 70px 70px 40px 40px 90px 32px 32px 70px; gap: 3px; align-items: center; margin-bottom: 6px; font-size: 0.72rem; }
         .task-row input[type="color"] { padding: 0; height: 26px; cursor: pointer; }
 
-        .task-header { display: grid; grid-template-columns: 50px 110px 100px 75px 75px 50px 45px 35px 35px 70px; gap: 4px; font-weight: bold; font-size: 0.7rem; color: var(--primary); margin-bottom: 5px; text-align: center; }
+        .task-header { display: grid; grid-template-columns: 50px 100px 90px 70px 70px 40px 40px 90px 32px 32px 70px; gap: 3px; font-weight: bold; font-size: 0.65rem; color: var(--primary); margin-bottom: 5px; text-align: center; }
 
         .skill-config-row { display: grid; grid-template-columns: 60px 1fr 100px 80px 30px; gap: 8px; align-items: center; margin-bottom: 6px; font-size: 0.8rem; }
         .skill-config-row input { padding: 4px; font-size: 0.8rem; }
@@ -1179,7 +1179,11 @@
             <h2>Affecter une Tâche</h2>
             <p style="font-size: 0.85rem; margin-bottom: 12px; color: var(--primary);" id="taskModalTargetInfo"></p>
             
-            <label style="font-weight: bold; font-size: 0.85rem; margin-bottom: 6px; display: block;">Sélectionner la tâche :</label>
+            <div class="task-modal-tabs" role="tablist" style="display:flex; gap:4px; flex-wrap:wrap; border-bottom:2px solid #ddd; margin-bottom:10px;">
+                <button type="button" class="task-modal-tab-btn" data-task-tab="presences" onclick="switchTaskModalTab('presences')" style="border:none;background:transparent;padding:8px 12px;cursor:pointer;font-weight:bold;font-size:0.8rem;color:#5d6d7e;border-bottom:3px solid transparent;margin-bottom:-2px;">Présences</button>
+                <button type="button" class="task-modal-tab-btn active" data-task-tab="remplacement" onclick="switchTaskModalTab('remplacement')" style="border:none;background:#eef6fc;padding:8px 12px;cursor:pointer;font-weight:bold;font-size:0.8rem;color:var(--accent);border-bottom:3px solid var(--accent);margin-bottom:-2px;">Remplacement</button>
+                <button type="button" class="task-modal-tab-btn" data-task-tab="absences" onclick="switchTaskModalTab('absences')" style="border:none;background:transparent;padding:8px 12px;cursor:pointer;font-weight:bold;font-size:0.8rem;color:#5d6d7e;border-bottom:3px solid transparent;margin-bottom:-2px;">Absences</button>
+            </div>
             <div id="taskPickerGrid" class="task-picker-grid"></div>
 
             <div class="form-group">
@@ -1564,7 +1568,8 @@
 
                 <div class="settings-tab-panel" id="settingsTab-tasks">
                     <h3>Gestion des tâches</h3>
-                    <div class="task-header"><span>Code</span><span>Libellé</span><span>Quart</span><span>Début</span><span>Fin</span><span>Repos?</span><span>RPL?</span><span>Fond</span><span>Texte</span><span>Ordre</span></div>
+                    <div class="task-header"><span>Code</span><span>Libellé</span><span>Quart</span><span>Début</span><span>Fin</span><span>Repos?</span><span>RPL?</span><span>Onglet modal</span><span>Fond</span><span>Texte</span><span>Ordre</span></div>
+                    <p style="font-size:0.72rem;color:#666;margin:4px 0 8px;">Onglet modal = catégorie dans Affecter une tâche (Présences / Remplacement / Absences). Ouverture par défaut : Remplacement.</p>
                     <div id="tasksContainer"></div>
                     <button class="btn btn-secondary" style="margin-top: 5px; font-size: 0.75rem;" onclick="addTaskRow()" id="addTaskBtn">+ Ajouter une tâche</button>
                 </div>
@@ -1805,7 +1810,7 @@
         // Ordre explicite des tâches (Firebase ne préserve pas l'ordre des clés d'objet)
         let taskOrder = Object.keys(TASKS);
 
-        let settings = { thresholds: { M: { orange: 5, green: 7 }, A: { orange: 5, green: 7 }, N: { orange: 3, green: 5 } }, rplDeadlineDefaultDays: 15, rplTrackableSkillIds: [] };
+        let settings = { thresholds: { M: { orange: 5, green: 7 }, A: { orange: 5, green: 7 }, N: { orange: 3, green: 5 } }, rplDeadlineDefaultDays: 15, rplTrackableSkillIds: [], taskTabMap: {} };
 
         // Liaison agentId → adresse e-mail (paramétrage admin)
         let agentEmailLinks = {};
@@ -2134,6 +2139,9 @@ function loadAppState(data) {
     if (settings && !Array.isArray(settings.rplTrackableSkillIds)) {
         settings.rplTrackableSkillIds = [];
     }
+    if (settings && (!settings.taskTabMap || typeof settings.taskTabMap !== 'object')) {
+        settings.taskTabMap = {};
+    }
     agentEmailLinks = data.agentEmailLinks || agentEmailLinks || {};
     agentRoles = data.agentRoles || agentRoles || {};
 
@@ -2452,6 +2460,9 @@ if (resetAckBtn) {
     }
     if (settings && !Array.isArray(settings.rplTrackableSkillIds)) {
         settings.rplTrackableSkillIds = [];
+    }
+    if (settings && (!settings.taskTabMap || typeof settings.taskTabMap !== 'object')) {
+        settings.taskTabMap = {};
     }
     agentEmailLinks = data.agentEmailLinks || agentEmailLinks || {};
     agentRoles = data.agentRoles || agentRoles || {};
@@ -4627,6 +4638,10 @@ function removeVolunteerFromSheet(agentId) {
 function renderVolunteersList() {
     if (!activeRplContext) return;
 
+    if (typeof refreshOpenSheetVolunteerRestBlocks === 'function') {
+        refreshOpenSheetVolunteerRestBlocks();
+    }
+
     const sheetKey = activeRplContext.targetId + '_' + activeRplContext.dateStr;
     const sheet = ensureReplacementSheet(sheetKey);
     const volunteers = toArraySafe(sheet.volunteers);
@@ -4704,7 +4719,7 @@ function renderVolunteersList() {
             }
             let restBlockHtml = '';
             if (sheet.volunteerRestBlocks && sheet.volunteerRestBlocks[entry.aId]) {
-                restBlockHtml = ' <span style="font-size:0.68rem; font-weight:bold; color:#6c3483; background:#f5eef8; border:1px solid #8e44ad; padding:1px 6px; border-radius:10px; white-space:nowrap;" title="Non disponible : temps de repos (11h / 35h) non respectés suite à un autre remplacement attribué">⚠ Plus dispo (repos)</span>';
+                restBlockHtml = ' <span style="font-size:0.7rem; font-weight:bold; color:#922b21; background:#fadbd8; border:1px solid #e74c3c; padding:2px 7px; border-radius:10px; white-space:nowrap;" title="Cet agent ne peut plus assurer ce remplacement : temps de repos (11h / 35h) non respectés après attribution d\'un autre remplacement">⚠ Indisponible — repos non respectés</span>';
             }
             left.innerHTML = checkHtml +
                 '<strong>' + entry.info.agent.name + '</strong> ' +
@@ -4790,19 +4805,25 @@ function toggleVolunteerSelection(agentId, isChecked) {
         // C'est la fonction qui transforme une demande de remplacement en un dossier terminé et historisé.
 
 /**
- * Après attribution d'un remplacement à des agents, recalcule pour chaque fiche
- * où ils sont volontaires s'ils restent éligibles (11h / 35h). Sinon annotation.
+ * Recalcule pour les fiches RPL si des volontaires restent éligibles (11h / 35h)
+ * après attribution d'un remplacement. Annote sheet.volunteerRestBlocks.
+ * @param assignedAgentIds agents venant d'être affectés (filtre les fiches concernées)
  */
 function updateVolunteerRestBlocksAfterAssignment(assignedAgentIds) {
-    const ids = Array.isArray(assignedAgentIds) ? assignedAgentIds : [assignedAgentIds];
-    if (!ids.length || !replacementSheets) return;
+    const ids = Array.isArray(assignedAgentIds) ? assignedAgentIds.filter(Boolean) : [assignedAgentIds];
+    if (!replacementSheets) return;
 
     Object.keys(replacementSheets).forEach(function(sheetKey) {
         const sheet = ensureReplacementSheet(sheetKey);
         const volunteers = toArraySafe(sheet.volunteers);
         if (!volunteers.length) return;
 
-        // sheetKey = targetId_dateStr (date peut contenir tirets)
+        // Fiche concernée si au moins un agent assigné y est volontaire, ou recalcul global si ids vide
+        if (ids.length) {
+            const hit = ids.some(function(id) { return volunteers.indexOf(id) !== -1; });
+            if (!hit) return;
+        }
+
         const lastUnderscore = sheetKey.lastIndexOf('_');
         if (lastUnderscore < 0) return;
         const targetId = sheetKey.slice(0, lastUnderscore);
@@ -4823,28 +4844,44 @@ function updateVolunteerRestBlocksAfterAssignment(assignedAgentIds) {
             sheet.volunteerRestBlocks = {};
         }
 
-        let changed = false;
-        ids.forEach(function(agentId) {
-            if (volunteers.indexOf(agentId) === -1) return;
-            // Ne pas se bloquer soi-même sur la fiche qu'on vient de remplir pour ce jour
-            if (dateStr && agentSchedules[agentId] && agentSchedules[agentId][dateStr] === shiftToFill) {
-                // C'est la fiche du même jour où il est sélectionné : OK
-            }
+        // Recalculer TOUS les volontaires de la fiche (impact croisé possible)
+        volunteers.forEach(function(agentId) {
             const ok = (typeof canAgentTakeReplacement === 'function')
                 ? canAgentTakeReplacement(agentId, dateStr, shiftToFill)
                 : true;
             if (!ok) {
-                if (sheet.volunteerRestBlocks[agentId] !== 'rest') {
-                    sheet.volunteerRestBlocks[agentId] = 'rest';
-                    changed = true;
-                }
+                sheet.volunteerRestBlocks[agentId] = 'rest';
             } else if (sheet.volunteerRestBlocks[agentId]) {
                 delete sheet.volunteerRestBlocks[agentId];
-                changed = true;
             }
         });
-        if (changed) replacementSheets[sheetKey] = sheet;
+        replacementSheets[sheetKey] = sheet;
     });
+}
+
+/** Recalcule les annotations repos pour la fiche RPL ouverte */
+function refreshOpenSheetVolunteerRestBlocks() {
+    if (!activeRplContext) return;
+    const sheetKey = activeRplContext.targetId + '_' + activeRplContext.dateStr;
+    const sheet = ensureReplacementSheet(sheetKey);
+    const volunteers = toArraySafe(sheet.volunteers);
+    if (!volunteers.length) return;
+    const shiftToFill = activeRplContext.shiftToFill ||
+        ((typeof getShiftToFillForRpl === 'function')
+            ? getShiftToFillForRpl(activeRplContext.isTeam, activeRplContext.targetId, activeRplContext.dateStr)
+            : null);
+    if (!shiftToFill) return;
+    if (!sheet.volunteerRestBlocks || typeof sheet.volunteerRestBlocks !== 'object') {
+        sheet.volunteerRestBlocks = {};
+    }
+    volunteers.forEach(function(agentId) {
+        const ok = (typeof canAgentTakeReplacement === 'function')
+            ? canAgentTakeReplacement(agentId, activeRplContext.dateStr, shiftToFill)
+            : true;
+        if (!ok) sheet.volunteerRestBlocks[agentId] = 'rest';
+        else if (sheet.volunteerRestBlocks[agentId]) delete sheet.volunteerRestBlocks[agentId];
+    });
+    replacementSheets[sheetKey] = sheet;
 }
 
 function validateReplacementSheet() {
@@ -5684,27 +5721,29 @@ function purgeReplacementArchives() {
 
         // sert à ouvrir la fenêtre de modification d'une tâche du planning (équipe ou agent), en préchargeant les informations existantes et en affichant toutes les tâches disponibles.
         // C'est la fonction centrale d'édition des affectations.
-        let activeTaskPickerTab = 'presences';
+        let activeTaskPickerTab = 'remplacement'; // onglet 2 par défaut
 
-        /** Catégorie d'une tâche pour les onglets du modal */
+        /** Catégorie d'une tâche pour les onglets du modal (paramétrable via settings.taskTabMap) */
         function getTaskPickerCategory(code) {
+            if (settings && settings.taskTabMap && settings.taskTabMap[code]) {
+                const m = settings.taskTabMap[code];
+                if (m === 'presences' || m === 'remplacement' || m === 'absences') return m;
+            }
             const t = TASKS[code];
             if (!t) return 'presences';
             if (t.isReplacement) return 'remplacement';
             if (t.isRest) return 'absences';
             const c = String(code).toUpperCase();
-            // Absences courantes sans isRest
             if (['CA', 'F', 'RC', 'HP', 'OFF', 'MAL', 'AT', 'CSS', 'C'].indexOf(c) !== -1) return 'absences';
             const label = String(t.label || '').toLowerCase();
             if (label.indexOf('congé') !== -1 || label.indexOf('formation') !== -1 || label.indexOf('absence') !== -1 || label.indexOf('maladie') !== -1) {
                 return 'absences';
             }
-            // Présences : quarts travaillés (M/A/N/J) et autres non-repos
             return 'presences';
         }
 
         function switchTaskModalTab(tabId, skipRenderOnly) {
-            activeTaskPickerTab = tabId || 'presences';
+            activeTaskPickerTab = tabId || 'remplacement';
             document.querySelectorAll('.task-modal-tab-btn').forEach(function(btn) {
                 const on = btn.getAttribute('data-task-tab') === activeTaskPickerTab;
                 btn.classList.toggle('active', on);
@@ -5787,9 +5826,10 @@ function purgeReplacementArchives() {
 
             // Onglets Présences / Remplacement / Absences
             if (typeof switchTaskModalTab === 'function') {
-                switchTaskModalTab(getTaskPickerCategory(selectedTaskCodeInModal), true);
+                // Par défaut onglet Remplacement (2) ; l'utilisateur peut changer
+                switchTaskModalTab('remplacement');
             } else {
-                renderTaskPickerGrid('presences');
+                renderTaskPickerGrid('remplacement');
             }
 
             document.getElementById('taskModal').style.display = 'flex';
@@ -7590,7 +7630,8 @@ function resetAcknowledgedAlerts() {
     tasksContainer.innerHTML = '';
     getOrderedTaskCodes().forEach(code => {
         const t = TASKS[code];
-        addTaskRow(code, t.label, t.shift, t.start, t.end, t.isRest, t.isReplacement, t.color, t.text);
+        addTaskRow(code, t.label, t.shift, t.start, t.end, t.isRest, t.isReplacement, t.color, t.text,
+                (settings && settings.taskTabMap && settings.taskTabMap[code]) ? settings.taskTabMap[code] : '');
     });
 
     // Remplissage des seuils globaux
@@ -7791,10 +7832,20 @@ function renderAgentEmailLinksConfig() {
         }
 
         // est la nouvelle version dynamique de création d'une ligne de tâche dans le module Paramètres. Contrairement à renderTasksConfig(), elle gère également la propriété isReplacement, indispensable pour votre système de fiches de remplacement (RPL).
-        function addTaskRow(code = '', label = '', shift = 'none', start = '00:00', end = '00:00', isRest = false, isReplacement = false, color = '#3498db', text = '#ffffff') {
+        function addTaskRow(code = '', label = '', shift = 'none', start = '00:00', end = '00:00', isRest = false, isReplacement = false, color = '#3498db', text = '#ffffff', tabCat = '') {
     const container = document.getElementById('tasksContainer');
     const div = document.createElement('div');
     div.className = 'task-row';
+    let tab = tabCat;
+    if (!tab && code && typeof getTaskPickerCategory === 'function') {
+        // Lire map sans dépendre de defaults circulaires
+        if (settings && settings.taskTabMap && settings.taskTabMap[code]) tab = settings.taskTabMap[code];
+    }
+    if (!tab) {
+        if (isReplacement) tab = 'remplacement';
+        else if (isRest) tab = 'absences';
+        else tab = 'presences';
+    }
     div.innerHTML = `
         <input type="text" class="t-code" value="${code}" placeholder="Code" maxlength="5" style="text-transform:uppercase;">
         <input type="text" class="t-label" value="${label}" placeholder="Libellé">
@@ -7809,6 +7860,11 @@ function renderAgentEmailLinksConfig() {
         <input type="time" class="t-end" value="${end}">
         <div style="text-align:center;"><input type="checkbox" class="t-rest" ${isRest ? 'checked' : ''} title="Est un repos ?"></div>
         <div style="text-align:center;"><input type="checkbox" class="t-rpl" ${isReplacement ? 'checked' : ''} title="Déclenche la Fiche de Remplacement ?"></div>
+        <select class="t-tab" title="Onglet dans la fenêtre Affecter une tâche">
+            <option value="presences" ${tab === 'presences' ? 'selected' : ''}>Présences</option>
+            <option value="remplacement" ${tab === 'remplacement' ? 'selected' : ''}>Remplacement</option>
+            <option value="absences" ${tab === 'absences' ? 'selected' : ''}>Absences</option>
+        </select>
         <input type="color" class="t-bg" value="${color}">
         <input type="color" class="t-txt" value="${text}">
         <div style="display:flex; gap:2px; justify-content:center;">
@@ -7938,9 +7994,13 @@ function renderMonitoredGroupRow(group = []) {
         const color = row.querySelector('.t-bg').value;
         const text = row.querySelector('.t-txt').value;
 
+        const tabSel = row.querySelector('.t-tab');
+        const tabCat = tabSel ? tabSel.value : 'presences';
         if (code && label) {
             newTasks[code] = { label, shift, start, end, isRest, isReplacement, color, text };
             newOrder.push(code);
+            if (!settings.taskTabMap) settings.taskTabMap = {};
+            settings.taskTabMap[code] = tabCat;
         }
     });
     if (Object.keys(newTasks).length > 0) {
