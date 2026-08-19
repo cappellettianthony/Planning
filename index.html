@@ -1241,6 +1241,60 @@
     </div>
 
     <!-- Login Modal -->
+    
+    <!-- Confirmation suppression agent (auth) -->
+    
+    <!-- Masquer / réafficher agents d'une équipe -->
+    <div class="modal" id="hideAgentsModal" style="display:none;">
+        <div class="modal-content" style="width:480px;">
+            <h2>👁️ Affichage des agents</h2>
+            <p id="hideAgentsModalTeamInfo" style="font-size:0.85rem;margin-bottom:12px;color:var(--primary);"></p>
+            <input type="hidden" id="hideAgentsModalTeamId">
+
+            <div class="form-group">
+                <label>Masquer un agent (toujours compté dans présences / compétences)</label>
+                <select id="hideAgentsSelectVisible" style="width:100%;">
+                    <option value="">-- Choisir un agent à masquer --</option>
+                </select>
+                <button type="button" class="btn btn-secondary" style="margin-top:6px;width:100%;" onclick="hideSelectedAgentFromModal()">Masquer cet agent</button>
+            </div>
+
+            <div class="form-group" style="margin-top:14px;">
+                <label>Réafficher un agent masqué</label>
+                <select id="hideAgentsSelectHidden" style="width:100%;">
+                    <option value="">-- Aucun agent masqué --</option>
+                </select>
+                <button type="button" class="btn btn-success" style="margin-top:6px;width:100%;" onclick="showSelectedAgentFromModal()">Réafficher cet agent</button>
+            </div>
+
+            <p style="font-size:0.72rem;color:#666;margin-top:8px;">Les agents masqués n'apparaissent pas dans les listes de volontaires RPL.</p>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeHideAgentsModal()">Fermer</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="deleteAgentAuthModal" style="display:none;">
+        <div class="modal-content" style="width:420px;">
+            <h2 style="color:#c0392b;">🗑️ Supprimer un agent</h2>
+            <p id="deleteAgentAuthInfo" style="font-size:0.85rem;margin-bottom:12px;"></p>
+            <p style="font-size:0.78rem;color:#666;margin-bottom:10px;">Réservé aux RE et Administrateurs. Confirmez avec votre e-mail et mot de passe.</p>
+            <div class="form-group">
+                <label>E-mail</label>
+                <input type="email" id="deleteAgentAuthEmail" autocomplete="username">
+            </div>
+            <div class="form-group">
+                <label>Mot de passe</label>
+                <input type="password" id="deleteAgentAuthPassword" autocomplete="current-password">
+            </div>
+            <p id="deleteAgentAuthError" style="color:#c0392b;font-size:0.8rem;display:none;"></p>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeDeleteAgentAuthModal()">Annuler</button>
+                <button class="btn btn-danger" onclick="confirmDeleteAgentWithAuth()">Confirmer la suppression</button>
+            </div>
+        </div>
+    </div>
+
     <div class="modal" id="authModal" style="display: flex;">
         <div class="modal-content">
             <h2>Connexion requise</h2>
@@ -1763,6 +1817,10 @@
         let planningEditUnlocked = false;
         /** Sélection multi-jours (clic-glisser) */
         let multiSelectState = null; // { isTeam, targetId, targetName, dates: string[], startDate }
+        /** Équipes dont les lignes agents sont masquées (affichage uniquement) */
+        let collapsedTeamAgentRows = {};
+        /** Agents individuellement masqués (id -> true) */
+        let hiddenAgentIds = {};
 
         let currentYear = new Date().getFullYear();
         let minYearAvailable = currentYear - 1;
@@ -2073,6 +2131,8 @@ function getAppState() {
     return {
         teamSchedules: teamSchedules,
         agentSchedules: agentSchedules,
+        collapsedTeamAgentRows: collapsedTeamAgentRows,
+        hiddenAgentIds: hiddenAgentIds,
         taskDescriptions: taskDescriptions,
         teams: teams,
         acknowledgedAlerts: acknowledgedAlerts,
@@ -2097,6 +2157,8 @@ function loadAppState(data) {
 
     teamSchedules = data.teamSchedules || {};
     agentSchedules = data.agentSchedules || {};
+    collapsedTeamAgentRows = data.collapsedTeamAgentRows || {};
+    hiddenAgentIds = data.hiddenAgentIds || {};
     taskDescriptions = data.taskDescriptions || {};
 
     const defaultTeams = createDefaultTeams();
@@ -2395,6 +2457,8 @@ if (resetAckBtn) {
     return {
         teamSchedules: teamSchedules,
         agentSchedules: agentSchedules,
+        collapsedTeamAgentRows: collapsedTeamAgentRows,
+        hiddenAgentIds: hiddenAgentIds,
         taskDescriptions: taskDescriptions,
         teams: teams,
         acknowledgedAlerts: acknowledgedAlerts,
@@ -2419,6 +2483,8 @@ if (resetAckBtn) {
 
     teamSchedules = data.teamSchedules || {};
     agentSchedules = data.agentSchedules || {};
+    collapsedTeamAgentRows = data.collapsedTeamAgentRows || {};
+    hiddenAgentIds = data.hiddenAgentIds || {};
     taskDescriptions = data.taskDescriptions || {};
 
     const defaultTeams = createDefaultTeams();
@@ -3578,14 +3644,29 @@ if (resetAckBtn) {
         tdTeamName.className = 'sticky-col-1 team-name-td'; 
 
         // Rendu du nom de l'équipe avec le bouton d'ajout d'agent (+ Agent)
-        if (!isReadOnly) {
-            tdTeamName.innerHTML = `
-                <div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
-                    <span>${team.name}</span>
-                    <button class="btn btn-success" style="padding:1px 5px; font-size:0.7rem;" title="Ajouter un agent à cette équipe" onclick="addNewAgentToTeam('${team.id}')">+ Agent</button>
-                </div>`;
-        } else {
-            tdTeamName.innerText = team.name; 
+        {
+            const hiddenCount = (team.agents || []).filter(function(a) {
+                return hiddenAgentIds && hiddenAgentIds[a.id];
+            }).length;
+            // Icône uniquement RE / Admin
+            let eyeBtn = '';
+            if (!isReadOnly) {
+                eyeBtn = '<button type="button" class="btn btn-secondary" style="padding:1px 6px; font-size:0.75rem; margin-right:4px;" title="Masquer ou réafficher des agents de cette équipe' +
+                    (hiddenCount ? ' (' + hiddenCount + ' masqué(s))' : '') +
+                    '" onclick="event.stopPropagation(); openHideAgentsModal(\'' + team.id + '\')">👁️' +
+                    (hiddenCount ? '<span style="font-size:0.65rem;margin-left:2px;">' + hiddenCount + '</span>' : '') +
+                    '</button>';
+            }
+            if (!isReadOnly) {
+                tdTeamName.innerHTML =
+                    '<div style="display:flex; justify-content:space-between; align-items:center; width:100%; gap:4px;">' +
+                    '<span style="overflow:hidden;text-overflow:ellipsis;">' + team.name + '</span>' +
+                    '<span style="display:flex;align-items:center;flex-shrink:0;">' + eyeBtn +
+                    '<button class="btn btn-success" style="padding:1px 5px; font-size:0.7rem;" title="Ajouter un agent à cette équipe" onclick="addNewAgentToTeam(\'' + team.id + '\')">+ Agent</button>' +
+                    '</span></div>';
+            } else {
+                tdTeamName.innerText = team.name;
+            }
         }
         
         teamTr.appendChild(tdTeamName);
@@ -3631,8 +3712,11 @@ if (resetAckBtn) {
         });
         tbody.appendChild(teamTr);
 
-        // Affichage des agents de l'équipe
+        // Affichage des agents de l'équipe (sauf si équipe repliée)
         team.agents.forEach(agent => {
+            if (typeof isAgentRowHidden === 'function' && isAgentRowHidden(team.id, agent.id)) {
+                return; // masqué à l'affichage — toujours compté dans calculs/compétences
+            }
             const extraShifts = calculateExtraShiftsCount(agent, team.id);
 
             const tr = document.createElement('tr');
@@ -4039,6 +4123,7 @@ function getEligibleAgentsForRpl(isTeam, targetId, dateStr) {
     (teams || []).forEach(function(t) {
         (t.agents || []).forEach(function(a) {
             if (!isTeam && a.id === targetId) return;
+            if (typeof isAgentHiddenForVolunteer === 'function' && isAgentHiddenForVolunteer(a.id)) return;
             const agentIsRE = (typeof agentHasRECompetence === 'function') && agentHasRECompetence(a.id);
             if (requireRE && !agentIsRE) return;
             if (!requireRE && agentIsRE) return;
@@ -4277,6 +4362,7 @@ function populateRplAgentSelect(showAll) {
 
     allAgents.forEach(function(a) {
         if (onlySelf && myIds.indexOf(a.id) === -1) return;
+        if (typeof isAgentHiddenForVolunteer === 'function' && isAgentHiddenForVolunteer(a.id)) return;
 
         const agentIsRE = (typeof agentHasRECompetence === 'function') && agentHasRECompetence(a.id);
         if (requireRE && !agentIsRE) return;
@@ -8162,27 +8248,171 @@ function addNewAgentToTeam(teamId) {
     renderAll(true); // Redessine et sauvegarde automatiquement dans Firebase
 }
 
-// Fonction pour supprimer un agent d'une équipe
+let pendingDeleteAgent = null; // { teamId, agentId, agentName, teamName }
+
 function deleteAgentFromTeam(teamId, agentId) {
-    if (isReadOnly) return;
+    // RE / Admin uniquement
+    if (isReadOnly) {
+        alert('Suppression réservée aux RE et Administrateurs.');
+        return;
+    }
 
     const team = teams.find(t => t.id === teamId);
     if (!team) return;
-
     const agent = team.agents.find(a => a.id === agentId);
     if (!agent) return;
 
-    if (confirm(`Êtes-vous sûr de vouloir supprimer l'agent "${agent.name}" de l'équipe "${team.name}" ?`)) {
-        // 1. Retrait de l'agent du tableau de l'équipe
-        team.agents = team.agents.filter(a => a.id !== agentId);
+    pendingDeleteAgent = {
+        teamId: teamId,
+        agentId: agentId,
+        agentName: agent.name,
+        teamName: team.name
+    };
 
-        // 2. Nettoyage des plannings individuels rattachés à cet agent
-        if (agentSchedules[agentId]) {
-            delete agentSchedules[agentId];
-        }
-
-        renderAll(true); // Redessine et sauvegarde dans Firebase
+    const info = document.getElementById('deleteAgentAuthInfo');
+    if (info) {
+        info.innerHTML = 'Vous allez supprimer définitivement <strong>' + agent.name +
+            '</strong> de l\'équipe <strong>' + team.name + '</strong>.';
     }
+    const emailInput = document.getElementById('deleteAgentAuthEmail');
+    const pwdInput = document.getElementById('deleteAgentAuthPassword');
+    const err = document.getElementById('deleteAgentAuthError');
+    if (emailInput) emailInput.value = (currentUser && currentUser.email) ? currentUser.email : '';
+    if (pwdInput) pwdInput.value = '';
+    if (err) { err.style.display = 'none'; err.textContent = ''; }
+    document.getElementById('deleteAgentAuthModal').style.display = 'flex';
+}
+
+function closeDeleteAgentAuthModal() {
+    document.getElementById('deleteAgentAuthModal').style.display = 'none';
+    pendingDeleteAgent = null;
+    const pwdInput = document.getElementById('deleteAgentAuthPassword');
+    if (pwdInput) pwdInput.value = '';
+}
+
+function confirmDeleteAgentWithAuth() {
+    if (isReadOnly || !pendingDeleteAgent) return;
+    const email = (document.getElementById('deleteAgentAuthEmail') || {}).value || '';
+    const password = (document.getElementById('deleteAgentAuthPassword') || {}).value || '';
+    const err = document.getElementById('deleteAgentAuthError');
+    if (!email.trim() || !password) {
+        if (err) { err.textContent = 'E-mail et mot de passe obligatoires.'; err.style.display = 'block'; }
+        return;
+    }
+    if (!auth) {
+        if (err) { err.textContent = 'Authentification indisponible.'; err.style.display = 'block'; }
+        return;
+    }
+
+    const pending = pendingDeleteAgent;
+    // Vérifier que l'e-mail correspond à la session (ou reconnexion)
+    auth.signInWithEmailAndPassword(email.trim(), password)
+        .then(function() {
+            // Auth OK → supprimer
+            const team = teams.find(function(t) { return t.id === pending.teamId; });
+            if (!team) return;
+            team.agents = (team.agents || []).filter(function(a) { return a.id !== pending.agentId; });
+            if (agentSchedules[pending.agentId]) delete agentSchedules[pending.agentId];
+            if (hiddenAgentIds && hiddenAgentIds[pending.agentId]) delete hiddenAgentIds[pending.agentId];
+            closeDeleteAgentAuthModal();
+            renderAll(true);
+        })
+        .catch(function(error) {
+            let msg = 'Échec de l\'authentification.';
+            if (error && error.code === 'auth/wrong-password') msg = 'Mot de passe incorrect.';
+            else if (error && error.code === 'auth/user-not-found') msg = 'Utilisateur introuvable.';
+            else if (error && error.code === 'auth/invalid-email') msg = 'E-mail invalide.';
+            else if (error && error.code === 'auth/invalid-credential') msg = 'Identifiants invalides.';
+            else if (error && error.message) msg = error.message;
+            if (err) { err.textContent = msg; err.style.display = 'block'; }
+        });
+}
+
+function openHideAgentsModal(teamId) {
+    if (isReadOnly) {
+        alert('Réservé aux RE et Administrateurs.');
+        return;
+    }
+    const team = (teams || []).find(function(t) { return t.id === teamId; });
+    if (!team) return;
+
+    document.getElementById('hideAgentsModalTeamId').value = teamId;
+    const info = document.getElementById('hideAgentsModalTeamInfo');
+    if (info) info.innerHTML = 'Équipe : <strong>' + team.name + '</strong>';
+
+    const selVis = document.getElementById('hideAgentsSelectVisible');
+    const selHid = document.getElementById('hideAgentsSelectHidden');
+    if (!selVis || !selHid) return;
+
+    selVis.innerHTML = '<option value="">-- Choisir un agent à masquer --</option>';
+    selHid.innerHTML = '<option value="">-- Aucun agent masqué --</option>';
+
+    let hiddenCount = 0;
+    (team.agents || []).forEach(function(a) {
+        if (!a || !a.id) return;
+        const isHidden = !!(hiddenAgentIds && hiddenAgentIds[a.id]);
+        const opt = document.createElement('option');
+        opt.value = a.id;
+        opt.textContent = a.name;
+        if (isHidden) {
+            selHid.appendChild(opt);
+            hiddenCount++;
+        } else {
+            selVis.appendChild(opt);
+        }
+    });
+    if (hiddenCount === 0) {
+        selHid.innerHTML = '<option value="">-- Aucun agent masqué --</option>';
+    } else {
+        // remettre le placeholder en premier
+        const ph = document.createElement('option');
+        ph.value = '';
+        ph.textContent = '-- Choisir un agent à réafficher --';
+        selHid.insertBefore(ph, selHid.firstChild);
+        selHid.selectedIndex = 0;
+    }
+
+    document.getElementById('hideAgentsModal').style.display = 'flex';
+}
+
+function closeHideAgentsModal() {
+    const m = document.getElementById('hideAgentsModal');
+    if (m) m.style.display = 'none';
+}
+
+function hideSelectedAgentFromModal() {
+    if (isReadOnly) return;
+    const teamId = document.getElementById('hideAgentsModalTeamId').value;
+    const agentId = document.getElementById('hideAgentsSelectVisible').value;
+    if (!agentId) {
+        alert('Choisissez un agent à masquer.');
+        return;
+    }
+    if (!hiddenAgentIds) hiddenAgentIds = {};
+    hiddenAgentIds[agentId] = true;
+    openHideAgentsModal(teamId); // rafraîchir listes
+    renderAll(true);
+}
+
+function showSelectedAgentFromModal() {
+    if (isReadOnly) return;
+    const teamId = document.getElementById('hideAgentsModalTeamId').value;
+    const agentId = document.getElementById('hideAgentsSelectHidden').value;
+    if (!agentId) {
+        alert('Choisissez un agent à réafficher.');
+        return;
+    }
+    if (hiddenAgentIds && hiddenAgentIds[agentId]) delete hiddenAgentIds[agentId];
+    openHideAgentsModal(teamId);
+    renderAll(true);
+}
+
+function isAgentRowHidden(teamId, agentId) {
+    return !!(hiddenAgentIds && hiddenAgentIds[agentId]);
+}
+
+function isAgentHiddenForVolunteer(agentId) {
+    return !!(hiddenAgentIds && hiddenAgentIds[agentId]);
 }
 
 
