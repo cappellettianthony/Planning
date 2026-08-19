@@ -4879,12 +4879,14 @@ function validateReplacementSheet() {
 
     // Table de conversion
     const conversionMap = {
-        'RPCA': 'CA',
-        'RPFO': 'F',
-        'RPRC': 'RC',
-        'RPHP': 'HP',
-        'RPL': 'CA',
-        'RPA': 'RPA'   // reste inchangé
+    'RPCA': 'CA',
+    'RPCE': 'CE',
+    'RPFO': 'F',
+    'RPR': 'R',
+    'RPRC': 'RC',
+    'RPHP': 'HP',
+    'RP41': '41',
+    'RPJ': 'J'
     };
 
     let rpaMessage = false;
@@ -6210,14 +6212,13 @@ function purgeReplacementArchives() {
         function resolveRplCodeIfRestOrDay(agentId, dateStr, rplTaskCode) {
             const conversionMap = {
                 'RPCA': 'CA',
-                'RPC': 'CA',
+                'RPCE': 'CE',
                 'RPFO': 'F',
-                'RPF': 'F',
+                'RPR': 'R',
                 'RPRC': 'RC',
-                'RPR': 'RC',
                 'RPHP': 'HP',
-                'RPL': 'CA',
-                'RPA': 'RPA'
+                'RP41': '41',
+                'RPJ': 'J'
             };
             const rotCode = getTeamRotationCodeForAgent(agentId, dateStr);
             if (!isRotationRestOrDayCode(rotCode)) return rplTaskCode;
