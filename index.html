@@ -4890,14 +4890,16 @@ function validateReplacementSheet() {
 
     let rpaMessage = false;
 
-    // Week-end + RPL formation → au traitement, conversion en R (repos)
+    // Week-end + RPL formation ou RPR (repos hebdo) → au traitement, conversion en R
     const isWeekend = (typeof isWeekendDateStr === 'function') && isWeekendDateStr(dateStr);
-    const isFormRpl = (typeof isFormationTaskCode === 'function') && (
-        isFormationTaskCode(currentTargetCode) ||
-        (currentTargetCode && String(currentTargetCode).toUpperCase().indexOf('FO') !== -1)
+    const codeUp = currentTargetCode ? String(currentTargetCode).toUpperCase() : '';
+    const isFormOrRprWeekend = isWeekend && currentTargetCode && (
+        codeUp === 'RPR' || codeUp === 'RPRC' ||
+        ((typeof isFormationTaskCode === 'function') && isFormationTaskCode(currentTargetCode)) ||
+        codeUp.indexOf('FO') !== -1
     );
 
-    if (isWeekend && isFormRpl && currentTargetCode) {
+    if (isFormOrRprWeekend) {
         if (isTeam) {
             if (!teamSchedules[targetId]) teamSchedules[targetId] = {};
             teamSchedules[targetId][dateStr] = 'R';
@@ -6187,9 +6189,8 @@ function purgeReplacementArchives() {
 
         /**
          * Formation le week-end :
-         * - roulement M/A/N → on garde la RPL formation (fiche conservée)
-         * - sinon (R/H/J…) → R immédiatement
-         * La conversion week-end → R au *traitement* de la fiche se fait à part.
+         * - roulement M/A/N → RPR (remplacement pour repos hebdomadaire), fiche conservée
+         * - roulement repos (R/H/J…) → R immédiatement, pas de fiche
          */
         function applyWeekendFormationRule(dateStr, codeToWrite, originalTaskCode, agentId) {
             if (!isWeekendDateStr(dateStr)) return codeToWrite;
@@ -6198,11 +6199,12 @@ function purgeReplacementArchives() {
             }
             if (agentId) {
                 const rot = getTeamRotationCodeForAgent(agentId, dateStr);
-                // Quart travaillé le samedi/dimanche → laisser la RPL formation
+                // Quart M/A/N le samedi/dimanche → RPR (repos hebdo) au lieu de RPL formation
                 if (!isRotationRestOrDayCode(rot)) {
-                    return codeToWrite;
+                    return 'RPR';
                 }
             }
+            // Week-end déjà en repos → R
             return 'R';
         }
 
@@ -6264,13 +6266,13 @@ function purgeReplacementArchives() {
                     // Si roulement = Repos ou Journée → CA/F/... ; si M/A/N → RPL inchangée
                     const rotCode = getTeamRotationCodeForAgent(targetId, dStr);
                     let codeToWrite = resolveRplCodeIfRestOrDay(targetId, dStr, taskCode);
-                    // Formation : pas le week-end → R
+                    // Formation week-end : M/A/N → RPR ; repos → R
                     codeToWrite = applyWeekendFormationRule(dStr, codeToWrite, taskCode, targetId);
-                    // Fiche RPL seulement si quart M/A/N ET code toujours de type remplacement
+                    // Fiche RPL si quart M/A/N et code de type remplacement (RPL, RPR, RPFO…)
                     const writtenDef = TASKS[codeToWrite];
-                    const isWorkShiftRpl = !isRotationRestOrDayCode(rotCode) &&
-                        codeToWrite === taskCode &&
-                        writtenDef && writtenDef.isReplacement;
+                    const isRplLike = (writtenDef && writtenDef.isReplacement) ||
+                        ['RPL', 'RPR', 'RPRC', 'RPFO', 'RPF', 'RPCA', 'RPC', 'RPHP', 'RPA'].indexOf(String(codeToWrite).toUpperCase()) !== -1;
+                    const isWorkShiftRpl = !isRotationRestOrDayCode(rotCode) && isRplLike;
                     agentSchedules[targetId][dStr] = codeToWrite;
                     logCellModification(false, targetId, dStr, beforeCode, codeToWrite);
 
