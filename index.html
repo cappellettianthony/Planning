@@ -1477,6 +1477,7 @@
                 <button type="button" class="agent-tab-btn active" data-tab="identite" onclick="switchAgentTab('identite')">Nom &amp; compétences</button>
                 <button type="button" class="agent-tab-btn" data-tab="roulement" onclick="switchAgentTab('roulement')">Roulement</button>
                 <button type="button" class="agent-tab-btn" data-tab="periode" onclick="switchAgentTab('periode')">Période / récurrence</button>
+                <button type="button" class="agent-tab-btn" data-tab="equipe" onclick="switchAgentTab('equipe')">Changement d'équipe</button>
             </div>
 
             <div class="agent-tab-panels">
@@ -1584,6 +1585,27 @@
                             </div>
                         </div>
                         <button class="btn btn-secondary" style="width:100%; font-weight:bold; padding: 8px;" onclick="applyBulkAgentTask()" id="bulkApplyBtn">Appliquer la période / récurrence</button>
+                        <button class="btn btn-danger" style="width:100%; font-weight:bold; padding: 8px; margin-top:8px;" onclick="clearBulkAgentPeriod()" id="bulkClearBtn">Réinitialiser la période (effacer les données)</button>
+                    </div>
+                </div>
+
+                <!-- Onglet 4 : Changement d'équipe -->
+                <div class="agent-tab-panel" id="agentTab-equipe">
+                    <div class="bulk-box" style="margin-top:0; background:#f5eef8; border-color:#8e44ad;">
+                        <h3 style="color:#6c3483;">Changement d'équipe</h3>
+                        <p style="font-size:0.78rem;color:#555;margin-bottom:10px;">
+                            Avant la date effective : l'ancien roulement est conservé en planning individuel.<br>
+                            Après : le roulement de la nouvelle équipe s'applique, en gardant formations, absences et RPL compatibles.
+                        </p>
+                        <div class="form-group">
+                            <label>1. Date effective du changement :</label>
+                            <input type="date" id="teamChangeEffectiveDate">
+                        </div>
+                        <div class="form-group">
+                            <label>2. Nouvelle équipe :</label>
+                            <select id="teamChangeNewTeam"></select>
+                        </div>
+                        <button class="btn" style="width:100%; font-weight:bold; padding:8px; background:#8e44ad; color:#fff;" onclick="applyAgentTeamChange()" id="teamChangeApplyBtn">Valider le changement d'équipe</button>
                     </div>
                 </div>
             </div>
@@ -7454,6 +7476,24 @@ function resetAcknowledgedAlerts() {
             document.getElementById('bulkAgentDesc').value = '';
             document.getElementById('bulkAgentFreq').value = 'NONE';
 
+            let currentTeamIdForChange = null;
+            teams.forEach(function(t) {
+                if ((t.agents || []).some(function(a) { return a.id === agentId; })) currentTeamIdForChange = t.id;
+            });
+            const teamChangeSel = document.getElementById('teamChangeNewTeam');
+            if (teamChangeSel) {
+                teamChangeSel.innerHTML = '';
+                teams.forEach(function(t) {
+                    if (t.id === currentTeamIdForChange) return;
+                    const opt = document.createElement('option');
+                    opt.value = t.id;
+                    opt.innerText = t.name;
+                    teamChangeSel.appendChild(opt);
+                });
+            }
+            const teamChangeDateEl = document.getElementById('teamChangeEffectiveDate');
+            if (teamChangeDateEl) teamChangeDateEl.value = todayStr;
+
             toggleAgentRecurrenceUI();
             if (typeof switchAgentTab === 'function') switchAgentTab('identite');
             document.getElementById('agentModal').style.display = 'flex';
@@ -7483,6 +7523,157 @@ function resetAcknowledgedAlerts() {
             } else {
                 endDateGroup.style.display = 'none';
                 durationGroup.style.display = 'block';
+            }
+        }
+
+
+        function isPreservedTaskOnTeamChange(code) {
+            if (!code) return false;
+            const t = TASKS[code];
+            if (!t) return false;
+            if (t.isReplacement) return true;
+            const c = String(code).toUpperCase();
+            const preservedCodes = ['CA','F','RC','HP','OFF','MAL','AT','CE','CSS','DET','D','RPR','RPRC','RPFO','RPF','RPCA','RPC','RPL','RPA','RPHP'];
+            if (preservedCodes.indexOf(c) !== -1) return true;
+            const label = String(t.label || '').toLowerCase();
+            if (/formation|cong[eé]|maladie|d[eé]tach|compensateur|repos compens|absence|remplacement/.test(label)) return true;
+            if (t.isRest && c !== 'R' && c !== 'RD' && c !== 'HD') return true;
+            return false;
+        }
+
+        function isWorkShiftCode(code) {
+            const t = TASKS[code];
+            if (!t) return false;
+            return t.shift === 'M' || t.shift === 'A' || t.shift === 'N' || t.shift === 'J';
+        }
+
+        function applyAgentTeamChange() {
+            if (isReadOnly) {
+                alert('Réservé aux RE et Administrateurs.');
+                return;
+            }
+            const agentId = document.getElementById('editAgentId').value;
+            const effectiveStr = (document.getElementById('teamChangeEffectiveDate') || {}).value;
+            const newTeamId = (document.getElementById('teamChangeNewTeam') || {}).value;
+            if (!agentId) return;
+            if (!effectiveStr) { alert('Indiquez la date effective du changement.'); return; }
+            if (!newTeamId) { alert('Choisissez la nouvelle équipe.'); return; }
+
+            let oldTeam = null;
+            let agentRef = null;
+            teams.forEach(function(t) {
+                const a = (t.agents || []).find(function(ag) { return ag.id === agentId; });
+                if (a) { oldTeam = t; agentRef = a; }
+            });
+            if (!oldTeam || !agentRef) { alert('Agent introuvable.'); return; }
+            if (oldTeam.id === newTeamId) { alert('La nouvelle équipe doit être différente.'); return; }
+            const newTeam = teams.find(function(t) { return t.id === newTeamId; });
+            if (!newTeam) { alert('Nouvelle équipe introuvable.'); return; }
+
+            if (!confirm('Confirmer le changement d\'équipe de « ' + agentRef.name + ' »\nde « ' + oldTeam.name + ' » vers « ' + newTeam.name + ' »\nà compter du ' + effectiveStr + ' ?')) return;
+
+            if (!agentSchedules[agentId]) agentSchedules[agentId] = {};
+            const effectiveDate = parseDate(effectiveStr);
+            const rangeStart = new Date(minYearAvailable, 0, 1);
+            const rangeEnd = new Date(maxYearAvailable, 11, 31);
+            const deletedRpl = [];
+
+            // Avant date : figer ancien roulement
+            let cur = new Date(rangeStart);
+            while (cur < effectiveDate) {
+                const dStr = formatDate(cur);
+                const hasInd = agentSchedules[agentId][dStr] !== undefined && agentSchedules[agentId][dStr] !== null && agentSchedules[agentId][dStr] !== '';
+                if (!hasInd) {
+                    let teamCode = 'R';
+                    if (teamSchedules[oldTeam.id] && teamSchedules[oldTeam.id][dStr] !== undefined && teamSchedules[oldTeam.id][dStr] !== null && teamSchedules[oldTeam.id][dStr] !== '') {
+                        teamCode = teamSchedules[oldTeam.id][dStr];
+                    }
+                    agentSchedules[agentId][dStr] = teamCode;
+                }
+                cur.setDate(cur.getDate() + 1);
+            }
+
+            // À partir de la date effective
+            cur = new Date(effectiveDate);
+            while (cur <= rangeEnd) {
+                const dStr = formatDate(cur);
+                const individual = agentSchedules[agentId][dStr];
+                const hasInd = individual !== undefined && individual !== null && individual !== '';
+                let newRot = 'R';
+                if (teamSchedules[newTeamId] && teamSchedules[newTeamId][dStr] !== undefined && teamSchedules[newTeamId][dStr] !== null && teamSchedules[newTeamId][dStr] !== '') {
+                    newRot = teamSchedules[newTeamId][dStr];
+                }
+
+                if (hasInd) {
+                    if (isPreservedTaskOnTeamChange(individual)) {
+                        const def = TASKS[individual];
+                        // RPL en conflit si nouveau roulement déjà travaillé
+                        if (def && def.isReplacement && isWorkShiftCode(newRot)) {
+                            delete agentSchedules[agentId][dStr];
+                            if (taskDescriptions[agentId + '_' + dStr]) delete taskDescriptions[agentId + '_' + dStr];
+                            if (replacementSheets && replacementSheets[agentId + '_' + dStr]) delete replacementSheets[agentId + '_' + dStr];
+                            deletedRpl.push(dStr + ' (' + individual + ')');
+                        }
+                    } else if (isWorkShiftCode(individual)) {
+                        // Quart individuel qui s'additionne au nouveau roulement
+                        if (isWorkShiftCode(newRot) || String(individual) === String(newRot)) {
+                            delete agentSchedules[agentId][dStr];
+                            if (taskDescriptions[agentId + '_' + dStr]) delete taskDescriptions[agentId + '_' + dStr];
+                            if (replacementSheets && replacementSheets[agentId + '_' + dStr]) delete replacementSheets[agentId + '_' + dStr];
+                            deletedRpl.push(dStr + ' (' + individual + ')');
+                        }
+                    } else {
+                        delete agentSchedules[agentId][dStr];
+                        if (taskDescriptions[agentId + '_' + dStr]) delete taskDescriptions[agentId + '_' + dStr];
+                    }
+                }
+                cur.setDate(cur.getDate() + 1);
+            }
+
+            // Déplacer l'agent
+            oldTeam.agents = (oldTeam.agents || []).filter(function(a) { return a.id !== agentId; });
+            if (!newTeam.agents) newTeam.agents = [];
+            if (!newTeam.agents.some(function(a) { return a.id === agentId; })) {
+                newTeam.agents.push(agentRef);
+            }
+
+            // Passe 2 : RPL restants vs nouveau planning (repos)
+            Object.keys(agentSchedules[agentId] || {}).forEach(function(dStr) {
+                if (dStr < effectiveStr) return;
+                const code = agentSchedules[agentId][dStr];
+                const def = TASKS[code];
+                if (!def || !def.isReplacement) return;
+                let newRot = (teamSchedules[newTeamId] && teamSchedules[newTeamId][dStr] !== undefined) ? teamSchedules[newTeamId][dStr] : 'R';
+                if (isWorkShiftCode(newRot)) {
+                    delete agentSchedules[agentId][dStr];
+                    if (taskDescriptions[agentId + '_' + dStr]) delete taskDescriptions[agentId + '_' + dStr];
+                    if (replacementSheets && replacementSheets[agentId + '_' + dStr]) delete replacementSheets[agentId + '_' + dStr];
+                    if (deletedRpl.indexOf(dStr + ' (' + code + ')') === -1) deletedRpl.push(dStr + ' (' + code + ')');
+                    return;
+                }
+                // Test 11h approximatif : nuit veille + RPL
+                const prev = new Date(parseDate(dStr));
+                prev.setDate(prev.getDate() - 1);
+                const prevCode = getEffectiveAgentTask(agentRef, newTeamId, formatDate(prev));
+                const prevDef = TASKS[prevCode] || TASKS['R'];
+                if (prevDef.shift === 'N' && !prevDef.isRest) {
+                    delete agentSchedules[agentId][dStr];
+                    if (taskDescriptions[agentId + '_' + dStr]) delete taskDescriptions[agentId + '_' + dStr];
+                    if (replacementSheets && replacementSheets[agentId + '_' + dStr]) delete replacementSheets[agentId + '_' + dStr];
+                    if (deletedRpl.indexOf(dStr + ' (' + code + ')') === -1) deletedRpl.push(dStr + ' (' + code + ')');
+                }
+            });
+
+            closeAgentModal();
+            renderAll(true);
+
+            if (deletedRpl.length) {
+                alert('Changement d\'équipe effectué.\n\n⚠ Remplacements / quarts individuels supprimés (conflit de repos ou double emploi avec le nouveau roulement) :\n\n' +
+                    deletedRpl.slice(0, 30).join('\n') +
+                    (deletedRpl.length > 30 ? '\n… (' + deletedRpl.length + ' au total)' : '') +
+                    '\n\nMerci de créer de nouvelles fiches de remplacement si nécessaire.');
+            } else {
+                alert('Changement d\'équipe effectué avec succès.');
             }
         }
 
