@@ -1130,6 +1130,14 @@
         </div>
     </details>
 
+    <div id="yearlyBackupBanner" style="display:none; background:#fef9e7; border:1px solid #f39c12; color:#7d6608; padding:12px 15px; border-radius:8px; margin-bottom:12px; font-size:0.88rem;">
+        <strong>💾 Sauvegarde annuelle recommandée</strong>
+        <span id="yearlyBackupBannerText"></span>
+        <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
+            <button type="button" class="btn btn-success" onclick="performYearlyJsonBackup()">Télécharger la sauvegarde JSON</button>
+            <button type="button" class="btn btn-secondary" onclick="dismissYearlyBackupBanner()">Plus tard</button>
+        </div>
+    </div>
     <div class="alert-banner" id="alertBanner">
         ⚠️ <strong>DÉFAUTS DE REPOS DÉTECTÉS SUR LE PLANNING ANNUEL :</strong>
         <ul id="alertList"></ul>
@@ -1824,7 +1832,7 @@
 
         let currentYear = new Date().getFullYear();
         let minYearAvailable = currentYear - 1;
-        let maxYearAvailable = currentYear + 3;
+        let maxYearAvailable = currentYear + 2; // N-1, N, N+1, N+2
         // startDate définit le mois affiché (1er jour du mois en pratique)
         let startDate = new Date(currentYear, new Date().getMonth(), 1);
         let planningViewMode = 'month'; // 'month' | 'year'
@@ -1868,7 +1876,7 @@
         // Ordre explicite des tâches (Firebase ne préserve pas l'ordre des clés d'objet)
         let taskOrder = Object.keys(TASKS);
 
-        let settings = { thresholds: { M: { orange: 5, green: 7 }, A: { orange: 5, green: 7 }, N: { orange: 3, green: 5 } }, rplDeadlineDefaultDays: 15, rplTrackableSkillIds: [], taskTabMap: {} };
+        let settings = { thresholds: { M: { orange: 5, green: 7 }, A: { orange: 5, green: 7 }, N: { orange: 3, green: 5 } }, rplDeadlineDefaultDays: 15, rplTrackableSkillIds: [], taskTabMap: {}, yearlyJsonBackupAckYear: null };
 
         // Liaison agentId → adresse e-mail (paramétrage admin)
         let agentEmailLinks = {};
@@ -2204,6 +2212,9 @@ function loadAppState(data) {
     if (settings && (!settings.taskTabMap || typeof settings.taskTabMap !== 'object')) {
         settings.taskTabMap = {};
     }
+    if (settings && settings.yearlyJsonBackupAckYear === undefined) {
+        settings.yearlyJsonBackupAckYear = null;
+    }
     agentEmailLinks = data.agentEmailLinks || agentEmailLinks || {};
     agentRoles = data.agentRoles || agentRoles || {};
 
@@ -2222,6 +2233,11 @@ function loadAppState(data) {
     if (data.schoolHolidaysZoneA && typeof data.schoolHolidaysZoneA === 'object') {
         schoolHolidaysZoneA = data.schoolHolidaysZoneA;
         if (typeof clearCalendarDayTypeCache === 'function') clearCalendarDayTypeCache();
+    }
+
+    // Propagation auto des cycles de roulement (12 semaines depuis HD)
+    if (typeof propagateTeamRotations === 'function') {
+        try { propagateTeamRotations(false); } catch (e) { console.warn(e); }
     }
 
     // Recalcul des droits après chargement des rôles / e-mails
@@ -2264,6 +2280,7 @@ function loadAppState(data) {
                     
                     setupPresence(user);
                     applyReadOnlyMode();
+            if (typeof checkYearlyBackupReminder === 'function') checkYearlyBackupReminder();
                     renderAll(false);
                 } else {
                     document.getElementById('authModal').style.display = 'flex';
@@ -2530,6 +2547,9 @@ if (resetAckBtn) {
     if (settings && (!settings.taskTabMap || typeof settings.taskTabMap !== 'object')) {
         settings.taskTabMap = {};
     }
+    if (settings && settings.yearlyJsonBackupAckYear === undefined) {
+        settings.yearlyJsonBackupAckYear = null;
+    }
     agentEmailLinks = data.agentEmailLinks || agentEmailLinks || {};
     agentRoles = data.agentRoles || agentRoles || {};
 
@@ -2548,6 +2568,11 @@ if (resetAckBtn) {
     if (data.schoolHolidaysZoneA && typeof data.schoolHolidaysZoneA === 'object') {
         schoolHolidaysZoneA = data.schoolHolidaysZoneA;
         if (typeof clearCalendarDayTypeCache === 'function') clearCalendarDayTypeCache();
+    }
+
+    // Propagation auto des cycles de roulement (12 semaines depuis HD)
+    if (typeof propagateTeamRotations === 'function') {
+        try { propagateTeamRotations(false); } catch (e) { console.warn(e); }
     }
 
     // Recalcul des droits après chargement des rôles / e-mails
@@ -2680,15 +2705,137 @@ if (resetAckBtn) {
 
         // sert à s'assurer qu'une année donnée est disponible dans la liste déroulante des années.
         function ensureYearExists(year) {
-            if (year > maxYearAvailable) { maxYearAvailable = year + 1; initYearSelect(); }
+            if (year > maxYearAvailable) { maxYearAvailable = year; initYearSelect(); }
+            if (year < minYearAvailable) { minYearAvailable = year; initYearSelect(); }
+        }
+
+        /** Cycle de roulement : 12 semaines = 84 jours, ancré sur le code HD (début de cycle) */
+        var TEAM_ROTATION_CYCLE_DAYS = 84;
+
+        function findTeamHdDate(teamId) {
+            const sched = teamSchedules[teamId];
+            if (!sched) return null;
+            let earliest = null;
+            Object.keys(sched).forEach(function(dStr) {
+                if (String(sched[dStr]).toUpperCase() === 'HD') {
+                    if (!earliest || dStr < earliest) earliest = dStr;
+                }
+            });
+            return earliest;
+        }
+
+        /** Extrait le motif de 84 jours à partir de HD (cases vides = R) */
+        function extractTeamRotationPattern(teamId, hdDateStr) {
+            const pattern = [];
+            const start = parseDate(hdDateStr);
+            if (!start) return pattern;
+            const sched = teamSchedules[teamId] || {};
+            for (let i = 0; i < TEAM_ROTATION_CYCLE_DAYS; i++) {
+                const d = new Date(start);
+                d.setDate(d.getDate() + i);
+                const dStr = formatDate(d);
+                const code = sched[dStr];
+                pattern.push(code !== undefined && code !== null && code !== '' ? code : 'R');
+            }
+            return pattern;
+        }
+
+        /**
+         * Propage le cycle 12 semaines sur les années disponibles (N-1 … N+2).
+         * Ne écrase pas les valeurs déjà saisies (sauf option force).
+         */
+        function propagateTeamRotations(forceOverwrite) {
+            if (!teams || !teamSchedules) return 0;
+            let filled = 0;
+            const yStart = minYearAvailable;
+            const yEnd = maxYearAvailable;
+            const rangeStart = new Date(yStart, 0, 1);
+            const rangeEnd = new Date(yEnd, 11, 31);
+
+            teams.forEach(function(team) {
+                if (!team || !team.id) return;
+                // Pas de cycle auto pour équipe journée pure si pas de HD
+                const hd = findTeamHdDate(team.id);
+                if (!hd) return;
+                const pattern = extractTeamRotationPattern(team.id, hd);
+                if (pattern.length < TEAM_ROTATION_CYCLE_DAYS) return;
+                if (!teamSchedules[team.id]) teamSchedules[team.id] = {};
+                const hdDate = parseDate(hd);
+                const cur = new Date(rangeStart);
+                while (cur <= rangeEnd) {
+                    const dStr = formatDate(cur);
+                    const existing = teamSchedules[team.id][dStr];
+                    if (!forceOverwrite && existing !== undefined && existing !== null && existing !== '') {
+                        cur.setDate(cur.getDate() + 1);
+                        continue;
+                    }
+                    const diffMs = cur.getTime() - hdDate.getTime();
+                    const diffDays = Math.floor(diffMs / 86400000);
+                    let idx = ((diffDays % TEAM_ROTATION_CYCLE_DAYS) + TEAM_ROTATION_CYCLE_DAYS) % TEAM_ROTATION_CYCLE_DAYS;
+                    const code = pattern[idx];
+                    if (existing !== code) {
+                        teamSchedules[team.id][dStr] = code;
+                        filled++;
+                    }
+                    cur.setDate(cur.getDate() + 1);
+                }
+            });
+            return filled;
+        }
+
+        function checkYearlyBackupReminder() {
+            const banner = document.getElementById('yearlyBackupBanner');
+            if (!banner) return;
+            const now = new Date();
+            const y = now.getFullYear();
+            const month = now.getMonth(); // 0-11 ; décembre = 11
+            // 1 mois avant le changement d'année = décembre
+            const shouldShow = (month === 11) &&
+                (!settings || settings.yearlyJsonBackupAckYear !== y);
+            if (shouldShow) {
+                const txt = document.getElementById('yearlyBackupBannerText');
+                if (txt) {
+                    txt.innerHTML = ' — Dans moins d\'un mois, passage en ' + (y + 1) +
+                        '. Veuillez télécharger une sauvegarde JSON nommée <strong>Sauvegarde_' + y + '</strong> (année en cours / N).';
+                }
+                banner.style.display = 'block';
+            } else {
+                banner.style.display = 'none';
+            }
+        }
+
+        function performYearlyJsonBackup() {
+            const y = new Date().getFullYear();
+            const dataStr = JSON.stringify(getAppState(), null, 2);
+            const blob = new Blob([dataStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'Sauvegarde_' + y + '.json';
+            a.click();
+            URL.revokeObjectURL(url);
+            if (!settings) settings = {};
+            settings.yearlyJsonBackupAckYear = y;
+            checkYearlyBackupReminder();
+            if (typeof saveToFirebase === 'function' && !isReadOnly) saveToFirebase();
+            alert('Sauvegarde « Sauvegarde_' + y + '.json » téléchargée. Le rappel ne s\'affichera plus jusqu\'à décembre prochain.');
+        }
+
+        function dismissYearlyBackupBanner() {
+            // Masque seulement pour la session ; le rappel revient au prochain chargement en décembre
+            // sauf si sauvegarde faite (yearlyJsonBackupAckYear)
+            const banner = document.getElementById('yearlyBackupBanner');
+            if (banner) banner.style.display = 'none';
         }
 
         // est appelée lorsqu'un utilisateur change l'année sélectionnée dans l'interface.
         function changeYear(val) { 
             currentYear = parseInt(val); 
+            ensureYearExists(currentYear);
             const month = startDate.getMonth();
             startDate = new Date(currentYear, month, 1);
             dashboardStartDate = new Date(currentYear, dashboardStartDate.getMonth(), 1);
+            if (typeof propagateTeamRotations === 'function') propagateTeamRotations(false);
             syncDatePicker(); 
             renderAll(false); 
         }
