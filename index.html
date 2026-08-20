@@ -3602,16 +3602,24 @@ if (resetAckBtn) {
             const endYearDate = new Date(y, 11, 31);
             let curr = new Date(startYearDate);
 
+            // Changement d'équipe : avant date effective, comparer à l'ancienne équipe
+            const tc = agent.teamChange || null;
+            const eff = (tc && tc.effectiveDate) ? String(tc.effectiveDate) : null;
+            const oldTeamId = (tc && tc.oldTeamId) ? tc.oldTeamId : null;
+
             while (curr <= endYearDate) {
                 const dStr = formatDate(curr);
-                // Roulement d'équipe ce jour (avec défaut R)
+                // Roulement de référence pour ce jour
+                let refTeamId = teamId;
+                if (eff && oldTeamId && dStr < eff) {
+                    refTeamId = oldTeamId;
+                }
                 let teamTaskCode = 'R';
-                if (teamSchedules[teamId] && teamSchedules[teamId][dStr] !== undefined && teamSchedules[teamId][dStr] !== null && teamSchedules[teamId][dStr] !== '') {
-                    teamTaskCode = teamSchedules[teamId][dStr];
+                if (teamSchedules[refTeamId] && teamSchedules[refTeamId][dStr] !== undefined && teamSchedules[refTeamId][dStr] !== null && teamSchedules[refTeamId][dStr] !== '') {
+                    teamTaskCode = teamSchedules[refTeamId][dStr];
                 }
                 const teamTask = TASKS[teamTaskCode] || TASKS['R'];
 
-                // Quart individuel effectif
                 const agentTaskCode = getEffectiveAgentTask(agent, teamId, dStr);
                 const agentTask = TASKS[agentTaskCode] || TASKS['R'];
                 const isWorkShift = agentTask.shift === 'M' || agentTask.shift === 'A' || agentTask.shift === 'N';
@@ -3620,9 +3628,6 @@ if (resetAckBtn) {
                     continue;
                 }
 
-                // Compte comme remplacement si :
-                // - l'équipe est en repos ce jour, ou
-                // - le planning individuel diffère du roulement (renfort / RPL validé)
                 const descKey = agent.id + '_' + dStr;
                 const desc = (taskDescriptions && taskDescriptions[descKey]) ? String(taskDescriptions[descKey]) : '';
                 const fromRpl = /RPL validé/i.test(desc);
@@ -3633,6 +3638,11 @@ if (resetAckBtn) {
                 }
                 curr.setDate(curr.getDate() + 1);
             }
+
+            // Baseline mémorisée à l'ancien équipe (déjà incluse via refTeamId si figé correctement).
+            // Si baseline fournie pour l'année et pas de détail avant date : additionner uniquement
+            // la part "après date" calculée + baseline — évite double compte si on a déjà compté via old team.
+            // Ici le calcul jour par jour avec oldTeamId avant eff est suffisant.
             return count;
         }
 
@@ -7547,6 +7557,69 @@ function resetAcknowledgedAlerts() {
             return t.shift === 'M' || t.shift === 'A' || t.shift === 'N' || t.shift === 'J';
         }
 
+        function isJShiftCode(code) {
+            const t = TASKS[code];
+            return !!(t && t.shift === 'J');
+        }
+
+        function isManShiftCode(code) {
+            const t = TASKS[code];
+            return !!(t && (t.shift === 'M' || t.shift === 'A' || t.shift === 'N'));
+        }
+
+        /** Repos entre deux codes (heures) ; 999 si l'un est repos / J traité comme non bloquant sauf M */
+        function restHoursBetweenCodes(codeA, codeB) {
+            const a = TASKS[codeA] || TASKS['R'];
+            const b = TASKS[codeB] || TASKS['R'];
+            if (a.isRest || b.isRest) return 999;
+            let finishCurrent = timeToDecimal(a.end);
+            let startNext = timeToDecimal(b.start);
+            if (a.shift === 'N' || finishCurrent < timeToDecimal(a.start)) {
+                return startNext - finishCurrent;
+            }
+            return (24 - finishCurrent) + startNext;
+        }
+
+        /**
+         * Supprimer un quart/RPL après changement d'équipe ?
+         * - Pas si le nouveau roulement est J (addition sur J autorisée)
+         * - Pas pour défaut de repos lié à un J avant/après
+         * - Oui si double emploi avec M/A/N du nouveau roulement
+         * - Oui si repos < 11 h avec un MATIN le lendemain
+         */
+        function shouldRemoveShiftAfterTeamChange(individualCode, newRotCode, nextDayCode) {
+            const indDef = TASKS[individualCode];
+            if (!indDef) return false;
+
+            // Addition sur J → conserver
+            if (isJShiftCode(newRotCode)) return false;
+
+            // Double emploi avec M/A/N (pas J) du nouveau roulement
+            if (isManShiftCode(newRotCode)) {
+                if (indDef.isReplacement || isManShiftCode(individualCode) || isWorkShiftCode(individualCode)) {
+                    return true;
+                }
+            }
+
+            // Défaut repos uniquement si lendemain = MATIN et < 11 h
+            if (nextDayCode && isManShiftCode(nextDayCode)) {
+                const nextDef = TASKS[nextDayCode];
+                if (nextDef && nextDef.shift === 'M') {
+                    // Pour RPL sans horaires, estimer via shift N/A/M du libellé ou pejoratif N
+                    let codeForRest = individualCode;
+                    if (indDef.isReplacement) {
+                        // Pas d'horaire fiable : si on ne peut pas calculer, ne pas supprimer
+                        // sauf si on a un mapping simple
+                        return false;
+                    }
+                    if (isJShiftCode(individualCode)) return false;
+                    const rh = restHoursBetweenCodes(codeForRest, nextDayCode);
+                    if (rh < 11) return true;
+                }
+            }
+            return false;
+        }
+
         function applyAgentTeamChange() {
             if (isReadOnly) {
                 alert('Réservé aux RE et Administrateurs.');
@@ -7571,6 +7644,18 @@ function resetAcknowledgedAlerts() {
             if (!newTeam) { alert('Nouvelle équipe introuvable.'); return; }
 
             if (!confirm('Confirmer le changement d\'équipe de « ' + agentRef.name + ' »\nde « ' + oldTeam.name + ' » vers « ' + newTeam.name + ' »\nà compter du ' + effectiveStr + ' ?')) return;
+
+            // Mémoriser le nombre de remplacements dans l'ancienne équipe (année en cours + années visibles)
+            const legacyCounts = {};
+            for (let y = minYearAvailable; y <= maxYearAvailable; y++) {
+                legacyCounts[String(y)] = calculateExtraShiftsCount(agentRef, oldTeam.id, y);
+            }
+            agentRef.teamChange = {
+                effectiveDate: effectiveStr,
+                oldTeamId: oldTeam.id,
+                newTeamId: newTeamId,
+                legacyReplacementCounts: legacyCounts
+            };
 
             if (!agentSchedules[agentId]) agentSchedules[agentId] = {};
             const effectiveDate = parseDate(effectiveStr);
@@ -7603,26 +7688,26 @@ function resetAcknowledgedAlerts() {
                 if (teamSchedules[newTeamId] && teamSchedules[newTeamId][dStr] !== undefined && teamSchedules[newTeamId][dStr] !== null && teamSchedules[newTeamId][dStr] !== '') {
                     newRot = teamSchedules[newTeamId][dStr];
                 }
+                const nextD = new Date(cur);
+                nextD.setDate(nextD.getDate() + 1);
+                const nextStr = formatDate(nextD);
+                let nextCode = agentSchedules[agentId][nextStr];
+                if (nextCode === undefined || nextCode === null || nextCode === '') {
+                    nextCode = (teamSchedules[newTeamId] && teamSchedules[newTeamId][nextStr] !== undefined)
+                        ? teamSchedules[newTeamId][nextStr] : 'R';
+                }
 
                 if (hasInd) {
-                    if (isPreservedTaskOnTeamChange(individual)) {
-                        const def = TASKS[individual];
-                        // RPL en conflit si nouveau roulement déjà travaillé
-                        if (def && def.isReplacement && isWorkShiftCode(newRot)) {
+                    if (isPreservedTaskOnTeamChange(individual) || isManShiftCode(individual) || isWorkShiftCode(individual)) {
+                        if (shouldRemoveShiftAfterTeamChange(individual, newRot, nextCode)) {
                             delete agentSchedules[agentId][dStr];
                             if (taskDescriptions[agentId + '_' + dStr]) delete taskDescriptions[agentId + '_' + dStr];
                             if (replacementSheets && replacementSheets[agentId + '_' + dStr]) delete replacementSheets[agentId + '_' + dStr];
                             deletedRpl.push(dStr + ' (' + individual + ')');
                         }
-                    } else if (isWorkShiftCode(individual)) {
-                        // Quart individuel qui s'additionne au nouveau roulement
-                        if (isWorkShiftCode(newRot) || String(individual) === String(newRot)) {
-                            delete agentSchedules[agentId][dStr];
-                            if (taskDescriptions[agentId + '_' + dStr]) delete taskDescriptions[agentId + '_' + dStr];
-                            if (replacementSheets && replacementSheets[agentId + '_' + dStr]) delete replacementSheets[agentId + '_' + dStr];
-                            deletedRpl.push(dStr + ' (' + individual + ')');
-                        }
+                        // sinon conserver (y compris addition sur J)
                     } else {
+                        // codes non préservés / non quarts : laisser le nouveau roulement
                         delete agentSchedules[agentId][dStr];
                         if (taskDescriptions[agentId + '_' + dStr]) delete taskDescriptions[agentId + '_' + dStr];
                     }
@@ -7637,43 +7722,16 @@ function resetAcknowledgedAlerts() {
                 newTeam.agents.push(agentRef);
             }
 
-            // Passe 2 : RPL restants vs nouveau planning (repos)
-            Object.keys(agentSchedules[agentId] || {}).forEach(function(dStr) {
-                if (dStr < effectiveStr) return;
-                const code = agentSchedules[agentId][dStr];
-                const def = TASKS[code];
-                if (!def || !def.isReplacement) return;
-                let newRot = (teamSchedules[newTeamId] && teamSchedules[newTeamId][dStr] !== undefined) ? teamSchedules[newTeamId][dStr] : 'R';
-                if (isWorkShiftCode(newRot)) {
-                    delete agentSchedules[agentId][dStr];
-                    if (taskDescriptions[agentId + '_' + dStr]) delete taskDescriptions[agentId + '_' + dStr];
-                    if (replacementSheets && replacementSheets[agentId + '_' + dStr]) delete replacementSheets[agentId + '_' + dStr];
-                    if (deletedRpl.indexOf(dStr + ' (' + code + ')') === -1) deletedRpl.push(dStr + ' (' + code + ')');
-                    return;
-                }
-                // Test 11h approximatif : nuit veille + RPL
-                const prev = new Date(parseDate(dStr));
-                prev.setDate(prev.getDate() - 1);
-                const prevCode = getEffectiveAgentTask(agentRef, newTeamId, formatDate(prev));
-                const prevDef = TASKS[prevCode] || TASKS['R'];
-                if (prevDef.shift === 'N' && !prevDef.isRest) {
-                    delete agentSchedules[agentId][dStr];
-                    if (taskDescriptions[agentId + '_' + dStr]) delete taskDescriptions[agentId + '_' + dStr];
-                    if (replacementSheets && replacementSheets[agentId + '_' + dStr]) delete replacementSheets[agentId + '_' + dStr];
-                    if (deletedRpl.indexOf(dStr + ' (' + code + ')') === -1) deletedRpl.push(dStr + ' (' + code + ')');
-                }
-            });
-
             closeAgentModal();
             renderAll(true);
 
             if (deletedRpl.length) {
-                alert('Changement d\'équipe effectué.\n\n⚠ Remplacements / quarts individuels supprimés (conflit de repos ou double emploi avec le nouveau roulement) :\n\n' +
+                alert('Changement d\'équipe effectué.\n\n⚠ Remplacements / quarts individuels supprimés (double emploi M/A/N ou repos < 11h avant un Matin) :\n\n' +
                     deletedRpl.slice(0, 30).join('\n') +
                     (deletedRpl.length > 30 ? '\n… (' + deletedRpl.length + ' au total)' : '') +
                     '\n\nMerci de créer de nouvelles fiches de remplacement si nécessaire.');
             } else {
-                alert('Changement d\'équipe effectué avec succès.');
+                alert('Changement d\'équipe effectué avec succès.\nLes remplacements de l\'ancienne équipe sont mémorisés dans le décompte.');
             }
         }
 
