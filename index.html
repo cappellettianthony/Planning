@@ -2239,6 +2239,9 @@ function loadAppState(data) {
     if (typeof propagateTeamRotations === 'function') {
         try { propagateTeamRotations(false); } catch (e) { console.warn(e); }
     }
+    if (typeof syncReplacementCountsOnOpen === 'function') {
+        try { syncReplacementCountsOnOpen(); } catch (e) {}
+    }
 
     // Recalcul des droits après chargement des rôles / e-mails
     if (typeof refreshUserRoles === 'function') refreshUserRoles();
@@ -2281,6 +2284,10 @@ function loadAppState(data) {
                     setupPresence(user);
                     applyReadOnlyMode();
             if (typeof checkYearlyBackupReminder === 'function') checkYearlyBackupReminder();
+            if (typeof syncReplacementCountsOnOpen === 'function') {
+                try { syncReplacementCountsOnOpen(); } catch (e) {}
+            }
+            if (typeof syncReplacementCountsOnOpen === 'function') syncReplacementCountsOnOpen();
                     renderAll(false);
                 } else {
                     document.getElementById('authModal').style.display = 'flex';
@@ -2573,6 +2580,9 @@ if (resetAckBtn) {
     // Propagation auto des cycles de roulement (12 semaines depuis HD)
     if (typeof propagateTeamRotations === 'function') {
         try { propagateTeamRotations(false); } catch (e) { console.warn(e); }
+    }
+    if (typeof syncReplacementCountsOnOpen === 'function') {
+        try { syncReplacementCountsOnOpen(); } catch (e) {}
     }
 
     // Recalcul des droits après chargement des rôles / e-mails
@@ -3555,30 +3565,82 @@ if (resetAckBtn) {
             return 'R';
         }
 
-        // sert à compter le nombre de jours où un agent a travaillé alors que son équipe était en repos, sur toute l'année en cours.
-        // Autrement dit, elle calcule le nombre de remplacements, renforts ou jours supplémentaires effectués par l'agent.
-        function calculateExtraShiftsCount(agent, teamId) {
+        /**
+         * Nombre de remplacements (quarts M/A/N hors roulement) sur une année calendaire.
+         * À chaque nouvelle année le décompte repart de 0.
+         * @param year année calendaire (défaut = année affichée currentYear)
+         */
+        function calculateExtraShiftsCount(agent, teamId, year) {
             let count = 0;
-            const startYearDate = new Date(currentYear, 0, 1);
-            const endYearDate = new Date(currentYear, 11, 31);
+            if (!agent || !agent.id) return 0;
+            const y = (year !== undefined && year !== null && !isNaN(parseInt(year, 10)))
+                ? parseInt(year, 10)
+                : currentYear;
+            const startYearDate = new Date(y, 0, 1);
+            const endYearDate = new Date(y, 11, 31);
             let curr = new Date(startYearDate);
 
             while (curr <= endYearDate) {
                 const dStr = formatDate(curr);
-                const teamTaskCode = teamSchedules[teamId] ? (teamSchedules[teamId][dStr] || 'R') : 'R';
+                // Roulement d'équipe ce jour (avec défaut R)
+                let teamTaskCode = 'R';
+                if (teamSchedules[teamId] && teamSchedules[teamId][dStr] !== undefined && teamSchedules[teamId][dStr] !== null && teamSchedules[teamId][dStr] !== '') {
+                    teamTaskCode = teamSchedules[teamId][dStr];
+                }
                 const teamTask = TASKS[teamTaskCode] || TASKS['R'];
 
-                if (teamTask.isRest) {
-                    const agentTaskCode = getEffectiveAgentTask(agent, teamId, dStr);
-                    const agentTask = TASKS[agentTaskCode] || TASKS['R'];
+                // Quart individuel effectif
+                const agentTaskCode = getEffectiveAgentTask(agent, teamId, dStr);
+                const agentTask = TASKS[agentTaskCode] || TASKS['R'];
+                const isWorkShift = agentTask.shift === 'M' || agentTask.shift === 'A' || agentTask.shift === 'N';
+                if (!isWorkShift) {
+                    curr.setDate(curr.getDate() + 1);
+                    continue;
+                }
 
-                    if (['M', 'A', 'N'].includes(agentTask.shift)) {
-                        count++;
-                    }
+                // Compte comme remplacement si :
+                // - l'équipe est en repos ce jour, ou
+                // - le planning individuel diffère du roulement (renfort / RPL validé)
+                const descKey = agent.id + '_' + dStr;
+                const desc = (taskDescriptions && taskDescriptions[descKey]) ? String(taskDescriptions[descKey]) : '';
+                const fromRpl = /RPL validé/i.test(desc);
+                const differsFromTeam = String(agentTaskCode) !== String(teamTaskCode);
+
+                if (teamTask.isRest || fromRpl || (differsFromTeam && isWorkShift)) {
+                    count++;
                 }
                 curr.setDate(curr.getDate() + 1);
             }
             return count;
+        }
+
+        /** Année calendaire d'une date YYYY-MM-DD */
+        
+        /**
+         * Synchronisation à l'ouverture : recalcule les décomptes remplacements
+         * (année calendaire) pour le planning et les fiches RPL ouvertes.
+         */
+        function syncReplacementCountsOnOpen() {
+            // Compteurs planning : recalculés dans renderAll via calculateExtraShiftsCount(currentYear)
+            // Fiches RPL ouvertes : rafraîchir listes + stats
+            if (activeRplContext) {
+                if (typeof renderVolunteersList === 'function') {
+                    try { renderVolunteersList(); } catch (e) {}
+                }
+                if (typeof populateRplAgentSelect === 'function') {
+                    try { populateRplAgentSelect(typeof rplShowAllAgents !== 'undefined' ? rplShowAllAgents : false); } catch (e) {}
+                }
+                if (typeof updateRplAgentStats === 'function') {
+                    try { updateRplAgentStats(); } catch (e) {}
+                }
+            }
+            console.log('Sync décomptes remplacements (année calendaire) OK — année planning :', currentYear);
+        }
+
+        function yearFromDateStr(dateStr) {
+            if (!dateStr || typeof dateStr !== 'string') return currentYear;
+            const y = parseInt(dateStr.slice(0, 4), 10);
+            return isNaN(y) ? currentYear : y;
         }
 
         // sert à afficher une infobulle personnalisée ("tooltip") lorsqu'on laisse la souris suffisamment longtemps sur une cellule.
@@ -3864,7 +3926,7 @@ if (resetAckBtn) {
             if (typeof isAgentRowHidden === 'function' && isAgentRowHidden(team.id, agent.id)) {
                 return; // masqué à l'affichage — toujours compté dans calculs/compétences
             }
-            const extraShifts = calculateExtraShiftsCount(agent, team.id);
+            const extraShifts = calculateExtraShiftsCount(agent, team.id, currentYear);
 
             const tr = document.createElement('tr');
             const tdName = document.createElement('td'); 
@@ -3882,7 +3944,7 @@ if (resetAckBtn) {
                         ${deleteBtnHtml}
                         <span style="cursor:${isReadOnly ? 'default' : 'pointer'};" onclick="${!isReadOnly ? `openAgentModal('${agent.id}')` : ''}">${agent.name}</span>
                     </div>
-                    <span class="extra-shifts-badge" title="Quarts (M/A/N) hors roulement d'équipe dans l'année">${extraShifts} q.</span>
+                    <span class="extra-shifts-badge" title="Remplacements (quarts M/A/N hors roulement) — année calendaire ${currentYear}">${extraShifts} q.</span>
                 </div>`;
             
             tr.appendChild(tdName);
@@ -4736,7 +4798,10 @@ function updateRplAgentStats() {
         return;
     }
 
-    const count = calculateExtraShiftsCount(info.agent, info.teamId);
+    const countYear = (activeRplContext && activeRplContext.dateStr)
+        ? yearFromDateStr(activeRplContext.dateStr)
+        : currentYear;
+    const count = calculateExtraShiftsCount(info.agent, info.teamId, countYear);
 
     let eligibleText = '';
     if (activeRplContext && activeRplContext.shiftToFill && typeof canAgentTakeReplacement === 'function') {
@@ -4747,7 +4812,7 @@ function updateRplAgentStats() {
     }
 
     statsEl.innerText = 'Statut du jour : ' + info.taskCode +
-        ' — Remplacements déjà réalisés cette année : ' + count + ' quart(s)' +
+        ' — Remplacements déjà réalisés en ' + countYear + ' : ' + count + ' quart(s)' +
         eligibleText;
 }
 
@@ -4899,7 +4964,10 @@ function renderVolunteersList() {
         const info = getAgentInfoOnDate(aId, activeRplContext.dateStr);
         if (!info) return;
 
-        const count = calculateExtraShiftsCount(info.agent, info.teamId);
+        const countYear = (activeRplContext && activeRplContext.dateStr)
+            ? yearFromDateStr(activeRplContext.dateStr)
+            : currentYear;
+        const count = calculateExtraShiftsCount(info.agent, info.teamId, countYear);
         const isSelected = selectedVolunteers.indexOf(aId) !== -1;
 
         const entry = {
@@ -4957,7 +5025,7 @@ function renderVolunteersList() {
             left.innerHTML = checkHtml +
                 '<strong>' + entry.info.agent.name + '</strong> ' +
                 '<span style="font-size:0.75rem; color:#666;">(' + entry.count +
-                ' remplacements) — ' + entry.info.taskCode + '</span>' + missingHtml + restBlockHtml;
+                ' rempl. ' + ((activeRplContext && activeRplContext.dateStr) ? yearFromDateStr(activeRplContext.dateStr) : currentYear) + ') — ' + entry.info.taskCode + '</span>' + missingHtml + restBlockHtml;
 
             div.appendChild(left);
 
