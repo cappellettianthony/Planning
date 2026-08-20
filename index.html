@@ -5315,19 +5315,6 @@ function validateReplacementSheet() {
         }
     }
 
-    // Table de conversion
-    const conversionMap = {
-        'RPCA': 'CA',
-        'RPD': 'D',
-        'RPFO': 'F',
-        'RPRC': 'RC',
-        'RPR': 'R',
-        'RPHP': 'HP',
-        'RPCE': 'CE',
-        'RPRC': 'RC',
-        'RPJ': 'J' // reste inchangé
-    };
-
     let rpaMessage = false;
 
     // Week-end + RPL formation ou RPR (repos hebdo) → au traitement, conversion en R
@@ -5350,19 +5337,23 @@ function validateReplacementSheet() {
         if (typeof logCellModification === 'function') {
             logCellModification(isTeam, targetId, dateStr, currentTargetCode, 'R');
         }
-    } else if (currentTargetCode && conversionMap.hasOwnProperty(currentTargetCode)) {
-        const newCode = conversionMap[currentTargetCode];
-
-        if (currentTargetCode === 'RPA') {
-            rpaMessage = true;   // on laisse RPA, on affichera un message
-        } else {
-            // Écrire le nouveau code sur la cible
+    } else if (currentTargetCode && (typeof isRplLikeCode === 'function') && isRplLikeCode(currentTargetCode)) {
+        // Conversion dynamique : RPxx → xx
+        const newCode = (typeof resolveRplToFinalCode === 'function')
+            ? resolveRplToFinalCode(currentTargetCode)
+            : null;
+        if (codeUp === 'RPA') {
+            rpaMessage = true;
+        } else if (newCode) {
             if (isTeam) {
                 if (!teamSchedules[targetId]) teamSchedules[targetId] = {};
                 teamSchedules[targetId][dateStr] = newCode;
             } else {
                 if (!agentSchedules[targetId]) agentSchedules[targetId] = {};
                 agentSchedules[targetId][dateStr] = newCode;
+            }
+            if (typeof logCellModification === 'function') {
+                logCellModification(isTeam, targetId, dateStr, currentTargetCode, newCode);
             }
         }
     }
@@ -6634,13 +6625,53 @@ function purgeReplacementArchives() {
         function isRotationRestOrDayCode(rotCode) {
             if (!rotCode && rotCode !== 0) return false;
             const c = String(rotCode).trim().toUpperCase();
-            // Repos explicites + Journée
-            if (c === 'R' || c === 'H' || c === 'J' || c === 'RD' || c === 'OFF') return true;
+            // Repos explicites + Journée (+ variantes HD / HC)
+            if (c === 'R' || c === 'H' || c === 'J' || c === 'RD' || c === 'OFF' ||
+                c === 'HD' || c === 'HC' || c === 'RH' || c === 'RHD' || c === 'RHC') return true;
             const rotDef = TASKS[rotCode] || TASKS[c];
             if (!rotDef) return false;
             if (rotDef.isRest) return true;
             if (rotDef.shift === 'J') return true;
             return false;
+        }
+
+        /**
+         * Détecte une tâche / feuille de remplacement de façon dynamique.
+         * Règle : code commençant par « RP » + au moins 1 caractère
+         * (ex. RPL, RPR, RPCA, RPFO, RPHP…) OU flag isReplacement / libellé « remplacement ».
+         * Toute nouvelle tâche RPxx ajoutée dans Paramètres est reconnue sans modifier le HTML.
+         */
+        function isRplLikeCode(code) {
+            if (!code && code !== 0) return false;
+            const c = String(code).trim().toUpperCase();
+            if (c.length >= 3 && c.indexOf('RP') === 0) return true;
+            const t = TASKS[code] || TASKS[c];
+            if (t && t.isReplacement) return true;
+            if (t) {
+                const label = String(t.label || '').toLowerCase();
+                if (label.indexOf('remplacement') !== -1) return true;
+            }
+            return false;
+        }
+
+        /**
+         * Conversion dynamique RPxx → xx après traitement de la fiche.
+         * Ex. RPCA→CA | RPR→R | RPFO→FO (ou F) | RPHP→HP
+         */
+        function resolveRplToFinalCode(rplCode) {
+            if (!rplCode && rplCode !== 0) return null;
+            const c = String(rplCode).trim().toUpperCase();
+            if (c.length < 3 || c.indexOf('RP') !== 0) return null;
+            const suffix = c.slice(2);
+            if (!suffix) return null;
+            if (TASKS[suffix]) return suffix;
+            const keys = Object.keys(TASKS || {});
+            for (let i = 0; i < keys.length; i++) {
+                if (String(keys[i]).toUpperCase() === suffix) return keys[i];
+            }
+            if (suffix === 'FO' && TASKS['F']) return 'F';
+            if (suffix === 'FORM' && TASKS['F']) return 'F';
+            return suffix;
         }
 
         /**
@@ -6695,24 +6726,12 @@ function purgeReplacementArchives() {
         }
 
         function resolveRplCodeIfRestOrDay(agentId, dateStr, rplTaskCode) {
-            const conversionMap = {
-                'RPCA': 'CA',
-                'RPD': 'D',
-                'RPFO': 'F',
-                'RPRC': 'RC',
-                'RPR': 'R',
-                'RPHP': 'HP',
-                'RPCE': 'CE',
-                'RPRC': 'RC',
-                'RPJ': 'J'
-            };
             const rotCode = getTeamRotationCodeForAgent(agentId, dateStr);
             if (!isRotationRestOrDayCode(rotCode)) return rplTaskCode;
-            if (Object.prototype.hasOwnProperty.call(conversionMap, rplTaskCode)) {
-                return conversionMap[rplTaskCode];
-            }
+            const resolved = resolveRplToFinalCode(rplTaskCode);
+            if (resolved) return resolved;
             const selDef = TASKS[rplTaskCode];
-            if (selDef && selDef.isReplacement) return 'CA';
+            if (selDef && selDef.isReplacement && TASKS['CA']) return 'CA';
             return rplTaskCode;
         }
 
@@ -6756,8 +6775,9 @@ function purgeReplacementArchives() {
                     codeToWrite = applyWeekendFormationRule(dStr, codeToWrite, taskCode, targetId);
                     // Fiche RPL si quart M/A/N et code de type remplacement (RPL, RPR, RPFO…)
                     const writtenDef = TASKS[codeToWrite];
-                    const isRplLike = (writtenDef && writtenDef.isReplacement) ||
-                        ['RPCE', 'RPR', 'RPRC', 'RPFO', 'RPD', 'RPCA', 'RPC', 'RPHP', 'RPJ'].indexOf(String(codeToWrite).toUpperCase()) !== -1;
+                    const isRplLike = (typeof isRplLikeCode === 'function')
+                        ? isRplLikeCode(codeToWrite)
+                        : !!(writtenDef && writtenDef.isReplacement);
                     const isWorkShiftRpl = !isRotationRestOrDayCode(rotCode) && isRplLike;
                     agentSchedules[targetId][dStr] = codeToWrite;
                     logCellModification(false, targetId, dStr, beforeCode, codeToWrite);
@@ -7542,11 +7562,12 @@ function resetAcknowledgedAlerts() {
 
         function isPreservedTaskOnTeamChange(code) {
             if (!code) return false;
+            if (typeof isRplLikeCode === 'function' && isRplLikeCode(code)) return true;
             const t = TASKS[code];
             if (!t) return false;
             if (t.isReplacement) return true;
             const c = String(code).toUpperCase();
-            const preservedCodes = ['CA','F','RC','HP','OFF','MAL','AT','CE','CSS','DET','D','RPR','RPRC','RPFO','RPF','RPCA','RPC','RPL','RPA','RPHP'];
+            const preservedCodes = ['CA','F','FO','RC','HP','OFF','MAL','AT','CE','CSS','DET','D','R','J'];
             if (preservedCodes.indexOf(c) !== -1) return true;
             const label = String(t.label || '').toLowerCase();
             if (/formation|cong[eé]|maladie|d[eé]tach|compensateur|repos compens|absence|remplacement/.test(label)) return true;
@@ -7597,40 +7618,18 @@ function resetAcknowledgedAlerts() {
         }
 
         /**
-         * Détecte si un code est de type « feuille de remplacement » (RPL),
-         * même si le flag isReplacement n'est pas coché dans Paramètres.
-         */
-        function isRplLikeCode(code) {
-            if (!code) return false;
-            const t = TASKS[code];
-            if (t && t.isReplacement) return true;
-            const c = String(code).toUpperCase();
-            const rplCodes = ['RPL', 'RPR', 'RPRC', 'RPFO', 'RPF', 'RPD', 'RPCA', 'RPC', 'RPHP', 'RPJ', 'RPCE', 'RPA'];
-            if (rplCodes.indexOf(c) !== -1) return true;
-            // Tout code commençant par RP (sauf s'il est explicitement autre chose)
-            if (c.indexOf('RP') === 0 && c.length >= 2) return true;
-            if (t) {
-                const label = String(t.label || '').toLowerCase();
-                if (label.indexOf('remplacement') !== -1) return true;
-            }
-            return false;
-        }
-
-        /**
-         * Supprimer un quart/RPL après changement d'équipe ?
-         * - Pas si le nouveau roulement est J (addition sur J autorisée)
-         * - Pas pour défaut de repos lié à un J avant/après
-         * - Oui si double emploi avec M/A/N du nouveau roulement (SAUF fiches de remplacement)
-         * - Les feuilles de remplacement (RPL / RPR / RPFO / …) ne sont JAMAIS supprimées
-         *   lorsqu'elles se trouvent sur un quart M/A/N du nouveau roulement
-         * - Oui si repos < 11 h avec un MATIN le lendemain (hors RPL)
+         * Supprimer un quart après changement d'équipe ?
+         * - Les RPxx ne passent jamais par ici (gérés à part : convertis si repos/J, conservés si M/A/N)
+         * - Pas si le nouveau roulement est J
+         * - Oui si double emploi avec M/A/N
+         * - Oui si repos < 11 h avec un MATIN le lendemain
          */
         function shouldRemoveShiftAfterTeamChange(individualCode, newRotCode, nextDayCode) {
             const indDef = TASKS[individualCode];
             if (!indDef) return false;
 
-            // Feuille de remplacement → ne jamais supprimer
-            if (isRplLikeCode(individualCode)) {
+            // RPL gérées ailleurs (conversion ou conservation)
+            if (typeof isRplLikeCode === 'function' && isRplLikeCode(individualCode)) {
                 return false;
             }
 
@@ -7699,6 +7698,7 @@ function resetAcknowledgedAlerts() {
             const rangeEnd = new Date(maxYearAvailable, 11, 31);
             const deletedRpl = [];
             const warnedFormDet = [];
+            const convertedRpl = []; // RPL converties car nouveau roulement = repos / J
 
             // Avant date : figer ancien roulement
             let cur = new Date(rangeStart);
@@ -7735,29 +7735,48 @@ function resetAcknowledgedAlerts() {
                 }
 
                 if (hasInd) {
-                    if (isFormationOrDetachmentCode(individual)) {
+                    // --- RPL sur repos / J du nouveau roulement → traiter comme fiche soldée ---
+                    if (typeof isRplLikeCode === 'function' && isRplLikeCode(individual) &&
+                        typeof isRotationRestOrDayCode === 'function' && isRotationRestOrDayCode(newRot)) {
+                        const finalCode = (typeof resolveRplToFinalCode === 'function')
+                            ? resolveRplToFinalCode(individual)
+                            : null;
+                        if (finalCode) {
+                            agentSchedules[agentId][dStr] = finalCode;
+                            if (typeof logCellModification === 'function') {
+                                logCellModification(false, agentId, dStr, individual, finalCode);
+                            }
+                        } else {
+                            // Pas de suffixe convertible → on efface le RPL (retour roulement)
+                            delete agentSchedules[agentId][dStr];
+                            if (typeof logCellModification === 'function') {
+                                logCellModification(false, agentId, dStr, individual, '');
+                            }
+                        }
+                        // Fermer la feuille de remplacement (plus active)
+                        if (replacementSheets && replacementSheets[agentId + '_' + dStr]) {
+                            delete replacementSheets[agentId + '_' + dStr];
+                        }
+                        convertedRpl.push(dStr + ' : ' + individual + ' → ' + (finalCode || '(roulement)'));
+                    } else if (isFormationOrDetachmentCode(individual)) {
                         // Jamais supprimer Formation / Détachement — signaler si sur un quart
                         if (isManShiftCode(newRot) || isJShiftCode(newRot) || isWorkShiftCode(newRot)) {
                             if (warnedFormDet.indexOf(dStr + ' (' + individual + ')') === -1) {
                                 warnedFormDet.push(dStr + ' (' + individual + ')');
                             }
                         }
+                    } else if (typeof isRplLikeCode === 'function' && isRplLikeCode(individual)) {
+                        // RPL sur M/A/N du nouveau roulement → conserver la fiche intacte
+                        // (ne rien supprimer)
                     } else if (isPreservedTaskOnTeamChange(individual) || isManShiftCode(individual) || isWorkShiftCode(individual)) {
                         if (shouldRemoveShiftAfterTeamChange(individual, newRot, nextCode)) {
-                            // Ne jamais supprimer une feuille de remplacement (RPL)
-                            if (isRplLikeCode(individual)) {
-                                // on conserve agentSchedules + replacementSheets
-                            } else {
-                                delete agentSchedules[agentId][dStr];
-                                if (taskDescriptions[agentId + '_' + dStr]) delete taskDescriptions[agentId + '_' + dStr];
-                                if (replacementSheets && replacementSheets[agentId + '_' + dStr]) delete replacementSheets[agentId + '_' + dStr];
-                                deletedRpl.push(dStr + ' (' + individual + ')');
-                            }
+                            delete agentSchedules[agentId][dStr];
+                            if (taskDescriptions[agentId + '_' + dStr]) delete taskDescriptions[agentId + '_' + dStr];
+                            if (replacementSheets && replacementSheets[agentId + '_' + dStr]) delete replacementSheets[agentId + '_' + dStr];
+                            deletedRpl.push(dStr + ' (' + individual + ')');
                         }
                     } else {
-                        // Tâche non préservée : on efface le planning individuel
-                        // mais on ne touche PAS aux feuilles de remplacement s'il y en a
-                        if (!isRplLikeCode(individual)) {
+                        if (!(typeof isRplLikeCode === 'function' && isRplLikeCode(individual))) {
                             delete agentSchedules[agentId][dStr];
                             if (taskDescriptions[agentId + '_' + dStr]) delete taskDescriptions[agentId + '_' + dStr];
                         }
@@ -7777,11 +7796,16 @@ function resetAcknowledgedAlerts() {
             renderAll(true);
 
             let msg = 'Changement d\'équipe effectué.';
+            if (convertedRpl.length) {
+                msg += '\n\n✅ Fiches RPL converties (nouveau roulement = repos R/H/HD/HC ou J) — comme si traitées :\n\n' +
+                    convertedRpl.slice(0, 30).join('\n') +
+                    (convertedRpl.length > 30 ? '\n… (' + convertedRpl.length + ' au total)' : '');
+            }
             if (deletedRpl.length) {
                 msg += '\n\n⚠ Quarts individuels supprimés (double emploi M/A/N ou repos < 11h avant un Matin) :\n\n' +
                     deletedRpl.slice(0, 30).join('\n') +
                     (deletedRpl.length > 30 ? '\n… (' + deletedRpl.length + ' au total)' : '') +
-                    '\n\nLes fiches de remplacement (RPL) sont toujours conservées, même sur un quart M/A/N du nouveau roulement.';
+                    '\n\nLes fiches RPL sur M/A/N restent conservées.';
             }
             if (warnedFormDet.length) {
                 msg += '\n\nℹ Formations ou Détachements conservés mais situés sur des jours de quart du nouveau roulement :\n\n' +
@@ -7789,7 +7813,7 @@ function resetAcknowledgedAlerts() {
                     (warnedFormDet.length > 30 ? '\n… (' + warnedFormDet.length + ' au total)' : '') +
                     '\n\nCes tâches n\'ont pas été supprimées.';
             }
-            if (!deletedRpl.length && !warnedFormDet.length) {
+            if (!deletedRpl.length && !warnedFormDet.length && !convertedRpl.length) {
                 msg += '\nLes remplacements de l\'ancienne équipe sont mémorisés dans le décompte.';
             }
             alert(msg);
