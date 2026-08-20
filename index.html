@@ -1811,8 +1811,61 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 
+
     <script>
-        // INITIALISATION FIREBASE
+/*
+================================================================================
+  GESTIONNAIRE DE PLANNING ANNUEL OPÉRATIONNEL
+  ================================================================================
+  Application web monopage (HTML + CSS + JS) synchronisée en temps réel avec
+  Firebase Realtime Database.
+
+  FONCTIONNALITÉS PRINCIPALES
+  ---------------------------
+  • Planning mensuel / annuel par équipes et agents
+  • Roulements d'équipe (cycles, récurrence)
+  • Affectations individuelles (présences, absences, formations…)
+  • Fiches de Remplacement (RPL) avec volontaires, deadline, compétences recommandées
+  • Alertes réglementaires (repos 11h, repos 35h, max 11 jours consécutifs)
+  • Dashboard effectifs & compétences + surveillance d'exclusivité
+  • Gestion des rôles (Admin / RE / Lecture seule) + verrouillage édition
+  • Présence en ligne des utilisateurs connectés
+  • Archives RPL & alertes, suivi des modifications, import/export JSON
+  • Vacances scolaires Zone A + jours fériés
+  • Impression mensuelle
+
+  STRUCTURE DU CODE (sections principales)
+  ----------------------------------------
+  1. Configuration Firebase + Auth
+  2. Variables globales & structures de données
+  3. Utilitaires (dates, tableaux, emails, fiches RPL)
+  4. Gestion des rôles & droits (Admin / RE / lecture seule)
+  5. Présence en ligne
+  6. Chargement / sauvegarde (Firebase + JSON)
+  7. Navigation année / mois / vue
+  8. Rendu du tableau de planning
+  9. Dashboard & alertes repos
+ 10. Modales tâches / RPL / agents / paramètres
+ 11. Logique métier RPL (volontaires, validation, archives)
+ 12. Changement d'équipe, copie de roulement, bulk
+ 13. Paramètres admin (compétences, tâches, seuils, vacances…)
+ 14. Impression & utilitaires divers
+
+  CONVENTIONS
+  -----------
+  - Les données critiques sont persistées sous la clé Firebase "planningData"
+  - Les fiches RPL sont dans planningData.replacementSheets[agentId_date]
+  - Les rôles sont définis par agent (agentRoles) + liaison email (agentEmailLinks)
+  - L'édition du planning est verrouillée par défaut (planningEditUnlocked = false)
+
+  Auteur original : application métier interne
+  Nettoyage / commentaires : 2026
+================================================================================
+*/
+
+        // ========================================================================
+        // 1. INITIALISATION FIREBASE
+        // ========================================================================
         const firebaseConfig = {
             apiKey: "AIzaSyCmWf33UgdL7ZKNcfCHj1JPpKr7I3OCotM",
             authDomain: "planning-ps.firebaseapp.com",
@@ -1834,6 +1887,9 @@
         const presenceRef = database ? database.ref('onlineUsers') : null;
         const auth = (typeof firebase !== 'undefined') ? firebase.auth() : null;
 
+        // ========================================================================
+        // 2. VARIABLES GLOBALES, RÔLES & CONSTANTES
+        // ========================================================================
         // Admin de secours (Anthony Cappelletti) — uniquement si les rôles paramétrés ne couvrent pas encore le compte
         const BOOTSTRAP_ADMIN_EMAILS = [
             "cappellettianthony@gmail.com",
@@ -1971,8 +2027,14 @@ function normalizeSeenByAgents(val) {
 }
 
 /**
- * Garantit une structure complète pour une fiche RPL
- * (Firebase omet les tableaux vides et peut renvoyer des objets indexés).
+ * Garantit une structure complète et normalisée pour une fiche de remplacement (RPL).
+ * Firebase omet souvent les tableaux vides et peut renvoyer des objets indexés
+ * au lieu de vrais tableaux. Cette fonction initialise ou corrige :
+ *   - volunteers / selectedVolunteers
+ *   - seenByEmails / seenByAgents
+ *   - deadlineDate, recommendedSkills, volunteerRestBlocks
+ * @param {string} sheetKey - Clé de la forme "agentId_YYYY-MM-DD" ou "teamId_YYYY-MM-DD"
+ * @returns {Object} La fiche RPL normalisée (également stockée dans replacementSheets)
  */
 function ensureReplacementSheet(sheetKey) {
     if (!replacementSheets || typeof replacementSheets !== 'object') {
@@ -2023,6 +2085,12 @@ function getAgentIdsForEmail(email) {
     return ids;
 }
 
+/**
+         * Vérifie si l'e-mail appartient à la liste de secours des administrateurs
+         * (utilisé tant que les rôles paramétrés ne sont pas encore complets).
+         * @param {string} email
+         * @returns {boolean}
+         */
 function isBootstrapAdminEmail(email) {
     if (!email) return false;
     const e = String(email).trim().toLowerCase();
@@ -2156,122 +2224,10 @@ function markAgentSeenOnSheet(sheetKey, agentId) {
 }
 
 
-// Mettre à jour getAppState() :
-function getAppState() {
-    return {
-        teamSchedules: teamSchedules,
-        agentSchedules: agentSchedules,
-        collapsedTeamAgentRows: collapsedTeamAgentRows,
-        hiddenAgentIds: hiddenAgentIds,
-        taskDescriptions: taskDescriptions,
-        teams: teams,
-        acknowledgedAlerts: acknowledgedAlerts,
-        skillDefinitions: skillDefinitions,
-        exclusiveSkillMonitoredGroups: exclusiveSkillMonitoredGroups,
-        TASKS: TASKS,
-        taskOrder: getOrderedTaskCodes(),
-        settings: settings,
-        agentEmailLinks: agentEmailLinks,
-        agentRoles: agentRoles,
-        replacementSheets: replacementSheets,
-        replacementArchives: replacementArchives,
-        modificationLog: modificationLog,
-        schoolHolidaysZoneA: schoolHolidaysZoneA
-    };
-}
-
-
-// Mettre à jour loadAppState() :
-function loadAppState(data) {
-    if (!data) return;
-
-    teamSchedules = data.teamSchedules || {};
-    agentSchedules = data.agentSchedules || {};
-    collapsedTeamAgentRows = data.collapsedTeamAgentRows || {};
-    hiddenAgentIds = data.hiddenAgentIds || {};
-    taskDescriptions = data.taskDescriptions || {};
-
-    const defaultTeams = createDefaultTeams();
-    if (Array.isArray(data.teams) && data.teams.length > 0) {
-        teams = defaultTeams.map(function(defTeam) {
-            const loadedTeam = data.teams.find(function(t) { return t && t.id === defTeam.id; });
-            if (loadedTeam) {
-                if (Array.isArray(loadedTeam.agents)) {
-                    loadedTeam.agents.forEach(function(a) {
-                        if (!Array.isArray(a.skills)) a.skills = [];
-                    });
-                }
-                return loadedTeam;
-            }
-            return defTeam;
-        });
-    } else {
-        teams = defaultTeams;
-    }
-
-    // Nom court de l'équipe journée (team_7) pour l'affichage planning
-    (teams || []).forEach(function(t) {
-        if (t && t.id === 'team_7') t.name = 'Journée';
-    });
-
-    acknowledgedAlerts = data.acknowledgedAlerts || [];
-    skillDefinitions = data.skillDefinitions || skillDefinitions;
-    exclusiveSkillMonitoredGroups = data.exclusiveSkillMonitoredGroups || exclusiveSkillMonitoredGroups;
-    TASKS = data.TASKS || TASKS;
-    // Restaurer l'ordre personnalisé des tâches
-    if (Array.isArray(data.taskOrder) && data.taskOrder.length > 0) {
-        taskOrder = data.taskOrder;
-    } else {
-        taskOrder = Object.keys(TASKS);
-    }
-    settings = data.settings || settings;
-    if (settings && (settings.rplDeadlineDefaultDays === undefined || settings.rplDeadlineDefaultDays === null)) {
-        settings.rplDeadlineDefaultDays = 15;
-    }
-    if (settings && !Array.isArray(settings.rplTrackableSkillIds)) {
-        settings.rplTrackableSkillIds = [];
-    }
-    if (settings && (!settings.taskTabMap || typeof settings.taskTabMap !== 'object')) {
-        settings.taskTabMap = {};
-    }
-    if (settings && settings.yearlyJsonBackupAckYear === undefined) {
-        settings.yearlyJsonBackupAckYear = null;
-    }
-    agentEmailLinks = data.agentEmailLinks || agentEmailLinks || {};
-    agentRoles = data.agentRoles || agentRoles || {};
-
-    // Important : recharger les fiches RPL + normaliser les tableaux
-    replacementSheets = data.replacementSheets || {};
-    if (replacementSheets && typeof replacementSheets === 'object') {
-        Object.keys(replacementSheets).forEach(function(key) {
-            ensureReplacementSheet(key);
-        });
-    } else {
-        replacementSheets = {};
-    }
-    replacementArchives = Array.isArray(data.replacementArchives) ? data.replacementArchives : [];
-    modificationLog = Array.isArray(data.modificationLog) ? data.modificationLog : [];
-
-    if (data.schoolHolidaysZoneA && typeof data.schoolHolidaysZoneA === 'object') {
-        schoolHolidaysZoneA = data.schoolHolidaysZoneA;
-        if (typeof clearCalendarDayTypeCache === 'function') clearCalendarDayTypeCache();
-    }
-
-    // Propagation auto des cycles de roulement (12 semaines depuis HD)
-    if (typeof propagateTeamRotations === 'function') {
-        try { propagateTeamRotations(false); } catch (e) { console.warn(e); }
-    }
-    if (typeof syncReplacementCountsOnOpen === 'function') {
-        try { syncReplacementCountsOnOpen(); } catch (e) {}
-    }
-
-    // Recalcul des droits après chargement des rôles / e-mails
-    if (typeof refreshUserRoles === 'function') refreshUserRoles();
-}
-
-
-
 // générer automatiquement des équipes et des agents fictifs par défaut, puis à initialiser plusieurs structures de données utilisées par l'application.
+        // ========================================================================
+        // 3. DONNÉES MÉTIER PAR DÉFAUT (équipes & agents fictifs)
+        // ========================================================================
         function createDefaultTeams() {
             let defaultTeams = [];
             for (let t = 1; t <= 6; t++) {
@@ -2294,6 +2250,9 @@ function loadAppState(data) {
         let agentSchedules = {};
         let taskDescriptions = {};
 
+        // ========================================================================
+        // 5. AUTHENTIFICATION & PRÉSENCE EN LIGNE
+        // ========================================================================
         function checkAuthState() {
             auth.onAuthStateChanged((user) => {
                 currentUser = user;
@@ -2305,11 +2264,12 @@ function loadAppState(data) {
                     
                     setupPresence(user);
                     applyReadOnlyMode();
-            if (typeof checkYearlyBackupReminder === 'function') checkYearlyBackupReminder();
-            if (typeof syncReplacementCountsOnOpen === 'function') {
-                try { syncReplacementCountsOnOpen(); } catch (e) {}
-            }
-            if (typeof syncReplacementCountsOnOpen === 'function') syncReplacementCountsOnOpen();
+                    if (typeof checkYearlyBackupReminder === 'function') {
+                        try { checkYearlyBackupReminder(); } catch (e) {}
+                    }
+                    if (typeof syncReplacementCountsOnOpen === 'function') {
+                        try { syncReplacementCountsOnOpen(); } catch (e) {}
+                    }
                     renderAll(false);
                 } else {
                     document.getElementById('authModal').style.display = 'flex';
@@ -2498,117 +2458,130 @@ if (resetAckBtn) {
             });
         }
 
-        // sert à récupérer l'état complet de l'application sous la forme d'un objet JavaScript unique.
-       function getAppState() {
-    return {
-        teamSchedules: teamSchedules,
-        agentSchedules: agentSchedules,
-        collapsedTeamAgentRows: collapsedTeamAgentRows,
-        hiddenAgentIds: hiddenAgentIds,
-        taskDescriptions: taskDescriptions,
-        teams: teams,
-        acknowledgedAlerts: acknowledgedAlerts,
-        skillDefinitions: skillDefinitions,
-        exclusiveSkillMonitoredGroups: exclusiveSkillMonitoredGroups,
-        TASKS: TASKS,
-        taskOrder: getOrderedTaskCodes(),
-        settings: settings,
-        agentEmailLinks: agentEmailLinks,
-        agentRoles: agentRoles,
-        replacementSheets: replacementSheets,
-        replacementArchives: replacementArchives,
-        modificationLog: modificationLog,
-        schoolHolidaysZoneA: schoolHolidaysZoneA
-    };
-}
+        // ========================================================================
+        // 6. CHARGEMENT / SAUVEGARDE DE L'ÉTAT COMPLET
+        // ========================================================================
 
+        /**
+         * Retourne un objet snapshot de tout l'état applicatif à persister
+         * (Firebase ou export JSON).
+         * Contient : plannings équipes/agents, équipes, compétences, tâches,
+         * paramètres, fiches RPL, archives, logs de modifications, vacances…
+         */
+        function getAppState() {
+            return {
+                teamSchedules: teamSchedules,
+                agentSchedules: agentSchedules,
+                collapsedTeamAgentRows: collapsedTeamAgentRows,
+                hiddenAgentIds: hiddenAgentIds,
+                taskDescriptions: taskDescriptions,
+                teams: teams,
+                acknowledgedAlerts: acknowledgedAlerts,
+                skillDefinitions: skillDefinitions,
+                exclusiveSkillMonitoredGroups: exclusiveSkillMonitoredGroups,
+                TASKS: TASKS,
+                taskOrder: getOrderedTaskCodes(),
+                settings: settings,
+                agentEmailLinks: agentEmailLinks,
+                agentRoles: agentRoles,
+                replacementSheets: replacementSheets,
+                replacementArchives: replacementArchives,
+                modificationLog: modificationLog,
+                schoolHolidaysZoneA: schoolHolidaysZoneA
+            };
+        }
 
-        // est en quelque sorte l'inverse de getAppState() : elle sert à restaurer l'état de l'application à partir de données sauvegardées (par exemple venant de Firebase ou d'un fichier JSON).
-       function loadAppState(data) {
-    if (!data) return;
+        /**
+         * Restaure l'état de l'application à partir d'un objet (Firebase ou JSON).
+         * Normalise les structures (tableaux vides, compétences, fiches RPL…),
+         * propage les roulements si besoin et recalcule les droits utilisateur.
+         * @param {Object} data - Objet retourné par getAppState() ou équivalent
+         */
+        function loadAppState(data) {
+                    if (!data) return;
 
-    teamSchedules = data.teamSchedules || {};
-    agentSchedules = data.agentSchedules || {};
-    collapsedTeamAgentRows = data.collapsedTeamAgentRows || {};
-    hiddenAgentIds = data.hiddenAgentIds || {};
-    taskDescriptions = data.taskDescriptions || {};
+            teamSchedules = data.teamSchedules || {};
+            agentSchedules = data.agentSchedules || {};
+            collapsedTeamAgentRows = data.collapsedTeamAgentRows || {};
+            hiddenAgentIds = data.hiddenAgentIds || {};
+            taskDescriptions = data.taskDescriptions || {};
 
-    const defaultTeams = createDefaultTeams();
-    if (Array.isArray(data.teams) && data.teams.length > 0) {
-        teams = defaultTeams.map(function(defTeam) {
-            const loadedTeam = data.teams.find(function(t) { return t && t.id === defTeam.id; });
-            if (loadedTeam) {
-                if (Array.isArray(loadedTeam.agents)) {
-                    loadedTeam.agents.forEach(function(a) {
-                        if (!Array.isArray(a.skills)) a.skills = [];
-                    });
-                }
-                return loadedTeam;
+            const defaultTeams = createDefaultTeams();
+            if (Array.isArray(data.teams) && data.teams.length > 0) {
+                teams = defaultTeams.map(function(defTeam) {
+                    const loadedTeam = data.teams.find(function(t) { return t && t.id === defTeam.id; });
+                    if (loadedTeam) {
+                        if (Array.isArray(loadedTeam.agents)) {
+                            loadedTeam.agents.forEach(function(a) {
+                                if (!Array.isArray(a.skills)) a.skills = [];
+                            });
+                        }
+                        return loadedTeam;
+                    }
+                    return defTeam;
+                });
+            } else {
+                teams = defaultTeams;
             }
-            return defTeam;
-        });
-    } else {
-        teams = defaultTeams;
-    }
 
-    // Nom court de l'équipe journée (team_7) pour l'affichage planning
-    (teams || []).forEach(function(t) {
-        if (t && t.id === 'team_7') t.name = 'Journée';
-    });
+            // Nom court de l'équipe journée (team_7) pour l'affichage planning
+            (teams || []).forEach(function(t) {
+                if (t && t.id === 'team_7') t.name = 'Journée';
+            });
 
-    acknowledgedAlerts = data.acknowledgedAlerts || [];
-    skillDefinitions = data.skillDefinitions || skillDefinitions;
-    exclusiveSkillMonitoredGroups = data.exclusiveSkillMonitoredGroups || exclusiveSkillMonitoredGroups;
-    TASKS = data.TASKS || TASKS;
-    // Restaurer l'ordre personnalisé des tâches
-    if (Array.isArray(data.taskOrder) && data.taskOrder.length > 0) {
-        taskOrder = data.taskOrder;
-    } else {
-        taskOrder = Object.keys(TASKS);
-    }
-    settings = data.settings || settings;
-    if (settings && (settings.rplDeadlineDefaultDays === undefined || settings.rplDeadlineDefaultDays === null)) {
-        settings.rplDeadlineDefaultDays = 15;
-    }
-    if (settings && !Array.isArray(settings.rplTrackableSkillIds)) {
-        settings.rplTrackableSkillIds = [];
-    }
-    if (settings && (!settings.taskTabMap || typeof settings.taskTabMap !== 'object')) {
-        settings.taskTabMap = {};
-    }
-    if (settings && settings.yearlyJsonBackupAckYear === undefined) {
-        settings.yearlyJsonBackupAckYear = null;
-    }
-    agentEmailLinks = data.agentEmailLinks || agentEmailLinks || {};
-    agentRoles = data.agentRoles || agentRoles || {};
+            acknowledgedAlerts = data.acknowledgedAlerts || [];
+            skillDefinitions = data.skillDefinitions || skillDefinitions;
+            exclusiveSkillMonitoredGroups = data.exclusiveSkillMonitoredGroups || exclusiveSkillMonitoredGroups;
+            TASKS = data.TASKS || TASKS;
+            // Restaurer l'ordre personnalisé des tâches
+            if (Array.isArray(data.taskOrder) && data.taskOrder.length > 0) {
+                taskOrder = data.taskOrder;
+            } else {
+                taskOrder = Object.keys(TASKS);
+            }
+            settings = data.settings || settings;
+            if (settings && (settings.rplDeadlineDefaultDays === undefined || settings.rplDeadlineDefaultDays === null)) {
+                settings.rplDeadlineDefaultDays = 15;
+            }
+            if (settings && !Array.isArray(settings.rplTrackableSkillIds)) {
+                settings.rplTrackableSkillIds = [];
+            }
+            if (settings && (!settings.taskTabMap || typeof settings.taskTabMap !== 'object')) {
+                settings.taskTabMap = {};
+            }
+            if (settings && settings.yearlyJsonBackupAckYear === undefined) {
+                settings.yearlyJsonBackupAckYear = null;
+            }
+            agentEmailLinks = data.agentEmailLinks || agentEmailLinks || {};
+            agentRoles = data.agentRoles || agentRoles || {};
 
-    // Important : recharger les fiches RPL + normaliser les tableaux
-    replacementSheets = data.replacementSheets || {};
-    if (replacementSheets && typeof replacementSheets === 'object') {
-        Object.keys(replacementSheets).forEach(function(key) {
-            ensureReplacementSheet(key);
-        });
-    } else {
-        replacementSheets = {};
-    }
-    replacementArchives = Array.isArray(data.replacementArchives) ? data.replacementArchives : [];
-    modificationLog = Array.isArray(data.modificationLog) ? data.modificationLog : [];
+            // Important : recharger les fiches RPL + normaliser les tableaux
+            replacementSheets = data.replacementSheets || {};
+            if (replacementSheets && typeof replacementSheets === 'object') {
+                Object.keys(replacementSheets).forEach(function(key) {
+                    ensureReplacementSheet(key);
+                });
+            } else {
+                replacementSheets = {};
+            }
+            replacementArchives = Array.isArray(data.replacementArchives) ? data.replacementArchives : [];
+            modificationLog = Array.isArray(data.modificationLog) ? data.modificationLog : [];
 
-    if (data.schoolHolidaysZoneA && typeof data.schoolHolidaysZoneA === 'object') {
-        schoolHolidaysZoneA = data.schoolHolidaysZoneA;
-        if (typeof clearCalendarDayTypeCache === 'function') clearCalendarDayTypeCache();
-    }
+            if (data.schoolHolidaysZoneA && typeof data.schoolHolidaysZoneA === 'object') {
+                schoolHolidaysZoneA = data.schoolHolidaysZoneA;
+                if (typeof clearCalendarDayTypeCache === 'function') clearCalendarDayTypeCache();
+            }
 
-    // Propagation auto des cycles de roulement (12 semaines depuis HD)
-    if (typeof propagateTeamRotations === 'function') {
-        try { propagateTeamRotations(false); } catch (e) { console.warn(e); }
-    }
-    if (typeof syncReplacementCountsOnOpen === 'function') {
-        try { syncReplacementCountsOnOpen(); } catch (e) {}
-    }
+            // Propagation auto des cycles de roulement (12 semaines depuis HD)
+            if (typeof propagateTeamRotations === 'function') {
+                try { propagateTeamRotations(false); } catch (e) { console.warn(e); }
+            }
+            if (typeof syncReplacementCountsOnOpen === 'function') {
+                try { syncReplacementCountsOnOpen(); } catch (e) {}
+            }
 
-    // Recalcul des droits après chargement des rôles / e-mails
-    if (typeof refreshUserRoles === 'function') refreshUserRoles();
+            // Recalcul des droits après chargement des rôles / e-mails
+            if (typeof refreshUserRoles === 'function') refreshUserRoles();
 }
 
         // sert à sauvegarder l'état complet de l'application dans Firebase Realtime Database, tout en effectuant quelques contrôles d'intégrité avant l'enregistrement.
@@ -2815,6 +2788,10 @@ if (resetAckBtn) {
             return filled;
         }
 
+        /**
+         * Affiche le bandeau de rappel de sauvegarde annuelle JSON
+         * si l'utilisateur Admin n'a pas encore acquitté l'année en cours.
+         */
         function checkYearlyBackupReminder() {
             const banner = document.getElementById('yearlyBackupBanner');
             if (!banner) return;
@@ -2836,6 +2813,10 @@ if (resetAckBtn) {
             }
         }
 
+        /**
+         * Déclenche le téléchargement de la sauvegarde JSON complète
+         * et marque l'année comme acquittée pour ne plus afficher le rappel.
+         */
         function performYearlyJsonBackup() {
             const y = new Date().getFullYear();
             const dataStr = JSON.stringify(getAppState(), null, 2);
@@ -2853,6 +2834,10 @@ if (resetAckBtn) {
             alert('Sauvegarde « Sauvegarde_' + y + '.json » téléchargée. Le rappel ne s\'affichera plus jusqu\'à décembre prochain.');
         }
 
+        /**
+         * Masque temporairement le bandeau de rappel de sauvegarde annuelle
+         * (l'utilisateur pourra le revoir plus tard).
+         */
         function dismissYearlyBackupBanner() {
             // Masque seulement pour la session ; le rappel revient au prochain chargement en décembre
             // sauf si sauvegarde faite (yearlyJsonBackupAckYear)
@@ -2872,6 +2857,10 @@ if (resetAckBtn) {
             renderAll(false); 
         }
 
+        /**
+         * Bascule l'affichage du planning entre vue « Mois » et vue « Année ».
+         * @param {'month'|'year'} mode
+         */
         function setPlanningViewMode(mode) {
             if (mode !== 'month' && mode !== 'year') return;
             planningViewMode = mode;
@@ -2884,16 +2873,28 @@ if (resetAckBtn) {
             renderAll(false);
         }
 
+        /**
+         * Indique si le panneau Dashboard (effectifs & compétences) est ouvert.
+         * @returns {boolean}
+         */
         function isDashboardOpen() {
             const el = document.getElementById('dashboardWrapper');
             return !!(el && el.open);
         }
 
+        /**
+         * Callback déclenché à l'ouverture/fermeture du Dashboard.
+         * Met à jour le libellé du mois affiché dans le résumé.
+         */
         function onDashboardToggle() {
             updateMonthNavEnabledState();
             updateDashboardMonthLabel();
         }
 
+        /**
+         * Décale le mois affiché (vue mois) ou l'année (vue année).
+         * @param {number} delta - +1 mois suivant, -1 mois précédent
+         */
         function navigateMonths(delta) {
             if (planningViewMode === 'year') {
                 if (!isDashboardOpen()) return;
@@ -2922,6 +2923,10 @@ if (resetAckBtn) {
             renderAll(false);
         }
 
+        /**
+         * Active ou désactive les boutons « Mois précédent / suivant »
+         * selon les bornes minYearAvailable / maxYearAvailable.
+         */
         function updateMonthNavEnabledState() {
             const prev = document.getElementById('monthNavPrev');
             const next = document.getElementById('monthNavNext');
@@ -2930,6 +2935,10 @@ if (resetAckBtn) {
             if (next) next.disabled = disable;
         }
 
+        /**
+         * Ramène la vue sur le mois (ou l'année) contenant la date du jour
+         * et met en évidence la colonne « aujourd'hui ».
+         */
         function goToToday() { 
             const now = new Date();
             const todayStr = formatDate(now);
@@ -2944,6 +2953,10 @@ if (resetAckBtn) {
             setTimeout(function() { highlightTodayColumn(10000); }, 80);
         }
 
+        /**
+         * Applique brièvement l'animation « scintillate » sur la colonne du jour actuel.
+         * @param {number} [durationMs=3000]
+         */
         function highlightTodayColumn(durationMs) {
             const todayStr = formatDate(new Date());
             const th = document.querySelector('th[data-date="' + todayStr + '"]');
@@ -2952,6 +2965,12 @@ if (resetAckBtn) {
             setTimeout(function() { th.classList.remove('scintillate'); }, durationMs || 10000);
         }
 
+        /**
+         * Met en évidence une cellule RPL (animation rouge) pour attirer l'attention.
+         * @param {string} targetId - id agent ou équipe
+         * @param {string} dateStr - date YYYY-MM-DD
+         * @param {number} [durationMs=2500]
+         */
         function highlightRplCell(targetId, dateStr, durationMs) {
             if (!targetId || !dateStr) return;
             const cells = document.querySelectorAll(
@@ -2964,6 +2983,10 @@ if (resetAckBtn) {
             });
         }
 
+        /**
+         * Positionne la vue sur le mois de la date choisie dans le date-picker.
+         * @param {string} dateStr - date au format input type=date
+         */
         function jumpToDate(dateStr) { 
             if (dateStr) { 
                 const d = parseDate(dateStr); 
@@ -2978,6 +3001,10 @@ if (resetAckBtn) {
             } 
         }
 
+        /**
+         * Fait défiler horizontalement le tableau pour centrer une date donnée.
+         * @param {string} dateStr
+         */
         function scrollToDateInPlanning(dateStr) {
             if (!dateStr) return;
             setTimeout(function() {
@@ -2990,6 +3017,9 @@ if (resetAckBtn) {
             }, 50);
         }
 
+        /**
+         * Met à jour le libellé « Mois Année » affiché entre les flèches de navigation.
+         */
         function updateCurrentMonthLabel() {
             const el = document.getElementById('currentMonthLabel');
             if (!el) return;
@@ -3003,6 +3033,9 @@ if (resetAckBtn) {
             updateMonthNavEnabledState();
         }
 
+        /**
+         * Met à jour le libellé de mois affiché dans l'en-tête du Dashboard.
+         */
         function updateDashboardMonthLabel() {
             const el = document.getElementById('dashboardMonthLabel');
             if (!el) return;
@@ -3010,16 +3043,26 @@ if (resetAckBtn) {
             el.textContent = '— ' + label.charAt(0).toUpperCase() + label.slice(1);
         }
 
+        /**
+         * Sélectionne visuellement une colonne de date (surlignage jaune).
+         * @param {string} dateStr
+         */
         function selectPlanningColumn(dateStr) {
             selectedColumnDate = dateStr;
             applyColumnSelection();
         }
 
+        /**
+         * Enlève la sélection de colonne active.
+         */
         function clearPlanningColumnSelection() {
             selectedColumnDate = null;
             applyColumnSelection();
         }
 
+        /**
+         * Applique les classes CSS de sélection de colonne sur le tableau.
+         */
         function applyColumnSelection() {
             document.querySelectorAll('#planningTable th.selected-col, #planningTable td.selected-col').forEach(function(el) {
                 el.classList.remove('selected-col');
@@ -3030,6 +3073,11 @@ if (resetAckBtn) {
             });
         }
 
+        /**
+         * Point d'entrée principal du rendu : reconstruit le tableau de planning,
+         * le dashboard, le panneau RPL latéral, les alertes, puis sauvegarde si demandé.
+         * @param {boolean} [shouldSave=false] - true pour pousser l'état vers Firebase
+         */
         function renderAll(save = true) {
             updateCurrentMonthLabel();
             computeDailyAlertColors(getVisibleDates());
@@ -3263,11 +3311,22 @@ if (resetAckBtn) {
             const day = ((h + l - 7 * m + 114) % 31) + 1;
             const easter = new Date(y, month - 1, day);
 
+            /**
+         * Ajoute un nombre de jours à une date et retourne une nouvelle Date.
+         * @param {Date} date
+         * @param {number} days
+         * @returns {Date}
+         */
             function addDays(date, n) {
                 const d = new Date(date.getTime());
                 d.setDate(d.getDate() + n);
                 return d;
             }
+            /**
+         * Formate une Date en chaîne YYYY-MM-DD (utilitaire court).
+         * @param {Date} d
+         * @returns {string}
+         */
             function ymd(date) {
                 return formatDate(date);
             }
@@ -3403,6 +3462,11 @@ if (resetAckBtn) {
             return null;
         }
 
+        /**
+         * Retourne la liste des dates (YYYY-MM-DD) actuellement visibles
+         * selon le mode de vue (mois ou année).
+         * @returns {string[]}
+         */
         function getVisibleDates() {
             if (planningViewMode === 'year') {
                 const year = currentYear;
@@ -3426,6 +3490,10 @@ if (resetAckBtn) {
             return dates;
         }
 
+        /**
+         * Retourne les dates prises en compte par le Dashboard (généralement le mois courant).
+         * @returns {string[]}
+         */
         function getDashboardDates() {
             const year = dashboardStartDate.getFullYear();
             const month = dashboardStartDate.getMonth();
@@ -3669,6 +3737,11 @@ if (resetAckBtn) {
             console.log('Sync décomptes remplacements (année calendaire) OK — année planning :', currentYear);
         }
 
+        /**
+         * Extrait l'année (nombre) d'une chaîne de date YYYY-MM-DD.
+         * @param {string} dateStr
+         * @returns {number}
+         */
         function yearFromDateStr(dateStr) {
             if (!dateStr || typeof dateStr !== 'string') return currentYear;
             const y = parseInt(dateStr.slice(0, 4), 10);
@@ -4063,6 +4136,12 @@ function highlightMultiSelectRange(targetId, isTeam, dateA, dateB) {
     });
 }
 
+/**
+         * Génère toutes les dates (YYYY-MM-DD) entre deux bornes inclusives.
+         * @param {string} startStr
+         * @param {string} endStr
+         * @returns {string[]}
+         */
 function getDateRangeInclusive(dateA, dateB) {
     const start = dateA < dateB ? dateA : dateB;
     const end = dateA < dateB ? dateB : dateA;
@@ -4081,6 +4160,10 @@ function getDateRangeInclusive(dateA, dateB) {
     return out.length ? out : [dateA];
 }
 
+/**
+         * Termine une sélection multi-jours par glisser-déposer et ouvre
+         * la modale d'affectation de tâche sur la plage sélectionnée.
+         */
 function finishMultiSelectDrag() {
     document.body.classList.remove('planning-dragging');
     if (!multiSelectState) {
@@ -5217,6 +5300,11 @@ function refreshOpenSheetVolunteerRestBlocks() {
     replacementSheets[sheetKey] = sheet;
 }
 
+/**
+         * Valide et solde une fiche RPL : enregistre les volontaires retenus,
+         * archive la fiche et met à jour le planning si nécessaire.
+         * Réservé aux RE / Admin.
+         */
 function validateReplacementSheet() {
     if (isReadOnly || !activeRplContext) return;
 
@@ -5793,6 +5881,9 @@ function openVolunteerModal() {
     document.getElementById('volunteerModal').style.display = 'flex';
 }
 
+/**
+         * Ferme la modale « Se porter volontaire » sans enregistrer les choix non validés.
+         */
 function closeVolunteerModal() {
     const modal = document.getElementById('volunteerModal');
     if (modal) modal.style.display = 'none';
@@ -6069,6 +6160,11 @@ function purgeReplacementArchives() {
             return 'presences';
         }
 
+        /**
+         * Change l'onglet actif de la modale d'affectation de tâche
+         * (Présences / Remplacement / Absences) et rafraîchit la grille de tâches.
+         * @param {'presences'|'remplacement'|'absences'} tab
+         */
         function switchTaskModalTab(tabId, skipRenderOnly) {
             activeTaskPickerTab = tabId || 'remplacement';
             document.querySelectorAll('.task-modal-tab-btn').forEach(function(btn) {
@@ -6087,6 +6183,10 @@ function purgeReplacementArchives() {
             renderTaskPickerGrid(activeTaskPickerTab);
         }
 
+        /**
+         * Construit la grille de boutons de tâches dans la modale d'affectation,
+         * filtrée selon l'onglet actif.
+         */
         function renderTaskPickerGrid(tabId) {
             const grid = document.getElementById('taskPickerGrid');
             if (!grid) return;
@@ -6129,6 +6229,15 @@ function purgeReplacementArchives() {
             }
         }
 
+        /**
+         * Ouvre la modale d'affectation de tâche pour une ou plusieurs cellules.
+         * Prépare le contexte (équipe/agent, dates, description existante).
+         * @param {boolean} isTeam
+         * @param {string} targetId
+         * @param {string} dateStr
+         * @param {string} [targetName]
+         * @param {string[]} [dateStrs] - plage multi-jours éventuelle
+         */
         function openTaskModal(isTeam, targetId, targetName, dateStr, currentTaskCode, currentDesc, dateStrs) {
             if (typeof canModifyPlanning === 'function' ? !canModifyPlanning() : isReadOnly) return;
             const dates = (Array.isArray(dateStrs) && dateStrs.length)
@@ -6239,12 +6348,22 @@ function purgeReplacementArchives() {
             });
             if (!team) return result;
 
+            /**
+         * Teste si un agent possède une compétence donnée (version locale légère).
+         * @param {Object} agent
+         * @param {string} skillId
+         * @returns {boolean}
+         */
             function agentHasSkillLocal(ag, skillId) {
                 if (!ag) return false;
                 const skills = Array.isArray(ag.skills) ? ag.skills : [];
                 return skills.some(function(s) { return String(s) === String(skillId); });
             }
 
+            /**
+         * Vérifie s'il existe d'autres agents présents le même jour
+         * possédant déjà la compétence (utilisé pour les alertes d'exclusivité).
+         */
             function otherHoldersPresent(skillId) {
                 const holders = [];
                 const memberIds = {};
@@ -6290,6 +6409,10 @@ function purgeReplacementArchives() {
             return result;
         }
 
+        /**
+         * Remplit les cases à cocher des compétences recommandées
+         * dans la modale de deadline RPL (uniquement les compétences « trackables »).
+         */
         function populateRplRecommendedSkillsCheckboxes() {
             const box = document.getElementById('rplRecommendedSkillsBox');
             const container = document.getElementById('rplRecommendedSkillsCheckboxes');
@@ -6593,6 +6716,9 @@ function purgeReplacementArchives() {
             renderAll(true);
         }
 
+        /**
+         * Annule la saisie de deadline RPL et ferme la modale associée.
+         */
         function cancelRplDeadlineModal() {
             document.getElementById('rplDeadlineModal').style.display = 'none';
             pendingRplTaskAssignment = null;
@@ -6735,6 +6861,10 @@ function purgeReplacementArchives() {
             return rplTaskCode;
         }
 
+        /**
+         * Valide la date limite de traitement RPL + compétences recommandées,
+         * puis applique l'affectation de tâche (individuelle ou d'équipe avec récurrence).
+         */
         function confirmRplDeadlineAndSave() {
             if ((typeof canModifyPlanning === 'function' ? !canModifyPlanning() : isReadOnly) || !pendingRplTaskAssignment) return;
             const deadlineInput = document.getElementById('rplDeadlineDateInput');
@@ -7264,6 +7394,10 @@ function resetAcknowledgedAlerts() {
             }
         }
 
+        /**
+         * Ouvre la fenêtre d'historique des modifications de cellules
+         * (réservé RE / Admin). Permet l'export CSV et la purge (Admin).
+         */
         function openModificationLogModal() {
             // Accès réservé aux RE et Admin
             if (isReadOnly) {
@@ -7306,10 +7440,17 @@ function resetAcknowledgedAlerts() {
             document.getElementById('modificationLogModal').style.display = 'flex';
         }
 
+        /**
+         * Ferme la fenêtre de suivi des modifications.
+         */
         function closeModificationLogModal() {
             document.getElementById('modificationLogModal').style.display = 'none';
         }
 
+        /**
+         * Exporte l'historique des modifications au format CSV (séparateur ;).
+         * Réservé aux Administrateurs.
+         */
         function exportModificationLogToCsv() {
             if (!isAdmin) {
                 alert('Export réservé aux Administrateurs.');
@@ -7347,6 +7488,10 @@ function resetAcknowledgedAlerts() {
             URL.revokeObjectURL(url);
         }
 
+        /**
+         * Vide entièrement l'historique des modifications.
+         * Réservé aux Administrateurs, action irréversible.
+         */
         function purgeModificationLog() {
             if (!isAdmin) {
                 alert('La purge de l\'historique est réservée aux Administrateurs.');
@@ -7532,6 +7677,11 @@ function resetAcknowledgedAlerts() {
             document.getElementById('agentModal').style.display = 'flex';
         }
 
+        /**
+         * Change l'onglet actif de la fiche agent
+         * (Identité, Roulement, Période, Changement d'équipe).
+         * @param {string} tabId
+         */
         function switchAgentTab(tabId) {
             document.querySelectorAll('#agentModal .agent-tab-btn').forEach(function(btn) {
                 btn.classList.toggle('active', btn.getAttribute('data-tab') === tabId);
@@ -7541,10 +7691,17 @@ function resetAcknowledgedAlerts() {
             });
         }
 
+        /**
+         * Ferme la modale de fiche agent sans enregistrer.
+         */
         function closeAgentModal() {
             document.getElementById('agentModal').style.display = 'none';
         }
 
+        /**
+         * Affiche ou masque les champs « date de fin » / « durée de récurrence »
+         * selon le choix de fréquence dans l'onglet Période de la fiche agent.
+         */
         function toggleAgentRecurrenceUI() {
             const freq = document.getElementById('bulkAgentFreq').value;
             const endDateGroup = document.getElementById('bulkEndDateGroup');
@@ -7560,6 +7717,12 @@ function resetAcknowledgedAlerts() {
         }
 
 
+        /**
+         * Indique si un code de tâche doit être conservé lors d'un changement d'équipe
+         * (RPL, congés, formations, absences, etc.).
+         * @param {string} code
+         * @returns {boolean}
+         */
         function isPreservedTaskOnTeamChange(code) {
             if (!code) return false;
             if (typeof isRplLikeCode === 'function' && isRplLikeCode(code)) return true;
@@ -7588,17 +7751,32 @@ function resetAcknowledgedAlerts() {
             return false;
         }
 
+        /**
+         * Retourne true si le code correspond à un quart travaillé (M, A, N ou J).
+         * @param {string} code
+         * @returns {boolean}
+         */
         function isWorkShiftCode(code) {
             const t = TASKS[code];
             if (!t) return false;
             return t.shift === 'M' || t.shift === 'A' || t.shift === 'N' || t.shift === 'J';
         }
 
+        /**
+         * Retourne true si le code est un quart « Journée » (shift J).
+         * @param {string} code
+         * @returns {boolean}
+         */
         function isJShiftCode(code) {
             const t = TASKS[code];
             return !!(t && t.shift === 'J');
         }
 
+        /**
+         * Retourne true si le code est un quart Matin / Après-midi / Nuit.
+         * @param {string} code
+         * @returns {boolean}
+         */
         function isManShiftCode(code) {
             const t = TASKS[code];
             return !!(t && (t.shift === 'M' || t.shift === 'A' || t.shift === 'N'));
@@ -7655,6 +7833,11 @@ function resetAcknowledgedAlerts() {
             return false;
         }
 
+        /**
+         * Applique un changement d'équipe pour un agent à compter d'une date effective :
+         * fige l'ancien roulement avant la date, applique le nouveau ensuite,
+         * conserve formations / absences / RPL compatibles, convertit ou supprime les conflits.
+         */
         function applyAgentTeamChange() {
             if (isReadOnly) {
                 alert('Réservé aux RE et Administrateurs.');
@@ -8108,6 +8291,10 @@ function resetAcknowledgedAlerts() {
             renderSchoolHolidaysTable();
         }
 
+        /**
+         * Ferme le contexte d'édition des vacances scolaires (draft).
+         * Conservé pour compatibilité ; l'édition se fait désormais dans Paramètres.
+         */
         function closeSchoolHolidaysModal() {
             // Conservé pour compatibilité — l'onglet est dans Paramètres
             _schoolHolidaysDraft = null;
@@ -8132,6 +8319,10 @@ function resetAcknowledgedAlerts() {
             _schoolHolidaysDraft[_schoolHolidaysSelectedYear] = list;
         }
 
+        /**
+         * Callback du sélecteur d'année scolaire : sauvegarde le draft courant
+         * puis charge les périodes de la nouvelle année sélectionnée.
+         */
         function onSchoolYearChange() {
             flushSchoolHolidaysTableToDraft();
             const select = document.getElementById('schoolYearSelect');
@@ -8141,6 +8332,10 @@ function resetAcknowledgedAlerts() {
             renderSchoolHolidaysTable();
         }
 
+        /**
+         * Ajoute une nouvelle année scolaire (ex. 2028-2029) dans le paramétrage
+         * des vacances Zone A et sélectionne cette année.
+         */
         function addSchoolYearOption() {
             const base = prompt(
                 'Indiquer l\'année de début de l\'année scolaire (ex: 2028 pour 2028-2029) :',
@@ -8176,6 +8371,10 @@ function resetAcknowledgedAlerts() {
             renderSchoolHolidaysTable();
         }
 
+        /**
+         * Construit le tableau des périodes de vacances scolaires (Zone A)
+         * pour l'année scolaire actuellement sélectionnée dans les Paramètres.
+         */
         function renderSchoolHolidaysTable() {
             const tbody = document.getElementById('schoolHolidaysTableBody');
             if (!tbody || !_schoolHolidaysSelectedYear) return;
@@ -8194,6 +8393,10 @@ function resetAcknowledgedAlerts() {
             });
         }
 
+        /**
+         * Vide les dates de début et de fin d'une ligne de période de vacances.
+         * @param {HTMLElement} btn - bouton « ✕ » cliqué
+         */
         function clearSchoolHolidayRow(btn) {
             const tr = btn.closest('tr');
             if (!tr) return;
@@ -8203,6 +8406,9 @@ function resetAcknowledgedAlerts() {
             if (end) end.value = '';
         }
 
+        /**
+         * Réinitialise toutes les dates de l'année scolaire actuellement sélectionnée.
+         */
         function clearCurrentSchoolYearHolidays() {
             if (!confirm('Vider toutes les dates de l\'année ' + _schoolHolidaysSelectedYear + ' ?')) return;
             ensureSchoolYearInDraft(_schoolHolidaysSelectedYear);
@@ -8252,6 +8458,10 @@ function resetAcknowledgedAlerts() {
             return true;
         }
 
+        /**
+         * Enregistre les vacances scolaires (chemin de compatibilité).
+         * L'enregistrement principal se fait via « Enregistrer Tout » des Paramètres.
+         */
         function saveSchoolHolidaysModal() {
             // Compatibilité : enregistre via le même chemin que Paramètres
             if (!isAdmin) return;
@@ -8277,6 +8487,10 @@ function resetAcknowledgedAlerts() {
             }
         }
 
+        /**
+         * Ouvre la fenêtre Paramètres (Admin uniquement) et précharge
+         * compétences, tâches, seuils, liaisons e-mail/rôles et vacances scolaires.
+         */
         function openSettings() {
     if (!isAdmin) return;
     // Préparer le draft vacances (sans afficher l'onglet)
@@ -8741,6 +8955,9 @@ function renderMonitoredGroupRow(group = []) {
     renderAll();
 }
 
+        /**
+         * Ouvre la modale de choix du mois/année à imprimer.
+         */
         function openPrintModal() {
             const printYear = document.getElementById('printYear');
             printYear.innerHTML = '';
@@ -8833,6 +9050,12 @@ function addNewAgentToTeam(teamId) {
 
 let pendingDeleteAgent = null; // { teamId, agentId, agentName, teamName }
 
+/**
+         * Lance la procédure de suppression d'un agent (demande re-authentification).
+         * Réservé aux RE / Admin.
+         * @param {string} teamId
+         * @param {string} agentId
+         */
 function deleteAgentFromTeam(teamId, agentId) {
     // RE / Admin uniquement
     if (isReadOnly) {
@@ -8866,6 +9089,9 @@ function deleteAgentFromTeam(teamId, agentId) {
     document.getElementById('deleteAgentAuthModal').style.display = 'flex';
 }
 
+/**
+         * Ferme la modale de confirmation de suppression d'agent.
+         */
 function closeDeleteAgentAuthModal() {
     document.getElementById('deleteAgentAuthModal').style.display = 'none';
     pendingDeleteAgent = null;
@@ -8873,6 +9099,10 @@ function closeDeleteAgentAuthModal() {
     if (pwdInput) pwdInput.value = '';
 }
 
+/**
+         * Vérifie le mot de passe de l'utilisateur puis supprime définitivement l'agent
+         * (et son planning individuel).
+         */
 function confirmDeleteAgentWithAuth() {
     if (isReadOnly || !pendingDeleteAgent) return;
     const email = (document.getElementById('deleteAgentAuthEmail') || {}).value || '';
@@ -8911,6 +9141,11 @@ function confirmDeleteAgentWithAuth() {
         });
 }
 
+/**
+         * Ouvre la modale permettant de masquer ou réafficher des agents d'une équipe
+         * (affichage uniquement ; les agents masqués restent comptés dans les effectifs).
+         * @param {string} teamId
+         */
 function openHideAgentsModal(teamId) {
     if (isReadOnly) {
         alert('Réservé aux RE et Administrateurs.');
@@ -8958,11 +9193,17 @@ function openHideAgentsModal(teamId) {
     document.getElementById('hideAgentsModal').style.display = 'flex';
 }
 
+/**
+         * Ferme la modale de masquage / réaffichage des agents.
+         */
 function closeHideAgentsModal() {
     const m = document.getElementById('hideAgentsModal');
     if (m) m.style.display = 'none';
 }
 
+/**
+         * Masque l'agent sélectionné dans la liste « visibles » de la modale.
+         */
 function hideSelectedAgentFromModal() {
     if (isReadOnly) return;
     const teamId = document.getElementById('hideAgentsModalTeamId').value;
@@ -8977,6 +9218,9 @@ function hideSelectedAgentFromModal() {
     renderAll(true);
 }
 
+/**
+         * Réaffiche l'agent sélectionné dans la liste « masqués » de la modale.
+         */
 function showSelectedAgentFromModal() {
     if (isReadOnly) return;
     const teamId = document.getElementById('hideAgentsModalTeamId').value;
@@ -8990,10 +9234,22 @@ function showSelectedAgentFromModal() {
     renderAll(true);
 }
 
+/**
+         * Indique si la ligne d'un agent est masquée dans le tableau de planning.
+         * @param {string} teamId
+         * @param {string} agentId
+         * @returns {boolean}
+         */
 function isAgentRowHidden(teamId, agentId) {
     return !!(hiddenAgentIds && hiddenAgentIds[agentId]);
 }
 
+/**
+         * Indique si un agent est masqué et ne doit donc pas apparaître
+         * dans les listes de volontaires RPL.
+         * @param {string} agentId
+         * @returns {boolean}
+         */
 function isAgentHiddenForVolunteer(agentId) {
     return !!(hiddenAgentIds && hiddenAgentIds[agentId]);
 }
