@@ -7432,6 +7432,10 @@ function resetAcknowledgedAlerts() {
 
             const bulkTaskSel = document.getElementById('bulkAgentTask');
             bulkTaskSel.innerHTML = '';
+            const clearOpt = document.createElement('option');
+            clearOpt.value = '__CLEAR__';
+            clearOpt.innerText = '— Réinitialiser (retour au roulement) —';
+            bulkTaskSel.appendChild(clearOpt);
             getOrderedTaskCodes().forEach(code => {
                 const opt = document.createElement('option');
                 opt.value = code;
@@ -7593,6 +7597,25 @@ function resetAcknowledgedAlerts() {
         }
 
         // permet de réaliser une affectation de masse sur un agent, soit sur une plage continue de dates, soit selon une récurrence (quotidienne, hebdomadaire, toutes les X semaines) sur plusieurs années.
+        function clearAgentScheduleDay(agentId, dStr) {
+            const beforeCode = getCellTaskCode(false, agentId, dStr);
+            if (agentSchedules[agentId] && agentSchedules[agentId][dStr] !== undefined) {
+                delete agentSchedules[agentId][dStr];
+            }
+            const descKey = agentId + '_' + dStr;
+            if (taskDescriptions && taskDescriptions[descKey] !== undefined) {
+                delete taskDescriptions[descKey];
+            }
+            const sheetKey = agentId + '_' + dStr;
+            if (replacementSheets && replacementSheets[sheetKey]) {
+                delete replacementSheets[sheetKey];
+            }
+            if (typeof logCellModification === 'function') {
+                logCellModification(false, agentId, dStr, beforeCode, '');
+            }
+        }
+
+        /** Applique ou réinitialise une tâche sur période / récurrence (fiche agent) */
         function applyBulkAgentTask() {
             if (isReadOnly) return;
             const agentId = document.getElementById('editAgentId').value;
@@ -7600,6 +7623,7 @@ function resetAcknowledgedAlerts() {
             const desc = document.getElementById('bulkAgentDesc').value.trim();
             const startStr = document.getElementById('bulkStartDate').value;
             const freq = document.getElementById('bulkAgentFreq').value;
+            const isClear = (taskCode === '__CLEAR__');
 
             if (!startStr) {
                 alert("Veuillez sélectionner une date de début.");
@@ -7609,6 +7633,7 @@ function resetAcknowledgedAlerts() {
             if (!agentSchedules[agentId]) agentSchedules[agentId] = {};
 
             const startDate = parseDate(startStr);
+            const dates = [];
 
             if (freq === 'NONE') {
                 const endStr = document.getElementById('bulkEndDate').value;
@@ -7621,31 +7646,34 @@ function resetAcknowledgedAlerts() {
                     alert("La date de début doit être antérieure à la date de fin.");
                     return;
                 }
-
                 let curr = new Date(startDate);
                 while (curr <= endDate) {
-                    const dStr = formatDate(curr);
-                    const beforeCode = getCellTaskCode(false, agentId, dStr);
-                    let codeToWrite = taskCode;
-                    if (typeof applyWeekendFormationRule === 'function') {
-                        codeToWrite = applyWeekendFormationRule(dStr, codeToWrite, taskCode, agentId);
-                    }
-                    agentSchedules[agentId][dStr] = codeToWrite;
-                    logCellModification(false, agentId, dStr, beforeCode, codeToWrite);
-                    if (desc) taskDescriptions[agentId + '_' + dStr] = desc;
+                    dates.push(formatDate(curr));
                     curr.setDate(curr.getDate() + 1);
                 }
             } else {
                 const durationYears = parseInt(document.getElementById('bulkAgentDuration').value, 10);
                 let stepDays = 1;
                 if (freq !== '1_DAY') stepDays = parseInt(freq, 10) * 7;
-
                 const endDate = new Date(startDate);
                 endDate.setFullYear(endDate.getFullYear() + durationYears);
-
                 let curr = new Date(startDate);
                 while (curr <= endDate) {
-                    const dStr = formatDate(curr);
+                    dates.push(formatDate(curr));
+                    curr.setDate(curr.getDate() + stepDays);
+                }
+            }
+
+            if (isClear) {
+                if (!confirm('Réinitialiser ' + dates.length + ' jour(s) ?\nLes données individuelles seront effacées (retour au roulement d\'équipe).')) {
+                    return;
+                }
+                dates.forEach(function(dStr) {
+                    clearAgentScheduleDay(agentId, dStr);
+                });
+                alert('✅ Période réinitialisée (' + dates.length + ' jour(s)).');
+            } else {
+                dates.forEach(function(dStr) {
                     const beforeCode = getCellTaskCode(false, agentId, dStr);
                     let codeToWrite = taskCode;
                     if (typeof applyWeekendFormationRule === 'function') {
@@ -7654,13 +7682,20 @@ function resetAcknowledgedAlerts() {
                     agentSchedules[agentId][dStr] = codeToWrite;
                     logCellModification(false, agentId, dStr, beforeCode, codeToWrite);
                     if (desc) taskDescriptions[agentId + '_' + dStr] = desc;
-                    curr.setDate(curr.getDate() + stepDays);
-                }
+                    else if (taskDescriptions[agentId + '_' + dStr]) delete taskDescriptions[agentId + '_' + dStr];
+                });
+                alert('✅ Affectation effectuée (' + dates.length + ' jour(s)) !');
             }
 
-            alert("✅ Affectation effectuée !");
             closeAgentModal();
             renderAll(true);
+        }
+
+        /** Bouton dédié : même logique que Réinitialiser dans la liste */
+        function clearBulkAgentPeriod() {
+            const sel = document.getElementById('bulkAgentTask');
+            if (sel) sel.value = '__CLEAR__';
+            applyBulkAgentTask();
         }
 
         // sert à ouvrir et précharger entièrement la fenêtre de configuration de l'application réservée aux administrateurs.
