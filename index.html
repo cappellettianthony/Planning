@@ -5318,11 +5318,14 @@ function validateReplacementSheet() {
     // Table de conversion
     const conversionMap = {
         'RPCA': 'CA',
+        'RPD': 'D',
         'RPFO': 'F',
         'RPRC': 'RC',
+        'RPR': 'R',
         'RPHP': 'HP',
-        'RPL': 'CA',
-        'RPA': 'RPA'   // reste inchangé
+        'RPCE': 'CE',
+        'RPRC': 'RC',
+        'RPJ': 'J' // reste inchangé
     };
 
     let rpaMessage = false;
@@ -6694,14 +6697,14 @@ function purgeReplacementArchives() {
         function resolveRplCodeIfRestOrDay(agentId, dateStr, rplTaskCode) {
             const conversionMap = {
                 'RPCA': 'CA',
-                'RPC': 'CA',
+                'RPD': 'D',
                 'RPFO': 'F',
-                'RPF': 'F',
                 'RPRC': 'RC',
-                'RPR': 'RC',
+                'RPR': 'R',
                 'RPHP': 'HP',
-                'RPL': 'CA',
-                'RPA': 'RPA'
+                'RPCE': 'CE',
+                'RPRC': 'RC',
+                'RPJ': 'J'
             };
             const rotCode = getTeamRotationCodeForAgent(agentId, dateStr);
             if (!isRotationRestOrDayCode(rotCode)) return rplTaskCode;
@@ -6754,7 +6757,7 @@ function purgeReplacementArchives() {
                     // Fiche RPL si quart M/A/N et code de type remplacement (RPL, RPR, RPFO…)
                     const writtenDef = TASKS[codeToWrite];
                     const isRplLike = (writtenDef && writtenDef.isReplacement) ||
-                        ['RPL', 'RPR', 'RPRC', 'RPFO', 'RPF', 'RPCA', 'RPC', 'RPHP', 'RPA'].indexOf(String(codeToWrite).toUpperCase()) !== -1;
+                        ['RPCE', 'RPR', 'RPRC', 'RPFO', 'RPD', 'RPCA', 'RPC', 'RPHP', 'RPJ'].indexOf(String(codeToWrite).toUpperCase()) !== -1;
                     const isWorkShiftRpl = !isRotationRestOrDayCode(rotCode) && isRplLike;
                     agentSchedules[targetId][dStr] = codeToWrite;
                     logCellModification(false, targetId, dStr, beforeCode, codeToWrite);
