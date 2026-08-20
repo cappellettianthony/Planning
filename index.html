@@ -7551,6 +7551,19 @@ function resetAcknowledgedAlerts() {
             return false;
         }
 
+        /** Formation ou Détachement : jamais supprimé au changement d'équipe */
+        function isFormationOrDetachmentCode(code) {
+            if (!code) return false;
+            const c = String(code).toUpperCase();
+            if (c === 'F' || c === 'DET' || c === 'D' || c === 'RPFO' || c === 'RPF') return true;
+            const t = TASKS[code];
+            if (!t) return false;
+            const label = String(t.label || '').toLowerCase();
+            if (label.indexOf('formation') !== -1) return true;
+            if (/d[eé]tach/.test(label)) return true;
+            return false;
+        }
+
         function isWorkShiftCode(code) {
             const t = TASKS[code];
             if (!t) return false;
@@ -7662,6 +7675,7 @@ function resetAcknowledgedAlerts() {
             const rangeStart = new Date(minYearAvailable, 0, 1);
             const rangeEnd = new Date(maxYearAvailable, 11, 31);
             const deletedRpl = [];
+            const warnedFormDet = [];
 
             // Avant date : figer ancien roulement
             let cur = new Date(rangeStart);
@@ -7698,16 +7712,21 @@ function resetAcknowledgedAlerts() {
                 }
 
                 if (hasInd) {
-                    if (isPreservedTaskOnTeamChange(individual) || isManShiftCode(individual) || isWorkShiftCode(individual)) {
+                    if (isFormationOrDetachmentCode(individual)) {
+                        // Jamais supprimer Formation / Détachement — signaler si sur un quart
+                        if (isManShiftCode(newRot) || isJShiftCode(newRot) || isWorkShiftCode(newRot)) {
+                            if (warnedFormDet.indexOf(dStr + ' (' + individual + ')') === -1) {
+                                warnedFormDet.push(dStr + ' (' + individual + ')');
+                            }
+                        }
+                    } else if (isPreservedTaskOnTeamChange(individual) || isManShiftCode(individual) || isWorkShiftCode(individual)) {
                         if (shouldRemoveShiftAfterTeamChange(individual, newRot, nextCode)) {
                             delete agentSchedules[agentId][dStr];
                             if (taskDescriptions[agentId + '_' + dStr]) delete taskDescriptions[agentId + '_' + dStr];
                             if (replacementSheets && replacementSheets[agentId + '_' + dStr]) delete replacementSheets[agentId + '_' + dStr];
                             deletedRpl.push(dStr + ' (' + individual + ')');
                         }
-                        // sinon conserver (y compris addition sur J)
                     } else {
-                        // codes non préservés / non quarts : laisser le nouveau roulement
                         delete agentSchedules[agentId][dStr];
                         if (taskDescriptions[agentId + '_' + dStr]) delete taskDescriptions[agentId + '_' + dStr];
                     }
@@ -7725,14 +7744,23 @@ function resetAcknowledgedAlerts() {
             closeAgentModal();
             renderAll(true);
 
+            let msg = 'Changement d\'équipe effectué.';
             if (deletedRpl.length) {
-                alert('Changement d\'équipe effectué.\n\n⚠ Remplacements / quarts individuels supprimés (double emploi M/A/N ou repos < 11h avant un Matin) :\n\n' +
+                msg += '\n\n⚠ Remplacements / quarts individuels supprimés (double emploi M/A/N ou repos < 11h avant un Matin) :\n\n' +
                     deletedRpl.slice(0, 30).join('\n') +
                     (deletedRpl.length > 30 ? '\n… (' + deletedRpl.length + ' au total)' : '') +
-                    '\n\nMerci de créer de nouvelles fiches de remplacement si nécessaire.');
-            } else {
-                alert('Changement d\'équipe effectué avec succès.\nLes remplacements de l\'ancienne équipe sont mémorisés dans le décompte.');
+                    '\n\nMerci de créer de nouvelles fiches de remplacement si nécessaire.';
             }
+            if (warnedFormDet.length) {
+                msg += '\n\nℹ Formations ou Détachements conservés mais situés sur des jours de quart du nouveau roulement :\n\n' +
+                    warnedFormDet.slice(0, 30).join('\n') +
+                    (warnedFormDet.length > 30 ? '\n… (' + warnedFormDet.length + ' au total)' : '') +
+                    '\n\nCes tâches n\'ont pas été supprimées.';
+            }
+            if (!deletedRpl.length && !warnedFormDet.length) {
+                msg += '\nLes remplacements de l\'ancienne équipe sont mémorisés dans le décompte.';
+            }
+            alert(msg);
         }
 
         // sert à enregistrer les modifications effectuées dans la fiche d'un agent (nom et compétences), puis à rafraîchir l'application.
