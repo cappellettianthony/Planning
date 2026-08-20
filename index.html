@@ -361,8 +361,33 @@
             cursor: pointer;
             font-weight: bold;
             font-size: 0.85rem;
+            transition: background-color 0.2s ease, box-shadow 0.2s ease;
         }
         .rpl-volunteer-btn:hover { opacity: 0.92; }
+        /* Toutes les fiches où l'agent est disponible ont été vues */
+        .rpl-volunteer-btn.vol-all-seen {
+            background-color: #27ae60;
+            box-shadow: 0 0 0 1px rgba(39, 174, 96, 0.35);
+        }
+        /* Il reste des fiches non vues où l'agent serait disponible */
+        .rpl-volunteer-btn.vol-has-unseen {
+            background-color: #e8a0a0;
+            color: #5c1a1a;
+            box-shadow: 0 0 0 1px rgba(192, 57, 43, 0.25);
+        }
+        .rpl-volunteer-btn .vol-unseen-count {
+            display: inline-block;
+            margin-left: 6px;
+            background: rgba(0,0,0,0.15);
+            padding: 1px 7px;
+            border-radius: 10px;
+            font-size: 0.78rem;
+            font-weight: 800;
+        }
+        .rpl-volunteer-btn.vol-has-unseen .vol-unseen-count {
+            background: rgba(192, 57, 43, 0.25);
+            color: #6b1c1c;
+        }
         .rpl-side-panel {
             flex: 1 1 auto;
             width: 100%;
@@ -2194,6 +2219,9 @@ function markSheetAsSeen(sheetKey) {
             if (!isReadOnly) saveToFirebase();
             else saveReplacementSheetsToFirebase();
         });
+        // Rafraîchir couleur / compteur du bouton volontaire
+        if (typeof updateVolunteerButtonState === 'function') updateVolunteerButtonState();
+        if (typeof updateRplSidePanel === 'function') updateRplSidePanel();
     }
 }
 
@@ -3086,6 +3114,7 @@ if (resetAckBtn) {
             generateTable();
             applyColumnSelection();
             updateRplSidePanel();
+            if (typeof updateVolunteerButtonState === 'function') updateVolunteerButtonState();
             checkRestAlerts();
             if (save && !isReadOnly) saveToFirebase();
             applyReadOnlyMode();
@@ -3285,6 +3314,11 @@ if (resetAckBtn) {
 
                 listEl.appendChild(div);
             });
+
+            // Met à jour la couleur / compteur du bouton « Se porter volontaire »
+            if (typeof updateVolunteerButtonState === 'function') {
+                updateVolunteerButtonState();
+            }
         }
 
         // Dates visibles sur le planning = mois courant OU année entière
@@ -5691,6 +5725,114 @@ function onVolunteerChoiceChange(rowId, which) {
     }
 }
 
+
+/**
+ * Compte, pour les agents liés à l'utilisateur connecté, les fiches RPL
+ * où ils seraient disponibles (éligibles ou déjà volontaires) et qui
+ * n'ont pas encore été marquées « vues » par ces agents.
+ * @returns {{ unseen: number, totalEligible: number }}
+ */
+function countMyUnseenEligibleRplSheets() {
+    const result = { unseen: 0, totalEligible: 0 };
+    if (!currentUser || !currentUser.email) return result;
+    const myIds = (typeof getMyAgentIds === 'function') ? getMyAgentIds() : [];
+    if (!myIds.length) return result;
+
+    const rplItems = (typeof collectAllRplItems === 'function') ? collectAllRplItems() : [];
+    const seenKeys = {}; // éviter de compter deux fois la même fiche pour plusieurs agents liés
+
+    myIds.forEach(function(agentId) {
+        if (typeof isAgentHiddenForVolunteer === 'function' && isAgentHiddenForVolunteer(agentId)) {
+            return;
+        }
+        rplItems.forEach(function(item) {
+            // Ne pas se proposer sur sa propre fiche
+            if (!item.isTeam && item.targetId === agentId) return;
+
+            const sheetKey = item.targetId + '_' + item.dateStr;
+            const sheet = (replacementSheets && replacementSheets[sheetKey])
+                ? ensureReplacementSheet(sheetKey)
+                : null;
+            const volunteers = sheet ? toArraySafe(sheet.volunteers) : [];
+            const alreadyVolunteer = volunteers.indexOf(agentId) !== -1;
+            const seenByAgents = sheet ? normalizeSeenByAgents(sheet.seenByAgents) : {};
+            const alreadySeen = !!seenByAgents[agentId];
+
+            // Même règle d'éligibilité que openVolunteerModal
+            let eligible = false;
+            const requireRE = !item.isTeam &&
+                typeof agentHasRECompetence === 'function' &&
+                agentHasRECompetence(item.targetId);
+            const agentIsRE = typeof agentHasRECompetence === 'function' && agentHasRECompetence(agentId);
+            if (requireRE && !agentIsRE) {
+                eligible = false;
+            } else if (!requireRE && agentIsRE) {
+                eligible = false;
+            } else {
+                const shiftToFill = (typeof getShiftToFillForRpl === 'function')
+                    ? getShiftToFillForRpl(item.isTeam, item.targetId, item.dateStr)
+                    : null;
+                if (shiftToFill && typeof canAgentTakeReplacement === 'function') {
+                    const prev = activeRplContext;
+                    activeRplContext = {
+                        isTeam: item.isTeam,
+                        targetId: item.targetId,
+                        targetName: item.targetName,
+                        dateStr: item.dateStr,
+                        shiftToFill: shiftToFill
+                    };
+                    eligible = canAgentTakeReplacement(agentId, item.dateStr, shiftToFill);
+                    activeRplContext = prev;
+                }
+            }
+
+            // Compter uniquement les fiches où l'agent est disponible ou déjà volontaire
+            if (!alreadyVolunteer && !eligible) return;
+
+            // Une fiche compte une seule fois (même si plusieurs agents liés)
+            const dedupeKey = sheetKey + '|' + agentId;
+            if (seenKeys[dedupeKey]) return;
+            seenKeys[dedupeKey] = true;
+
+            result.totalEligible++;
+            if (!alreadySeen) {
+                result.unseen++;
+            }
+        });
+    });
+
+    return result;
+}
+
+/**
+ * Met à jour le bouton « Se porter volontaire » :
+ * - vert si toutes les fiches où l'agent est disponible ont été vues
+ * - rouge pâle s'il reste des fiches non vues
+ * Affiche le nombre de fiches non vues sur le bouton.
+ */
+function updateVolunteerButtonState() {
+    const btn = document.getElementById('volunteerOpenBtn');
+    if (!btn) return;
+
+    const stats = countMyUnseenEligibleRplSheets();
+    const unseen = stats.unseen || 0;
+
+    btn.classList.remove('vol-all-seen', 'vol-has-unseen');
+
+    if (unseen > 0) {
+        btn.classList.add('vol-has-unseen');
+        btn.innerHTML = '✋ Se porter volontaire <span class="vol-unseen-count">' + unseen + ' non vue' + (unseen > 1 ? 's' : '') + '</span>';
+        btn.title = unseen + ' fiche' + (unseen > 1 ? 's' : '') + ' de remplacement non consultée' + (unseen > 1 ? 's' : '') +
+            ' où vous seriez disponible.';
+    } else {
+        btn.classList.add('vol-all-seen');
+        btn.innerHTML = '✋ Se porter volontaire';
+        btn.title = stats.totalEligible > 0
+            ? 'Toutes les fiches où vous êtes disponible ont été consultées.'
+            : 'Se porter volontaire pour les remplacements';
+    }
+}
+
 function openVolunteerModal() {
     if (!currentUser || !currentUser.email) {
         alert('Connexion requise pour se porter volontaire.');
@@ -5719,10 +5861,24 @@ function openVolunteerModal() {
         });
         myAgents.push({ id: id, name: name });
     });
+    // Compteur de fiches non vues où l'agent serait disponible
+    const unseenStats = (typeof countMyUnseenEligibleRplSheets === 'function')
+        ? countMyUnseenEligibleRplSheets()
+        : { unseen: 0, totalEligible: 0 };
+
     if (subEl) {
+        let unseenMsg = '';
+        if (unseenStats.unseen > 0) {
+            unseenMsg = ' <span style="color:#c0392b;font-weight:bold;">• ' + unseenStats.unseen +
+                ' fiche' + (unseenStats.unseen > 1 ? 's' : '') + ' non vue' + (unseenStats.unseen > 1 ? 's' : '') +
+                ' où vous seriez disponible.</span>';
+        } else if (unseenStats.totalEligible > 0) {
+            unseenMsg = ' <span style="color:#1e8449;font-weight:bold;">• Toutes les fiches où vous êtes disponible ont été consultées.</span>';
+        }
         subEl.innerHTML =
             'Agents liés : <strong>' + myAgents.map(function(a) { return a.name; }).join(', ') + '</strong>. ' +
-            'Fiches où vous êtes volontaire, disponible, ou déclaré non disponible. Les fiches vues où vous n’êtes pas dans les agents disponibles sont masquées.';
+            'Fiches où vous êtes volontaire, disponible, ou déclaré non disponible. Les fiches vues où vous n’êtes pas dans les agents disponibles sont masquées.' +
+            unseenMsg;
     }
 
     const rplItems = collectAllRplItems();
@@ -5996,6 +6152,7 @@ function confirmVolunteerChoices() {
             saveToFirebase();
         }
         if (typeof updateRplSidePanel === 'function') updateRplSidePanel();
+        if (typeof updateVolunteerButtonState === 'function') updateVolunteerButtonState();
         alert(
             '✅ Choix enregistrés.\n' +
             (volunteerCount ? ('• Propositions : ' + volunteerCount + '\n') : '') +
