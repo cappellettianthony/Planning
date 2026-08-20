@@ -7597,22 +7597,49 @@ function resetAcknowledgedAlerts() {
         }
 
         /**
+         * Détecte si un code est de type « feuille de remplacement » (RPL),
+         * même si le flag isReplacement n'est pas coché dans Paramètres.
+         */
+        function isRplLikeCode(code) {
+            if (!code) return false;
+            const t = TASKS[code];
+            if (t && t.isReplacement) return true;
+            const c = String(code).toUpperCase();
+            const rplCodes = ['RPL', 'RPR', 'RPRC', 'RPFO', 'RPF', 'RPD', 'RPCA', 'RPC', 'RPHP', 'RPJ', 'RPCE', 'RPA'];
+            if (rplCodes.indexOf(c) !== -1) return true;
+            // Tout code commençant par RP (sauf s'il est explicitement autre chose)
+            if (c.indexOf('RP') === 0 && c.length >= 2) return true;
+            if (t) {
+                const label = String(t.label || '').toLowerCase();
+                if (label.indexOf('remplacement') !== -1) return true;
+            }
+            return false;
+        }
+
+        /**
          * Supprimer un quart/RPL après changement d'équipe ?
          * - Pas si le nouveau roulement est J (addition sur J autorisée)
          * - Pas pour défaut de repos lié à un J avant/après
-         * - Oui si double emploi avec M/A/N du nouveau roulement
-         * - Oui si repos < 11 h avec un MATIN le lendemain
+         * - Oui si double emploi avec M/A/N du nouveau roulement (SAUF fiches de remplacement)
+         * - Les feuilles de remplacement (RPL / RPR / RPFO / …) ne sont JAMAIS supprimées
+         *   lorsqu'elles se trouvent sur un quart M/A/N du nouveau roulement
+         * - Oui si repos < 11 h avec un MATIN le lendemain (hors RPL)
          */
         function shouldRemoveShiftAfterTeamChange(individualCode, newRotCode, nextDayCode) {
             const indDef = TASKS[individualCode];
             if (!indDef) return false;
+
+            // Feuille de remplacement → ne jamais supprimer
+            if (isRplLikeCode(individualCode)) {
+                return false;
+            }
 
             // Addition sur J → conserver
             if (isJShiftCode(newRotCode)) return false;
 
             // Double emploi avec M/A/N (pas J) du nouveau roulement
             if (isManShiftCode(newRotCode)) {
-                if (indDef.isReplacement || isManShiftCode(individualCode) || isWorkShiftCode(individualCode)) {
+                if (isManShiftCode(individualCode) || isWorkShiftCode(individualCode)) {
                     return true;
                 }
             }
@@ -7621,15 +7648,8 @@ function resetAcknowledgedAlerts() {
             if (nextDayCode && isManShiftCode(nextDayCode)) {
                 const nextDef = TASKS[nextDayCode];
                 if (nextDef && nextDef.shift === 'M') {
-                    // Pour RPL sans horaires, estimer via shift N/A/M du libellé ou pejoratif N
-                    let codeForRest = individualCode;
-                    if (indDef.isReplacement) {
-                        // Pas d'horaire fiable : si on ne peut pas calculer, ne pas supprimer
-                        // sauf si on a un mapping simple
-                        return false;
-                    }
                     if (isJShiftCode(individualCode)) return false;
-                    const rh = restHoursBetweenCodes(codeForRest, nextDayCode);
+                    const rh = restHoursBetweenCodes(individualCode, nextDayCode);
                     if (rh < 11) return true;
                 }
             }
@@ -7724,14 +7744,23 @@ function resetAcknowledgedAlerts() {
                         }
                     } else if (isPreservedTaskOnTeamChange(individual) || isManShiftCode(individual) || isWorkShiftCode(individual)) {
                         if (shouldRemoveShiftAfterTeamChange(individual, newRot, nextCode)) {
-                            delete agentSchedules[agentId][dStr];
-                            if (taskDescriptions[agentId + '_' + dStr]) delete taskDescriptions[agentId + '_' + dStr];
-                            if (replacementSheets && replacementSheets[agentId + '_' + dStr]) delete replacementSheets[agentId + '_' + dStr];
-                            deletedRpl.push(dStr + ' (' + individual + ')');
+                            // Ne jamais supprimer une feuille de remplacement (RPL)
+                            if (isRplLikeCode(individual)) {
+                                // on conserve agentSchedules + replacementSheets
+                            } else {
+                                delete agentSchedules[agentId][dStr];
+                                if (taskDescriptions[agentId + '_' + dStr]) delete taskDescriptions[agentId + '_' + dStr];
+                                if (replacementSheets && replacementSheets[agentId + '_' + dStr]) delete replacementSheets[agentId + '_' + dStr];
+                                deletedRpl.push(dStr + ' (' + individual + ')');
+                            }
                         }
                     } else {
-                        delete agentSchedules[agentId][dStr];
-                        if (taskDescriptions[agentId + '_' + dStr]) delete taskDescriptions[agentId + '_' + dStr];
+                        // Tâche non préservée : on efface le planning individuel
+                        // mais on ne touche PAS aux feuilles de remplacement s'il y en a
+                        if (!isRplLikeCode(individual)) {
+                            delete agentSchedules[agentId][dStr];
+                            if (taskDescriptions[agentId + '_' + dStr]) delete taskDescriptions[agentId + '_' + dStr];
+                        }
                     }
                 }
                 cur.setDate(cur.getDate() + 1);
@@ -7749,10 +7778,10 @@ function resetAcknowledgedAlerts() {
 
             let msg = 'Changement d\'équipe effectué.';
             if (deletedRpl.length) {
-                msg += '\n\n⚠ Remplacements / quarts individuels supprimés (double emploi M/A/N ou repos < 11h avant un Matin) :\n\n' +
+                msg += '\n\n⚠ Quarts individuels supprimés (double emploi M/A/N ou repos < 11h avant un Matin) :\n\n' +
                     deletedRpl.slice(0, 30).join('\n') +
                     (deletedRpl.length > 30 ? '\n… (' + deletedRpl.length + ' au total)' : '') +
-                    '\n\nMerci de créer de nouvelles fiches de remplacement si nécessaire.';
+                    '\n\nLes fiches de remplacement (RPL) sont toujours conservées, même sur un quart M/A/N du nouveau roulement.';
             }
             if (warnedFormDet.length) {
                 msg += '\n\nℹ Formations ou Détachements conservés mais situés sur des jours de quart du nouveau roulement :\n\n' +
