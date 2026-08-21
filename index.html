@@ -1777,7 +1777,7 @@
                 <button class="btn btn-success" style="flex:1;" id="rplAddVolunteerBtn" onclick="addVolunteerToSheet()">Se porter / Inscrire volontaire</button>
                 <button class="btn btn-secondary" style="flex:0 0 auto; font-size:0.8rem;" id="rplShowAllBtn" onclick="toggleRplShowAllAgents()">Voir tous les agents</button>
             </div>
-            <p id="rplFilterHint" style="font-size:0.75rem; color:#666; margin:0;">Liste filtrée : agents en Repos (R) ou en Journée (J) respectant les 11h de repos.</p>
+            <p id="rplFilterHint" style="font-size:0.75rem; color:#666; margin:0;">Liste filtrée : agents en Repos (R) ou en Journée (J). Contrôle 11h uniquement entre quarts M/A/N (pas avec un J).</p>
         </div>
 
         <h3>Liste des Volontaires</h3>
@@ -4570,13 +4570,160 @@ function getAgentInfoOnDate(agentId, dateStr) {
 }
 
 /**
- * Vérifie si un agent peut prendre un quart de remplacement ce jour-là.
- * Contrôles (identiques à checkRestAlerts) :
+ * Évalue les risques de non-respect des temps de repos SI l'agent prenait
+ * le quart de remplacement ce jour-là.
+ * Ne bloque PAS la candidature : sert uniquement à informer le RE.
+ *
+ * Cas particulier agents en J :
+ * ils peuvent toujours se porter volontaires même si 11h / 35h / 11 jours
+ * ne seraient pas respectés ; les alertes sont affichées pour décision RE.
+ *
+ * @param {string} agentId
+ * @param {string} dateStr - YYYY-MM-DD
+ * @param {string} targetShiftCode - code du quart à combler (M/A/N/J…)
+ * @returns {{ warnings: string[], isOnJ: boolean, hasRisk: boolean }}
+ */
+function getVolunteerRestWarnings(agentId, dateStr, targetShiftCode) {
+    const result = { warnings: [], isOnJ: false, hasRisk: false };
+    if (!agentId || !dateStr || !targetShiftCode || !TASKS[targetShiftCode]) return result;
+
+    const info = (typeof getAgentInfoOnDate === 'function')
+        ? getAgentInfoOnDate(agentId, dateStr)
+        : null;
+    if (!info) return result;
+
+    const currentDef = info.taskDef || TASKS['R'];
+    const currentCode = String(info.taskCode || '').toUpperCase();
+    const isOnJ = (currentDef.shift === 'J' || currentCode === 'J');
+    result.isOnJ = isOnJ;
+
+    const targetDef = TASKS[targetShiftCode];
+    if (!targetDef || targetDef.isRest) return result;
+
+    function getSimulatedTask(agent, teamId, dStr) {
+        if (dStr === dateStr) return targetShiftCode;
+        return getEffectiveAgentTask(agent, teamId, dStr);
+    }
+    function getSimulatedDef(agent, teamId, dStr) {
+        const code = getSimulatedTask(agent, teamId, dStr);
+        return TASKS[code] || TASKS['R'];
+    }
+    function restHoursBetween(defCurrent, defNext) {
+        let finishCurrent = timeToDecimal(defCurrent.end);
+        let startNext = timeToDecimal(defNext.start);
+        if (defCurrent.shift === 'N' || finishCurrent < timeToDecimal(defCurrent.start)) {
+            return startNext - finishCurrent;
+        }
+        return (24 - finishCurrent) + startNext;
+    }
+    function isManShiftDef(def) {
+        return !!(def && (def.shift === 'M' || def.shift === 'A' || def.shift === 'N'));
+    }
+    function isJShiftDef(def) {
+        return !!(def && def.shift === 'J');
+    }
+
+    // --- 11 h (veille / lendemain) ---
+    const prevDateObj = new Date(parseDate(dateStr));
+    prevDateObj.setDate(prevDateObj.getDate() - 1);
+    const nextDateObj = new Date(parseDate(dateStr));
+    nextDateObj.setDate(nextDateObj.getDate() + 1);
+    const prevDef = getSimulatedDef(info.agent, info.teamId, formatDate(prevDateObj));
+    const nextDef = getSimulatedDef(info.agent, info.teamId, formatDate(nextDateObj));
+
+    // Pour un agent en J, on simule le remplacement à la place du J
+    // et on signale si l'enchaînement avec M/A/N voisin serait < 11 h
+    if (isManShiftDef(prevDef) && isManShiftDef(targetDef)) {
+        const rh = restHoursBetween(prevDef, targetDef);
+        if (rh < 11) {
+            result.warnings.push(
+                'Repos < 11 h avec la veille (' +
+                (rh < 0 ? '0' : rh.toFixed(1)) + ' h) — ' +
+                (isOnJ ? 'agent en J' : 'enchaînement M/A/N')
+            );
+        }
+    }
+    if (isManShiftDef(targetDef) && isManShiftDef(nextDef)) {
+        const rh = restHoursBetween(targetDef, nextDef);
+        if (rh < 11) {
+            result.warnings.push(
+                'Repos < 11 h avec le lendemain (' +
+                (rh < 0 ? '0' : rh.toFixed(1)) + ' h) — ' +
+                (isOnJ ? 'agent en J' : 'enchaînement M/A/N')
+            );
+        }
+    }
+    // Agent en J : aussi signaler si le voisin est un J qui deviendrait problématique
+    // (info seulement — le RE décide)
+    if (isOnJ) {
+        if (isManShiftDef(prevDef) && !isManShiftDef(targetDef)) {
+            // rare
+        }
+    }
+
+    // --- 35 h hebdo (simulation avec le quart de remplacement) ---
+    const targetDateObj35 = parseDate(dateStr);
+    let sundayOfWeek = new Date(targetDateObj35);
+    while (sundayOfWeek.getDay() !== 0) {
+        sundayOfWeek.setDate(sundayOfWeek.getDate() - 1);
+    }
+    function getSimDefFor35(dStr) {
+        return getSimulatedDef(info.agent, info.teamId, dStr);
+    }
+    if (typeof weekHasValid35hRest === 'function') {
+        if (!weekHasValid35hRest(getSimDefFor35, sundayOfWeek)) {
+            result.warnings.push('Repos hebdo 35 h non respecté (semaine du ' + formatDate(sundayOfWeek) + ')');
+        }
+        let sundayNextWeek = new Date(sundayOfWeek);
+        sundayNextWeek.setDate(sundayNextWeek.getDate() + 7);
+        if (!weekHasValid35hRest(getSimDefFor35, sundayNextWeek)) {
+            result.warnings.push('Repos hebdo 35 h non respecté (semaine suivante)');
+        }
+    }
+
+    // --- Max 11 jours consécutifs ---
+    const targetDateObj = parseDate(dateStr);
+    let consecutive = 0;
+    let checkDate = new Date(targetDateObj);
+    while (true) {
+        checkDate.setDate(checkDate.getDate() - 1);
+        const def = getSimulatedDef(info.agent, info.teamId, formatDate(checkDate));
+        if (def.isRest) break;
+        // Un J voisin compte comme travaillé dans la simulation stricte
+        consecutive++;
+        if (consecutive > 20) break;
+    }
+    consecutive++; // jour du remplacement
+    checkDate = new Date(targetDateObj);
+    while (true) {
+        checkDate.setDate(checkDate.getDate() + 1);
+        const def = getSimulatedDef(info.agent, info.teamId, formatDate(checkDate));
+        if (def.isRest) break;
+        consecutive++;
+        if (consecutive > 20) break;
+    }
+    if (consecutive > 11) {
+        result.warnings.push('Plus de 11 jours de travail consécutifs (' + consecutive + ' j)');
+    }
+
+    result.hasRisk = result.warnings.length > 0;
+    return result;
+}
+
+/**
+ * Vérifie si un agent peut se porter volontaire / être proposé sur un remplacement.
+ *
+ * Règles d'ÉLIGIBILITÉ (blocage) :
  * 1. Statut du jour = Repos (isRest) OU Journée (J)
  * 2. Ne pas être l'agent absent lui-même
- * 3. 11 h de repos quotidien (veille + lendemain)
- * 4. 35 h de repos hebdomadaire (24 h + 11 h)
- * 5. Maximum 11 jours de travail consécutifs
+ * 3. Si agent en Repos : contrôler 11 h (M/A/N uniquement), 35 h, max 11 jours
+ *
+ * Règle agents en J (non bloquante) :
+ * - Un agent dont le statut du jour est J peut TOUJOURS se proposer,
+ *   même si les temps de repos (11 h / 35 h / 11 jours) ne seraient pas respectés
+ *   après attribution du quart de remplacement.
+ * - Les alertes correspondantes sont calculées par getVolunteerRestWarnings()
+ *   et affichées dans la liste des volontaires pour décision du RE.
  */
 function canAgentTakeReplacement(agentId, dateStr, targetShiftCode) {
     if (!targetShiftCode || !TASKS[targetShiftCode]) return false;
@@ -4593,14 +4740,16 @@ function canAgentTakeReplacement(agentId, dateStr, targetShiftCode) {
     // 1. Statut du jour : doit être en Repos OU en J
     // ------------------------------------------------------------------
     const currentDef = info.taskDef;
-    const isEligibleStatus = currentDef.isRest || currentDef.shift === 'J';
+    const currentCode = String(info.taskCode || '').toUpperCase();
+    const isOnJ = (currentDef.shift === 'J' || currentCode === 'J');
+    const isEligibleStatus = currentDef.isRest || isOnJ;
     if (!isEligibleStatus) return false;
 
     const targetDef = TASKS[targetShiftCode];
     if (targetDef.isRest) return true;
 
     // ------------------------------------------------------------------
-    // Helpers — MÊMES règles que checkRestAlerts (planning)
+    // Helpers
     // ------------------------------------------------------------------
     function getSimulatedTask(agent, teamId, dStr) {
         if (dStr === dateStr) return targetShiftCode;
@@ -4612,7 +4761,6 @@ function canAgentTakeReplacement(agentId, dateStr, targetShiftCode) {
         return TASKS[code] || TASKS['R'];
     }
 
-    /** Repos entre deux jours travaillés — identique à checkRestAlerts */
     function restHoursBetween(defCurrent, defNext) {
         let finishCurrent = timeToDecimal(defCurrent.end);
         let startNext = timeToDecimal(defNext.start);
@@ -4622,72 +4770,95 @@ function canAgentTakeReplacement(agentId, dateStr, targetShiftCode) {
         return (24 - finishCurrent) + startNext;
     }
 
-    // ------------------------------------------------------------------
-    // 2. Contrôle des 11 h (identique planning : entre deux jours NON isRest)
-    // ------------------------------------------------------------------
-    const prevDateObj = new Date(parseDate(dateStr));
-    prevDateObj.setDate(prevDateObj.getDate() - 1);
-    const nextDateObj = new Date(parseDate(dateStr));
-    nextDateObj.setDate(nextDateObj.getDate() + 1);
-
-    const prevDef = getSimulatedDef(info.agent, info.teamId, formatDate(prevDateObj));
-    const nextDef = getSimulatedDef(info.agent, info.teamId, formatDate(nextDateObj));
-
-    // Jour remplacement = travaillé (targetDef). Comme le planning : si les deux
-    // côtés ne sont pas isRest, exiger >= 11 h.
-    if (!prevDef.isRest && !targetDef.isRest) {
-        if (restHoursBetween(prevDef, targetDef) < 11) return false;
+    function isManShiftDef(def) {
+        return !!(def && (def.shift === 'M' || def.shift === 'A' || def.shift === 'N'));
     }
-    if (!targetDef.isRest && !nextDef.isRest) {
-        if (restHoursBetween(targetDef, nextDef) < 11) return false;
+
+    function isJShiftDef(def) {
+        return !!(def && def.shift === 'J');
     }
 
     // ------------------------------------------------------------------
-    // 3. Contrôle des 35 h — cumul (fin quart veille) + 24 h repos + (début quart lendemain)
-    //    Identique au planning (weekHasValid35hRest). Semaine du RPL + S+1.
+    // 2. Contrôle des 11 h — UNIQUEMENT entre deux quarts M / A / N
+    //    Pas de contrôle entre un quart M/A/N et un J (ni l'inverse) :
+    //    un J peut être transformé en Repos par le RE.
+    //    Les agents déjà en J le jour du RPL peuvent se proposer même si
+    //    l'enchaînement strict ne respecterait pas les 11 h.
     // ------------------------------------------------------------------
-    const targetDateObj = parseDate(dateStr);
-    let sundayOfWeek = new Date(targetDateObj);
-    while (sundayOfWeek.getDay() !== 0) {
-        sundayOfWeek.setDate(sundayOfWeek.getDate() - 1);
+    if (!isOnJ) {
+        // Agent en Repos (pas en J) : contrôler 11 h uniquement M/A/N ↔ M/A/N
+        const prevDateObj = new Date(parseDate(dateStr));
+        prevDateObj.setDate(prevDateObj.getDate() - 1);
+        const nextDateObj = new Date(parseDate(dateStr));
+        nextDateObj.setDate(nextDateObj.getDate() + 1);
+
+        const prevDef = getSimulatedDef(info.agent, info.teamId, formatDate(prevDateObj));
+        const nextDef = getSimulatedDef(info.agent, info.teamId, formatDate(nextDateObj));
+
+        // Ignorer tout côté qui est un J
+        if (isManShiftDef(prevDef) && isManShiftDef(targetDef) && !isJShiftDef(prevDef)) {
+            if (restHoursBetween(prevDef, targetDef) < 11) return false;
+        }
+        if (isManShiftDef(targetDef) && isManShiftDef(nextDef) && !isJShiftDef(nextDef)) {
+            if (restHoursBetween(targetDef, nextDef) < 11) return false;
+        }
     }
-
-    function getSimDefFor35(dStr) {
-        return getSimulatedDef(info.agent, info.teamId, dStr);
-    }
-
-    if (!weekHasValid35hRest(getSimDefFor35, sundayOfWeek)) return false;
-
-    let sundayNextWeek = new Date(sundayOfWeek);
-    sundayNextWeek.setDate(sundayNextWeek.getDate() + 7);
-    if (!weekHasValid35hRest(getSimDefFor35, sundayNextWeek)) return false;
+    // Si isOnJ : aucun contrôle 11 h (le RE peut transformer le J en Repos)
 
     // ------------------------------------------------------------------
-    // 4. Max 11 jours consécutifs — comme le planning (!isRest coupe la série)
+    // 3. Contrôle des 35 h — uniquement si l'agent N'EST PAS en J ce jour-là
+    //    (un J peut devenir Repos → le calcul 35 h n'a pas à bloquer la candidature)
     // ------------------------------------------------------------------
-    let consecutive = 0;
-    let checkDate = new Date(targetDateObj);
+    if (!isOnJ) {
+        const targetDateObj35 = parseDate(dateStr);
+        let sundayOfWeek = new Date(targetDateObj35);
+        while (sundayOfWeek.getDay() !== 0) {
+            sundayOfWeek.setDate(sundayOfWeek.getDate() - 1);
+        }
 
-    while (true) {
-        checkDate.setDate(checkDate.getDate() - 1);
-        const def = getSimulatedDef(info.agent, info.teamId, formatDate(checkDate));
-        if (def.isRest) break;
-        consecutive++;
-        if (consecutive > 20) break;
+        function getSimDefFor35(dStr) {
+            return getSimulatedDef(info.agent, info.teamId, dStr);
+        }
+
+        if (typeof weekHasValid35hRest === 'function') {
+            if (!weekHasValid35hRest(getSimDefFor35, sundayOfWeek)) return false;
+            let sundayNextWeek = new Date(sundayOfWeek);
+            sundayNextWeek.setDate(sundayNextWeek.getDate() + 7);
+            if (!weekHasValid35hRest(getSimDefFor35, sundayNextWeek)) return false;
+        }
     }
 
-    consecutive++; // jour du remplacement = travaillé
+    // ------------------------------------------------------------------
+    // 4. Max 11 jours consécutifs — uniquement si l'agent N'EST PAS en J
+    //    (le J n'est pas un verrou : le RE peut le passer en Repos)
+    // ------------------------------------------------------------------
+    if (!isOnJ) {
+        const targetDateObj = parseDate(dateStr);
+        let consecutive = 0;
+        let checkDate = new Date(targetDateObj);
 
-    checkDate = new Date(targetDateObj);
-    while (true) {
-        checkDate.setDate(checkDate.getDate() + 1);
-        const def = getSimulatedDef(info.agent, info.teamId, formatDate(checkDate));
-        if (def.isRest) break;
-        consecutive++;
-        if (consecutive > 20) break;
+        while (true) {
+            checkDate.setDate(checkDate.getDate() - 1);
+            const def = getSimulatedDef(info.agent, info.teamId, formatDate(checkDate));
+            // Un J coupe aussi la série (assimilable à une journée modulable)
+            if (def.isRest || isJShiftDef(def)) break;
+            consecutive++;
+            if (consecutive > 20) break;
+        }
+
+        consecutive++; // jour du remplacement = travaillé
+
+        checkDate = new Date(targetDateObj);
+        while (true) {
+            checkDate.setDate(checkDate.getDate() + 1);
+            const def = getSimulatedDef(info.agent, info.teamId, formatDate(checkDate));
+            if (def.isRest || isJShiftDef(def)) break;
+            consecutive++;
+            if (consecutive > 20) break;
+        }
+
+        if (consecutive > 11) return false;
     }
-
-    if (consecutive > 11) return false;
 
     // Tout est OK
     return true;
@@ -4807,8 +4978,8 @@ function toggleRplShowAllAgents() {
         if (btn) btn.textContent = 'Voir tous les agents';
         if (hint) {
             hint.textContent = requireRE
-                ? 'Liste filtrée : agents RE en Repos (R) ou en Journée (J) respectant les temps de repos.'
-                : 'Liste filtrée : agents en Repos (R) ou en Journée (J) respectant les temps de repos.';
+                ? 'Liste filtrée : agents RE en Repos (R) ou en Journée (J). Contrôle 11h uniquement entre quarts M/A/N (pas avec un J).'
+                : 'Liste filtrée : agents en Repos (R) ou en Journée (J). Contrôle 11h uniquement entre quarts M/A/N (pas avec un J).';
         }
     }
 
@@ -4916,8 +5087,8 @@ function openReplacementModal(isTeam, targetId, targetName, dateStr) {
         }
         if (hint) {
             hint.textContent = isRETarget
-                ? 'Liste filtrée : agents RE en Repos (R) ou en Journée (J) respectant les temps de repos.'
-                : 'Liste filtrée : agents en Repos (R) ou en Journée (J) respectant les temps de repos.';
+                ? 'Liste filtrée : agents RE en Repos (R) ou en Journée (J). Contrôle 11h uniquement entre quarts M/A/N (pas avec un J).'
+                : 'Liste filtrée : agents en Repos (R) ou en Journée (J). Contrôle 11h uniquement entre quarts M/A/N (pas avec un J).';
         }
         if (volunteerBtn) volunteerBtn.textContent = 'Se porter / Inscrire volontaire';
     }
@@ -4975,13 +5146,26 @@ function updateRplAgentStats() {
     if (activeRplContext && activeRplContext.shiftToFill && typeof canAgentTakeReplacement === 'function') {
         const ok = canAgentTakeReplacement(agentId, activeRplContext.dateStr, activeRplContext.shiftToFill);
         if (!ok) {
-            eligibleText = ' ⚠ Non éligible (temps de repos)';
+            eligibleText = ' ⚠ Non éligible (statut ou temps de repos)';
+        }
+    }
+
+    // Alertes repos informatives (notamment agents en J — décision RE)
+    let riskText = '';
+    if (activeRplContext && activeRplContext.shiftToFill && typeof getVolunteerRestWarnings === 'function') {
+        const risk = getVolunteerRestWarnings(agentId, activeRplContext.dateStr, activeRplContext.shiftToFill);
+        if (risk && risk.hasRisk) {
+            riskText = (risk.isOnJ
+                ? ' | ⚠ Alerte repos (agent en J — le RE décide) : '
+                : ' | ⚠ Alerte repos (décision RE) : ') + risk.warnings.join(' · ');
+        } else if (risk && risk.isOnJ) {
+            riskText = ' | Agent en J : candidature autorisée même en cas de contrainte de repos';
         }
     }
 
     statsEl.innerText = 'Statut du jour : ' + info.taskCode +
         ' — Remplacements déjà réalisés en ' + countYear + ' : ' + count + ' quart(s)' +
-        eligibleText;
+        eligibleText + riskText;
 }
 
 
@@ -5300,10 +5484,25 @@ function renderVolunteersList() {
             if (sheet.volunteerRestBlocks && sheet.volunteerRestBlocks[entry.aId]) {
                 restBlockHtml = ' <span style="font-size:0.7rem; font-weight:bold; color:#922b21; background:#fadbd8; border:1px solid #e74c3c; padding:2px 7px; border-radius:10px; white-space:nowrap;" title="Cet agent ne peut plus assurer ce remplacement : temps de repos (11h / 35h) non respectés après attribution d\'un autre remplacement">⚠ Indisponible — repos non respectés</span>';
             }
+
+            // Alertes repos (informatif pour le RE) — candidature non bloquée, surtout pour agents en J
+            let restRiskHtml = '';
+            if (typeof getVolunteerRestWarnings === 'function' && activeRplContext && activeRplContext.shiftToFill) {
+                const risk = getVolunteerRestWarnings(entry.aId, activeRplContext.dateStr, activeRplContext.shiftToFill);
+                if (risk && risk.hasRisk && risk.warnings && risk.warnings.length) {
+                    const titleTxt = risk.warnings.join(' | ').replace(/"/g, '&quot;');
+                    const prefix = risk.isOnJ
+                        ? '⚠ Alerte repos (agent en J — décision RE)'
+                        : '⚠ Alerte repos (décision RE)';
+                    restRiskHtml = ' <span style="font-size:0.68rem; font-weight:bold; color:#9a7b0a; background:#fef9e7; border:1px solid #f39c12; padding:2px 7px; border-radius:10px; white-space:normal; display:inline-block; max-width:100%; margin-top:2px;" title="' + titleTxt + '">' +
+                        prefix + ' : ' + risk.warnings.join(' · ') + '</span>';
+                }
+            }
+
             left.innerHTML = checkHtml +
                 '<strong>' + entry.info.agent.name + '</strong> ' +
                 '<span style="font-size:0.75rem; color:#666;">(' + entry.count +
-                ' rempl. ' + ((activeRplContext && activeRplContext.dateStr) ? yearFromDateStr(activeRplContext.dateStr) : currentYear) + ') — ' + entry.info.taskCode + '</span>' + missingHtml + restBlockHtml;
+                ' rempl. ' + ((activeRplContext && activeRplContext.dateStr) ? yearFromDateStr(activeRplContext.dateStr) : currentYear) + ') — ' + entry.info.taskCode + '</span>' + missingHtml + restBlockHtml + restRiskHtml;
 
             div.appendChild(left);
 
