@@ -1300,7 +1300,7 @@
                 <button type="button" class="btn btn-success" style="margin-top:6px;width:100%;" onclick="showSelectedAgentFromModal()">Réafficher cet agent</button>
             </div>
 
-            <p style="font-size:0.72rem;color:#666;margin-top:8px;">Les agents masqués n'apparaissent pas dans les listes de volontaires RPL.</p>
+            <p style="font-size:0.72rem;color:#666;margin-top:8px;">Les agents masqués n'apparaissent pas dans les listes de volontaires RPL. Un agent sans aucune compétence cochée n'est pas compté dans la surveillance des effectifs de quart.</p>
             <div class="modal-actions">
                 <button class="btn btn-secondary" onclick="closeHideAgentsModal()">Fermer</button>
             </div>
@@ -3814,6 +3814,17 @@ if (resetAckBtn) {
         }
 
         /**
+         * Indique si un agent possède au moins une compétence cochée.
+         * Utilisé pour la surveillance des effectifs des équipes de quart :
+         * un agent sans aucune compétence n'est pas comptabilisé dans les présences.
+         * @param {Object} agent
+         * @returns {boolean}
+         */
+        function agentHasAtLeastOneSkill(agent) {
+            return !!(agent && Array.isArray(agent.skills) && agent.skills.length > 0);
+        }
+
+        /**
          * Calcule les couleurs d'alerte (RED/ORANGE/GREEN) pour une liste de dates
          * (badges sous les dates du planning — mois ou année entière).
          */
@@ -3830,6 +3841,10 @@ if (resetAckBtn) {
                     let presentAgents = [];
                     teams.forEach(function(team) {
                         team.agents.forEach(function(agent) {
+                            // Agent sans aucune compétence cochée : non comptabilisé dans les effectifs
+                            if (typeof agentHasAtLeastOneSkill === 'function' && !agentHasAtLeastOneSkill(agent)) {
+                                return;
+                            }
                             const taskCode = getEffectiveAgentTask(agent, team.id, dateStr);
                             const task = TASKS[taskCode] || TASKS['R'];
                             if (task.shift === shiftId) {
@@ -3901,6 +3916,10 @@ if (resetAckBtn) {
 
                     teams.forEach(team => {
                         team.agents.forEach(agent => {
+                            // Agent sans aucune compétence cochée : non comptabilisé dans les effectifs
+                            if (typeof agentHasAtLeastOneSkill === 'function' && !agentHasAtLeastOneSkill(agent)) {
+                                return;
+                            }
                             const taskCode = getEffectiveAgentTask(agent, team.id, dateStr);
                             const task = TASKS[taskCode] || TASKS['R'];
                             if (task.shift === shift.id) {
