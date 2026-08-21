@@ -5125,9 +5125,71 @@ function renderVolunteersList() {
         return;
     }
 
-    // Classement
-    const groups = { J: [], R: [], H: [] };
+    // ------------------------------------------------------------------
+    // Classement par priorité des volontaires
+    // 1. Agents en J (plus petit nb de remplacements d'abord)
+    // 2. Agents en R dont le roulement d'équipe était disponible
+    // 3. Agents en H dont le roulement d'équipe était disponible
+    // 4. Agents en R dont le roulement d'équipe n'était PAS disponible
+    // (+ H non disponible en fin de liste)
+    // Exception : si compétences recommandées → ceux qui les possèdent d'abord
+    // ------------------------------------------------------------------
 
+    /**
+     * Statut du jour pour le classement : J | R | H
+     * H = codes H/HD/HC/RH… ; R = autres repos ; J = journée
+     */
+    function getVolunteerDayCategory(info) {
+        if (!info || !info.taskDef) return 'R';
+        const code = String(info.taskCode || '').trim().toUpperCase();
+        if (info.taskDef.shift === 'J' || code === 'J') return 'J';
+        const hCodes = { H: 1, HD: 1, HC: 1, RH: 1, RHD: 1, RHC: 1 };
+        if (hCodes[code]) return 'H';
+        // Libellé contenant « H » seul type repos alternatif
+        if (code.indexOf('H') === 0 && code !== 'HP') return 'H';
+        if (info.taskDef.isRest) return 'R';
+        return 'H';
+    }
+
+    /**
+     * Roulement d'équipe « disponible » ce jour :
+     * le code de roulement de l'équipe est un repos / H / J (pas un quart M/A/N).
+     */
+    function isTeamRotationAvailable(teamId, dateStr) {
+        let rot = 'R';
+        if (teamSchedules && teamSchedules[teamId] &&
+            teamSchedules[teamId][dateStr] !== undefined &&
+            teamSchedules[teamId][dateStr] !== null &&
+            teamSchedules[teamId][dateStr] !== '') {
+            rot = teamSchedules[teamId][dateStr];
+        }
+        if (typeof isRotationRestOrDayCode === 'function') {
+            return isRotationRestOrDayCode(rot);
+        }
+        const c = String(rot).toUpperCase();
+        return c === 'R' || c === 'H' || c === 'J' || c === 'RD' || c === 'OFF' ||
+            c === 'HD' || c === 'HC' || c === 'RH';
+    }
+
+    /**
+     * Rang de priorité métier (hors compétences recommandées) :
+     * 0 = J, 1 = R + équipe dispo, 2 = H + équipe dispo,
+     * 3 = R + équipe non dispo, 4 = H + équipe non dispo / autres
+     */
+    function getVolunteerPriorityRank(entry) {
+        const cat = entry.dayCategory;
+        const teamAvail = entry.teamRotationAvailable;
+        if (cat === 'J') return 0;
+        if (cat === 'R' && teamAvail) return 1;
+        if (cat === 'H' && teamAvail) return 2;
+        if (cat === 'R' && !teamAvail) return 3;
+        return 4;
+    }
+
+    const recommendedSkills = toArraySafe(sheet.recommendedSkills);
+    const hasRecommended = recommendedSkills.length > 0;
+
+    const entries = [];
     volunteers.forEach(function(aId) {
         const info = getAgentInfoOnDate(aId, activeRplContext.dateStr);
         if (!info) return;
@@ -5137,21 +5199,69 @@ function renderVolunteersList() {
             : currentYear;
         const count = calculateExtraShiftsCount(info.agent, info.teamId, countYear);
         const isSelected = selectedVolunteers.indexOf(aId) !== -1;
+        const dayCategory = getVolunteerDayCategory(info);
+        const teamRotationAvailable = isTeamRotationAvailable(info.teamId, activeRplContext.dateStr);
 
-        const entry = {
+        // Compétences recommandées : 0 = les a toutes, sinon nb manquantes
+        let missingSkillCount = 0;
+        if (hasRecommended) {
+            const agentSkills = info.agent.skills || [];
+            recommendedSkills.forEach(function(skId) {
+                if (agentSkills.indexOf(skId) === -1) missingSkillCount++;
+            });
+        }
+
+        entries.push({
             aId: aId,
             info: info,
             count: count,
-            isSelected: isSelected
-        };
+            isSelected: isSelected,
+            dayCategory: dayCategory,
+            teamRotationAvailable: teamRotationAvailable,
+            missingSkillCount: missingSkillCount,
+            hasAllRecommended: hasRecommended ? (missingSkillCount === 0) : true
+        });
+    });
 
-        if (info.taskDef.shift === 'J') {
-            groups.J.push(entry);
-        } else if (info.taskDef.isRest) {
-            groups.R.push(entry);
-        } else {
-            groups.H.push(entry);
+    // Tri : 1) compétences reco (possède d'abord)  2) rang J/R/H  3) nb remplacements croissant
+    entries.sort(function(a, b) {
+        // Compétence recommandée prioritaire
+        if (hasRecommended) {
+            if (a.hasAllRecommended !== b.hasAllRecommended) {
+                return a.hasAllRecommended ? -1 : 1;
+            }
+            // Parmi ceux qui n'ont pas tout : moins de manquantes d'abord
+            if (a.missingSkillCount !== b.missingSkillCount) {
+                return a.missingSkillCount - b.missingSkillCount;
+            }
         }
+        const ra = getVolunteerPriorityRank(a);
+        const rb = getVolunteerPriorityRank(b);
+        if (ra !== rb) return ra - rb;
+        if (a.count !== b.count) return a.count - b.count;
+        // Stabilité : nom
+        const na = (a.info.agent && a.info.agent.name) ? a.info.agent.name : a.aId;
+        const nb = (b.info.agent && b.info.agent.name) ? b.info.agent.name : b.aId;
+        return String(na).localeCompare(String(nb), 'fr');
+    });
+
+    // Groupes d'affichage (dans l'ordre de priorité)
+    const groups = {
+        skillFirst: [], // sous-groupes affichés via ranks
+        J: [],
+        R_avail: [],
+        H_avail: [],
+        R_not: [],
+        H_not: []
+    };
+
+    entries.forEach(function(entry) {
+        const rank = getVolunteerPriorityRank(entry);
+        if (rank === 0) groups.J.push(entry);
+        else if (rank === 1) groups.R_avail.push(entry);
+        else if (rank === 2) groups.H_avail.push(entry);
+        else if (rank === 3) groups.R_not.push(entry);
+        else groups.H_not.push(entry);
     });
 
     // Fonction d’affichage d’un groupe
@@ -5230,11 +5340,59 @@ function renderVolunteersList() {
         });
     }
 
-    // Affichage des 3 groupes
-    renderGroup('Agents en J (Journée)', '#27ae60', groups.J);
-    renderGroup('Agents en R (Repos)', '#7f8c8d', groups.R);
-    renderGroup('Agents en H (autre statut)', '#e67e22', groups.H);
+    // Affichage dans l'ordre de priorité
+    // Si compétences recommandées : d'abord ceux qui les ont, puis les autres (déjà triés globalement)
+    // On affiche par catégorie métier pour la lisibilité
+    if (hasRecommended) {
+        const withSkill = entries.filter(function(e) { return e.hasAllRecommended; });
+        const withoutSkill = entries.filter(function(e) { return !e.hasAllRecommended; });
+
+        function splitByRank(list) {
+            const g = { J: [], R_avail: [], H_avail: [], R_not: [], H_not: [] };
+            list.forEach(function(entry) {
+                const rank = getVolunteerPriorityRank(entry);
+                if (rank === 0) g.J.push(entry);
+                else if (rank === 1) g.R_avail.push(entry);
+                else if (rank === 2) g.H_avail.push(entry);
+                else if (rank === 3) g.R_not.push(entry);
+                else g.H_not.push(entry);
+            });
+            return g;
+        }
+
+        if (withSkill.length) {
+            const skillHeader = document.createElement('div');
+            skillHeader.style.cssText = 'font-weight:bold; font-size:0.82rem; color:#2980b9; margin:6px 0 4px; padding:4px 6px; background:#eef7fc; border-left:4px solid #2980b9; border-radius:3px;';
+            skillHeader.textContent = '★ Compétence(s) recommandée(s) acquise(s) (' + withSkill.length + ')';
+            container.appendChild(skillHeader);
+            const g1 = splitByRank(withSkill);
+            renderGroup('J — Journée', '#27ae60', g1.J);
+            renderGroup('R — Repos (équipe dispo au roulement)', '#7f8c8d', g1.R_avail);
+            renderGroup('H — (équipe dispo au roulement)', '#e67e22', g1.H_avail);
+            renderGroup('R — Repos (équipe non dispo au roulement)', '#95a5a6', g1.R_not);
+            renderGroup('H — (équipe non dispo au roulement)', '#c0392b', g1.H_not);
+        }
+        if (withoutSkill.length) {
+            const otherHeader = document.createElement('div');
+            otherHeader.style.cssText = 'font-weight:bold; font-size:0.82rem; color:#c0392b; margin:10px 0 4px; padding:4px 6px; background:#fdecea; border-left:4px solid #e74c3c; border-radius:3px;';
+            otherHeader.textContent = 'Sans toutes les compétences recommandées (' + withoutSkill.length + ')';
+            container.appendChild(otherHeader);
+            const g2 = splitByRank(withoutSkill);
+            renderGroup('J — Journée', '#27ae60', g2.J);
+            renderGroup('R — Repos (équipe dispo au roulement)', '#7f8c8d', g2.R_avail);
+            renderGroup('H — (équipe dispo au roulement)', '#e67e22', g2.H_avail);
+            renderGroup('R — Repos (équipe non dispo au roulement)', '#95a5a6', g2.R_not);
+            renderGroup('H — (équipe non dispo au roulement)', '#c0392b', g2.H_not);
+        }
+    } else {
+        renderGroup('1. J — Journée (priorité haute)', '#27ae60', groups.J);
+        renderGroup('2. R — Repos, équipe dispo au roulement', '#7f8c8d', groups.R_avail);
+        renderGroup('3. H — équipe dispo au roulement', '#e67e22', groups.H_avail);
+        renderGroup('4. R — Repos, équipe non dispo au roulement', '#95a5a6', groups.R_not);
+        renderGroup('5. H — équipe non dispo au roulement', '#c0392b', groups.H_not);
+    }
 }
+
 
 
 
