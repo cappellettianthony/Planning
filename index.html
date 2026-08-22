@@ -3183,7 +3183,7 @@ if (resetAckBtn) {
                 });
             });
 
-            // Marquer les fiches prêtes à traiter (tous les agents disponibles ont vu)
+            // Marquer les fiches « À traiter » (tous vus OU deadline ≤ 15 jours)
             items.forEach(function(item) {
                 item.readyToProcess = (typeof isRplReadyToProcess === 'function')
                     ? isRplReadyToProcess(item.isTeam, item.targetId, item.dateStr)
@@ -3233,14 +3233,26 @@ if (resetAckBtn) {
 
                 const readyClass = item.readyToProcess ? ' rpl-ready-process' : '';
                 div.className = 'rpl-side-item' + (iHaveSeen ? ' rpl-seen' : '') + deadlineClass + readyClass;
+                let readyReason = '';
+                if (item.readyToProcess && typeof getRplReadyToProcessReason === 'function') {
+                    readyReason = getRplReadyToProcessReason(item.isTeam, item.targetId, item.dateStr);
+                }
+                let readyTitle = 'Fiche à traiter';
+                if (readyReason === 'all_seen') {
+                    readyTitle = 'À traiter — tous les agents disponibles ont consulté la fiche';
+                } else if (readyReason === 'deadline') {
+                    readyTitle = 'À traiter — date limite de traitement dans 15 jours ou moins';
+                } else if (readyReason === 'both') {
+                    readyTitle = 'À traiter — tous les agents disponibles ont vu la fiche et date limite ≤ 15 jours';
+                }
                 div.title = item.readyToProcess
-                    ? 'Fiche à traiter — tous les agents disponibles ont consulté la fiche'
+                    ? readyTitle
                     : 'Clic : aller à la date — Double-clic / Appui long 2 s : ouvrir la fiche';
                 div.style.touchAction = 'manipulation';
 
                 let html = '';
                 if (item.readyToProcess) {
-                    html += '<span class="rpl-ready-badge" title="Tous les agents disponibles ont vu la fiche">📋 À traiter</span>';
+                    html += '<span class="rpl-ready-badge" title="' + readyTitle.replace(/"/g, '&quot;') + '">📋 À traiter</span>';
                 }
                 if (item.isRETarget) {
                     html += '<span class="rpl-re-badge' + (item.readyToProcess ? ' rpl-re-with-ready' : '') + '" title="Remplacement d\'un agent RE">RE</span>';
@@ -4516,17 +4528,81 @@ function getEligibleAgentsForRpl(isTeam, targetId, dateStr) {
 }
 
 /**
- * True si tous les agents disponibles (éligibles) ont vu la fiche
- * et qu'il existe au moins un agent disponible.
+ * Indique si une fiche RPL doit afficher le badge « À traiter ».
+ * Vrai dans l'un des cas suivants :
+ * 1. Tous les agents éligibles ont vu la fiche (même si la deadline n'est pas proche)
+ * 2. La date limite de traitement est à 15 jours ou moins (ou déjà dépassée)
+ *
+ * @returns {boolean}
  */
 function isRplReadyToProcess(isTeam, targetId, dateStr) {
     const sheetKey = targetId + '_' + dateStr;
     if (!replacementSheets || !replacementSheets[sheetKey]) return false;
     const sheet = ensureReplacementSheet(sheetKey);
+
+    // Cas 1 : tous les agents disponibles ont consulté la fiche
     const seenByAgents = normalizeSeenByAgents(sheet.seenByAgents);
-    const eligible = getEligibleAgentsForRpl(isTeam, targetId, dateStr);
-    if (!eligible.length) return false;
-    return eligible.every(function(id) { return !!seenByAgents[id]; });
+    const eligible = (typeof getEligibleAgentsForRpl === 'function')
+        ? getEligibleAgentsForRpl(isTeam, targetId, dateStr)
+        : [];
+    if (eligible.length > 0) {
+        const allSeen = eligible.every(function(id) { return !!seenByAgents[id]; });
+        if (allSeen) return true;
+    }
+
+    // Cas 2 : date limite ≤ 15 jours (ou dépassée)
+    const deadlineDate = sheet.deadlineDate ? String(sheet.deadlineDate).trim() : '';
+    if (deadlineDate) {
+        try {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const deadline = parseDate(deadlineDate);
+            deadline.setHours(0, 0, 0, 0);
+            const diffMs = deadline.getTime() - today.getTime();
+            const diffDays = Math.round(diffMs / (24 * 60 * 60 * 1000));
+            // À traiter si il reste 15 jours ou moins (y compris deadline passée : diffDays négatif)
+            if (diffDays <= 15) return true;
+        } catch (e) {
+            console.warn('isRplReadyToProcess deadline parse:', e);
+        }
+    }
+
+    return false;
+}
+
+/**
+ * Motif d'affichage du badge « À traiter » (pour info-bulle).
+ * @returns {'all_seen'|'deadline'|'both'|''}
+ */
+function getRplReadyToProcessReason(isTeam, targetId, dateStr) {
+    const sheetKey = targetId + '_' + dateStr;
+    if (!replacementSheets || !replacementSheets[sheetKey]) return '';
+    const sheet = ensureReplacementSheet(sheetKey);
+    let allSeen = false;
+    const seenByAgents = normalizeSeenByAgents(sheet.seenByAgents);
+    const eligible = (typeof getEligibleAgentsForRpl === 'function')
+        ? getEligibleAgentsForRpl(isTeam, targetId, dateStr)
+        : [];
+    if (eligible.length > 0) {
+        allSeen = eligible.every(function(id) { return !!seenByAgents[id]; });
+    }
+    let deadlineNear = false;
+    const deadlineDate = sheet.deadlineDate ? String(sheet.deadlineDate).trim() : '';
+    if (deadlineDate) {
+        try {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const deadline = parseDate(deadlineDate);
+            deadline.setHours(0, 0, 0, 0);
+            const diffDays = Math.round((deadline.getTime() - today.getTime()) / (24 * 60 * 60 * 1000));
+            deadlineNear = diffDays <= 15;
+        } catch (e) {}
+    }
+    if (allSeen && deadlineNear) return 'both';
+    if (allSeen) return 'all_seen';
+    if (deadlineNear) return 'deadline';
+    return '';
+});
 }
 
 /**
@@ -6771,8 +6847,45 @@ function purgeReplacementArchives() {
          * @param {string} [targetName]
          * @param {string[]} [dateStrs] - plage multi-jours éventuelle
          */
+        /**
+         * Contrôle d'accès pour la modification du roulement d'équipe.
+         * - RE / non-Admin : refus + message d'alerte
+         * - Admin : confirmation avant d'ouvrir la fenêtre des tâches
+         * @returns {boolean} true si l'édition est autorisée et confirmée
+         */
+        function guardTeamRotationEdit() {
+            if (isReadOnly) {
+                return false;
+            }
+            // Seuls les Administrateurs peuvent modifier le roulement d'équipe
+            if (!isAdmin) {
+                alert(
+                    'Modification non autorisée.\n\n' +
+                    'Seuls les Administrateurs peuvent modifier le roulement d\'une équipe.\n' +
+                    'Veuillez vous rapprocher de votre Admin.'
+                );
+                return false;
+            }
+            // Admin : message d'avertissement avant poursuite
+            return confirm(
+                'Attention : vous êtes sur le point de modifier le roulement d\'une équipe.\n\n' +
+                'Voulez-vous continuer ?'
+            );
+        }
+
         function openTaskModal(isTeam, targetId, targetName, dateStr, currentTaskCode, currentDesc, dateStrs) {
             if (typeof canModifyPlanning === 'function' ? !canModifyPlanning() : isReadOnly) return;
+
+            // Roulement d'équipe : réservé Admin + confirmation
+            if (isTeam) {
+                if (typeof guardTeamRotationEdit === 'function') {
+                    if (!guardTeamRotationEdit()) return;
+                } else if (!isAdmin) {
+                    alert('Modification non autorisée. Veuillez vous rapprocher de votre Admin.');
+                    return;
+                }
+            }
+
             const dates = (Array.isArray(dateStrs) && dateStrs.length)
                 ? dateStrs.slice().sort()
                 : [dateStr];
@@ -7157,6 +7270,16 @@ function purgeReplacementArchives() {
             if ((typeof canModifyPlanning === 'function' ? !canModifyPlanning() : isReadOnly) || !activeTaskCellSelection) return;
 
             const { isTeam, targetId, dateStr } = activeTaskCellSelection;
+            // Sécurité : le roulement d'équipe ne peut être validé que par un Admin
+            if (isTeam && !isAdmin) {
+                alert(
+                    'Modification non autorisée.\n\n' +
+                    'Seuls les Administrateurs peuvent modifier le roulement d\'une équipe.\n' +
+                    'Veuillez vous rapprocher de votre Admin.'
+                );
+                return;
+            }
+
             const dateStrs = (activeTaskCellSelection.dateStrs && activeTaskCellSelection.dateStrs.length)
                 ? activeTaskCellSelection.dateStrs
                 : [dateStr];
@@ -8045,6 +8168,14 @@ function resetAcknowledgedAlerts() {
         // Elle ne modifie pas directement le planning. Elle stocke les informations nécessaires puis affiche une modale de répétition.
         function promptTeamRotation(teamId, dateStr, taskCode, deadlineDate, recommendedSkills) {
             if (isReadOnly) return;
+            if (!isAdmin) {
+                alert(
+                    'Modification non autorisée.\n\n' +
+                    'Seuls les Administrateurs peuvent modifier le roulement d\'une équipe.\n' +
+                    'Veuillez vous rapprocher de votre Admin.'
+                );
+                return;
+            }
             pendingRotation = {
                 teamId: teamId,
                 dateStr: dateStr,
@@ -8066,6 +8197,14 @@ function resetAcknowledgedAlerts() {
         // Elle prend la tâche choisie, la fréquence de répétition et la durée, puis met à jour le planning de l'équipe sur toute la période concernée.
         function applyTeamRotation() {
             if (isReadOnly || !pendingRotation) return;
+            if (!isAdmin) {
+                alert(
+                    'Modification non autorisée.\n\n' +
+                    'Seuls les Administrateurs peuvent modifier le roulement d\'une équipe.\n' +
+                    'Veuillez vous rapprocher de votre Admin.'
+                );
+                return;
+            }
             const { teamId, dateStr, taskCode } = pendingRotation;
             const freq = document.getElementById('repeatWeeks').value;
             const durationWeeks = parseInt(document.getElementById('repeatDuration').value, 10);
