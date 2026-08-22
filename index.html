@@ -3245,6 +3245,14 @@ if (resetAckBtn) {
                 } else if (readyReason === 'both') {
                     readyTitle = 'À traiter — tous les agents disponibles ont vu la fiche et date limite ≤ 15 jours';
                 }
+                // Indiquer s'il y a des volontaires (sans nommer qui)
+                const volList = sheet ? toArraySafe(sheet.volunteers) : [];
+                const hasVolunteers = volList.length > 0;
+                if (item.readyToProcess) {
+                    readyTitle += hasVolunteers
+                        ? ' — Volontaires : oui'
+                        : ' — Volontaires : non';
+                }
                 div.title = item.readyToProcess
                     ? readyTitle
                     : 'Clic : aller à la date — Double-clic / Appui long 2 s : ouvrir la fiche';
