@@ -3183,7 +3183,7 @@ if (resetAckBtn) {
                 });
             });
 
-            // Marquer les fiches « À traiter » (tous vus OU deadline ≤ 15 jours)
+            // Marquer les fiches « À traiter » (tous vus OU date limite atteinte/dépassée)
             items.forEach(function(item) {
                 item.readyToProcess = (typeof isRplReadyToProcess === 'function')
                     ? isRplReadyToProcess(item.isTeam, item.targetId, item.dateStr)
@@ -3241,9 +3241,9 @@ if (resetAckBtn) {
                 if (readyReason === 'all_seen') {
                     readyTitle = 'À traiter — tous les agents disponibles ont consulté la fiche';
                 } else if (readyReason === 'deadline') {
-                    readyTitle = 'À traiter — date limite de traitement dans 15 jours ou moins';
+                    readyTitle = 'À traiter — date limite de traitement atteinte ou dépassée';
                 } else if (readyReason === 'both') {
-                    readyTitle = 'À traiter — tous les agents disponibles ont vu la fiche et date limite ≤ 15 jours';
+                    readyTitle = 'À traiter — tous les agents disponibles ont vu la fiche et date limite atteinte';
                 }
                 // Indiquer s'il y a des volontaires (sans nommer qui)
                 const volList = sheet ? toArraySafe(sheet.volunteers) : [];
@@ -4539,7 +4539,7 @@ function getEligibleAgentsForRpl(isTeam, targetId, dateStr) {
  * Indique si une fiche RPL doit afficher le badge « À traiter ».
  * Vrai dans l'un des cas suivants :
  * 1. Tous les agents éligibles ont vu la fiche (même si la deadline n'est pas proche)
- * 2. La date limite de traitement est à 15 jours ou moins (ou déjà dépassée)
+ * 2. La date limite de traitement est atteinte ou dépassée (deadline ≤ aujourd'hui)
  *
  * @returns {boolean}
  */
@@ -4558,7 +4558,8 @@ function isRplReadyToProcess(isTeam, targetId, dateStr) {
         if (allSeen) return true;
     }
 
-    // Cas 2 : date limite ≤ 15 jours (ou dépassée)
+    // Cas 2 : date limite de traitement atteinte ou dépassée (deadline ≤ aujourd'hui)
+    // (le délai de 15 j est déjà appliqué à la création de la fiche via rplDeadlineDefaultDays)
     const deadlineDate = sheet.deadlineDate ? String(sheet.deadlineDate).trim() : '';
     if (deadlineDate) {
         try {
@@ -4566,10 +4567,7 @@ function isRplReadyToProcess(isTeam, targetId, dateStr) {
             today.setHours(0, 0, 0, 0);
             const deadline = parseDate(deadlineDate);
             deadline.setHours(0, 0, 0, 0);
-            const diffMs = deadline.getTime() - today.getTime();
-            const diffDays = Math.round(diffMs / (24 * 60 * 60 * 1000));
-            // À traiter si il reste 15 jours ou moins (y compris deadline passée : diffDays négatif)
-            if (diffDays <= 15) return true;
+            if (deadline.getTime() <= today.getTime()) return true;
         } catch (e) {
             console.warn('isRplReadyToProcess deadline parse:', e);
         }
@@ -4594,7 +4592,7 @@ function getRplReadyToProcessReason(isTeam, targetId, dateStr) {
     if (eligible.length > 0) {
         allSeen = eligible.every(function(id) { return !!seenByAgents[id]; });
     }
-    let deadlineNear = false;
+    let deadlineReached = false;
     const deadlineDate = sheet.deadlineDate ? String(sheet.deadlineDate).trim() : '';
     if (deadlineDate) {
         try {
@@ -4602,13 +4600,12 @@ function getRplReadyToProcessReason(isTeam, targetId, dateStr) {
             today.setHours(0, 0, 0, 0);
             const deadline = parseDate(deadlineDate);
             deadline.setHours(0, 0, 0, 0);
-            const diffDays = Math.round((deadline.getTime() - today.getTime()) / (24 * 60 * 60 * 1000));
-            deadlineNear = diffDays <= 15;
+            deadlineReached = deadline.getTime() <= today.getTime();
         } catch (e) {}
     }
-    if (allSeen && deadlineNear) return 'both';
+    if (allSeen && deadlineReached) return 'both';
     if (allSeen) return 'all_seen';
-    if (deadlineNear) return 'deadline';
+    if (deadlineReached) return 'deadline';
     return '';
 }
 
