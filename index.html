@@ -1699,6 +1699,33 @@
                         <input type="number" id="rplDeadlineDefaultDays" min="1" max="90" value="15" style="width:100px;">
                     </div>
 
+                    <h3>Marquage « Vu » des fiches RPL</h3>
+                    <p style="font-size: 0.75rem; color: #666; margin-bottom: 8px;">
+                        Définissez à quel moment une fiche de remplacement est considérée comme consultée (vu)
+                        par l'utilisateur connecté et les agents liés à son e-mail.
+                    </p>
+                    <div class="form-group">
+                        <label>Panneau latéral des remplacements</label>
+                        <select id="rplSidePanelMarkSeenOn" style="width:100%; max-width:420px; padding:6px 8px;">
+                            <option value="single">Clic simple sur la fiche dans le panneau</option>
+                            <option value="double">Double-clic sur la fiche (ouverture de la fiche RPL)</option>
+                        </select>
+                        <p style="font-size:0.72rem;color:#888;margin-top:4px;">
+                            Le clic simple continue d'amener à la date dans le planning. Le double-clic ouvre toujours la fiche détaillée.
+                        </p>
+                    </div>
+                    <div class="form-group">
+                        <label>Fenêtre « Se porter volontaire »</label>
+                        <select id="rplVolunteerMarkSeenOn" style="width:100%; max-width:420px; padding:6px 8px;">
+                            <option value="open">À l'ouverture de la fenêtre (toutes les fiches listées)</option>
+                            <option value="action">Uniquement en cliquant / choisissant sur une tâche (Se proposer ou Ne pas se proposer)</option>
+                            <option value="hover">Au survol de la fiche avec la souris (uniquement dans cette fenêtre)</option>
+                        </select>
+                        <p style="font-size:0.72rem;color:#888;margin-top:4px;">
+                            Le mode « survol » ne s'applique qu'à la liste de la fenêtre Se porter volontaire (pas au panneau latéral).
+                        </p>
+                    </div>
+
                     <h3>Compétences recommandées pour les fiches de remplacement</h3>
                     <p style="font-size: 0.75rem; color: #666; margin-bottom: 8px;">
                         Cochez les compétences qui pourront être proposées comme « recommandées » lors de la création d'une fiche RPL.
@@ -1979,7 +2006,17 @@
         // Ordre explicite des tâches (Firebase ne préserve pas l'ordre des clés d'objet)
         let taskOrder = Object.keys(TASKS);
 
-        let settings = { thresholds: { M: { orange: 5, green: 7 }, A: { orange: 5, green: 7 }, N: { orange: 3, green: 5 } }, rplDeadlineDefaultDays: 15, rplTrackableSkillIds: [], taskTabMap: {}, yearlyJsonBackupAckYear: null };
+        let settings = {
+            thresholds: { M: { orange: 5, green: 7 }, A: { orange: 5, green: 7 }, N: { orange: 3, green: 5 } },
+            rplDeadlineDefaultDays: 15,
+            rplTrackableSkillIds: [],
+            taskTabMap: {},
+            yearlyJsonBackupAckYear: null,
+            /** Panneau latéral : quand marquer une fiche RPL comme vue — 'single' | 'double' */
+            rplSidePanelMarkSeenOn: 'double',
+            /** Modale volontaire : quand marquer comme vu — 'open' | 'action' | 'hover' */
+            rplVolunteerMarkSeenOn: 'action'
+        };
 
         // Liaison agentId → adresse e-mail (paramétrage admin)
         let agentEmailLinks = {};
@@ -2573,6 +2610,12 @@ if (resetAckBtn) {
             }
             if (settings && !Array.isArray(settings.rplTrackableSkillIds)) {
                 settings.rplTrackableSkillIds = [];
+            }
+            if (settings && settings.rplSidePanelMarkSeenOn !== 'single' && settings.rplSidePanelMarkSeenOn !== 'double') {
+                settings.rplSidePanelMarkSeenOn = 'double';
+            }
+            if (settings && settings.rplVolunteerMarkSeenOn !== 'open' && settings.rplVolunteerMarkSeenOn !== 'action' && settings.rplVolunteerMarkSeenOn !== 'hover') {
+                settings.rplVolunteerMarkSeenOn = 'action';
             }
             if (settings && (!settings.taskTabMap || typeof settings.taskTabMap !== 'object')) {
                 settings.taskTabMap = {};
@@ -3309,19 +3352,29 @@ if (resetAckBtn) {
                     }
                 };
 
-                // Clic simple = navigation date ; double-clic = ouvrir fiche RPL
+                // Clic simple = navigation date (+ vu si paramétré) ; double-clic = ouvrir fiche RPL (+ vu si paramétré)
                 div.onclick = function() {
                     if (sideLongPress) {
                         sideLongPress = false;
                         return;
                     }
+                    const markMode = (settings && settings.rplSidePanelMarkSeenOn === 'single') ? 'single' : 'double';
+                    const sheetKeyClick = item.targetId + '_' + item.dateStr;
                     if (clickTimer) {
                         clearTimeout(clickTimer);
                         clickTimer = null;
+                        // Double-clic : ouvrir la fiche ; marquer vu si mode = double
+                        if (markMode === 'double' && typeof markSheetAsSeen === 'function') {
+                            markSheetAsSeen(sheetKeyClick);
+                        }
                         openReplacementModal(item.isTeam, item.targetId, item.targetName, item.dateStr);
                     } else {
                         clickTimer = setTimeout(function() {
                             clickTimer = null;
+                            // Clic simple : marquer vu si mode = single
+                            if (markMode === 'single' && typeof markSheetAsSeen === 'function') {
+                                markSheetAsSeen(sheetKeyClick);
+                            }
                             jumpToDate(item.dateStr);
                             const dp = document.getElementById('datePicker');
                             if (dp) dp.value = item.dateStr;
@@ -6179,6 +6232,16 @@ function onVolunteerChoiceChange(rowId, which) {
             yes.checked = false;
         }
     }
+
+    // Mode « action » : marquer la fiche comme vue dès qu'un choix est cliqué
+    const volMarkMode = (settings && settings.rplVolunteerMarkSeenOn) ? settings.rplVolunteerMarkSeenOn : 'action';
+    if (volMarkMode === 'action' && typeof markSheetAsSeen === 'function') {
+        const rowEl = yes.closest('.vol-row');
+        const sheetKey = rowEl ? rowEl.getAttribute('data-sheet-key') : null;
+        if (sheetKey) {
+            markSheetAsSeen(sheetKey);
+        }
+    }
 }
 
 
@@ -6419,6 +6482,18 @@ function openVolunteerModal() {
         });
     });
 
+    // Marquage « vu » à l'ouverture si paramétré
+    const volMarkMode = (settings && settings.rplVolunteerMarkSeenOn) ? settings.rplVolunteerMarkSeenOn : 'action';
+    if (volMarkMode === 'open' && rows.length > 0 && typeof markSheetAsSeen === 'function') {
+        const markedKeys = {};
+        rows.forEach(function(row) {
+            if (row.sheetKey && !markedKeys[row.sheetKey]) {
+                markedKeys[row.sheetKey] = true;
+                markSheetAsSeen(row.sheetKey);
+            }
+        });
+    }
+
     if (rows.length === 0) {
         listEl.innerHTML = '<div class="vol-empty">Aucune fiche à afficher pour vous (volontaire, disponible ou non disponible).</div>';
     } else {
@@ -6486,6 +6561,13 @@ function openVolunteerModal() {
                         (noLocked ? 'data-locked="1" disabled ' : '') +
                         'onchange="onVolunteerChoiceChange(\'' + rowId + '\', \'no\')"> Ne pas se proposer</label>' +
                 '</div>';
+            // Mode « survol » : marquer vu au mouseenter (uniquement dans cette fenêtre)
+            if (volMarkMode === 'hover' && typeof markSheetAsSeen === 'function') {
+                div.addEventListener('mouseenter', function() {
+                    const sk = div.getAttribute('data-sheet-key');
+                    if (sk) markSheetAsSeen(sk);
+                });
+            }
             listEl.appendChild(div);
         });
     }
@@ -9208,6 +9290,16 @@ function resetAcknowledgedAlerts() {
             : 15;
     }
 
+    const sideSeenSel = document.getElementById('rplSidePanelMarkSeenOn');
+    if (sideSeenSel) {
+        sideSeenSel.value = (settings.rplSidePanelMarkSeenOn === 'single') ? 'single' : 'double';
+    }
+    const volSeenSel = document.getElementById('rplVolunteerMarkSeenOn');
+    if (volSeenSel) {
+        const v = settings.rplVolunteerMarkSeenOn;
+        volSeenSel.value = (v === 'open' || v === 'hover' || v === 'action') ? v : 'action';
+    }
+
     // Compétences suivies pour fiches RPL
     renderRplTrackableSkillsConfig();
 
@@ -9577,6 +9669,11 @@ function renderMonitoredGroupRow(group = []) {
 
     const deadlineDaysVal = parseInt(document.getElementById('rplDeadlineDefaultDays').value, 10);
     settings.rplDeadlineDefaultDays = (!isNaN(deadlineDaysVal) && deadlineDaysVal >= 1) ? deadlineDaysVal : 15;
+
+    const sideSeenVal = (document.getElementById('rplSidePanelMarkSeenOn') || {}).value;
+    settings.rplSidePanelMarkSeenOn = (sideSeenVal === 'single') ? 'single' : 'double';
+    const volSeenVal = (document.getElementById('rplVolunteerMarkSeenOn') || {}).value;
+    settings.rplVolunteerMarkSeenOn = (volSeenVal === 'open' || volSeenVal === 'hover') ? volSeenVal : 'action';
 
     // 4b. Compétences suivies pour fiches RPL
     const trackedIds = [];
