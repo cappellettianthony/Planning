@@ -1840,7 +1840,7 @@
 
 <!-- Modale d'Archives des Remplacements -->
 <div class="modal" id="archiveRemplacementModal">
-    <div class="modal-content" style="width: 850px;">
+    <div class="modal-content" style="width: 960px;">
         <h2>Archive des Fiches de Remplacement (RPL)</h2>
         <div style="max-height: 60vh; overflow-y: auto;">
             <table class="archive-table">
@@ -1848,6 +1848,7 @@
                     <tr>
                         <th>Date RPL</th>
                         <th>Créée le</th>
+                        <th>Date limite traitement</th>
                         <th>Cible (Agent/Équipe)</th>
                         <th>Volontaires déclarés</th>
                         <th>Sélectionné(s)</th>
@@ -6015,6 +6016,7 @@ function validateReplacementSheet() {
     replacementArchives.push({
         dateRpl: activeRplContext.dateStr,
         createdAt: sheetCreatedAt,
+        deadlineDate: (sheet && sheet.deadlineDate) ? sheet.deadlineDate : '',
         targetName: activeRplContext.targetName,
         shiftFilled: shiftToFill || 'N/A',
         volunteers: volunteersNames,
@@ -6734,13 +6736,14 @@ function openArchiveRemplacementModal() {
     tbody.innerHTML = '';
 
     if (replacementArchives.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">Aucune archive de remplacement disponible.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;">Aucune archive de remplacement disponible.</td></tr>';
     } else {
         replacementArchives.forEach(arch => {
             const tr = document.createElement('tr');
             tr.innerHTML = `
                 <td>${formatDateStrDisplay(arch.dateRpl || '')}</td>
                 <td>${arch.createdAt ? formatDateStrDisplay(arch.createdAt) : '—'}</td>
+                <td>${arch.deadlineDate ? formatDateStrDisplay(arch.deadlineDate) : '—'}</td>
                 <td>${arch.targetName || ''}</td>
                 <td>${arch.volunteers || ''}</td>
                 <td><strong>${arch.selected || ''}</strong></td>
@@ -6786,6 +6789,7 @@ function exportRplArchivesToExcel() {
     const headers = [
         'Date RPL',
         'Créée le',
+        'Date limite de traitement',
         'Cible (Agent/Équipe)',
         'Volontaires déclarés',
         'Sélectionné(s)',
@@ -6798,6 +6802,7 @@ function exportRplArchivesToExcel() {
         return [
             formatDateStrDisplay(arch.dateRpl || ''),
             arch.createdAt ? formatDateStrDisplay(arch.createdAt) : '',
+            arch.deadlineDate ? formatDateStrDisplay(arch.deadlineDate) : '',
             arch.targetName || '',
             arch.volunteers || '',
             arch.selected || '',
