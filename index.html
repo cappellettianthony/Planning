@@ -7146,8 +7146,10 @@ function purgeReplacementArchives() {
          * la case est pré-cochée (compétence manquante suite à son absence).
          */
         /**
-         * Compétences recommandées auto pour une absence agent un jour donné
-         * (seul détenteur dans l'équipe, hors remplaçants déjà présents).
+         * Compétences recommandées auto pour une absence agent un jour donné.
+         * Une compétence trackée de l'absent est recommandée s'il n'existe
+         * aucun autre détenteur PRÉSENT ce jour (membres d'équipe au travail
+         * ou remplaçants déjà affectés). Un collègue en congés ne suffit pas.
          * @returns {string[]} ids de compétences
          */
         function computeAutoRecommendedSkillsForAbsence(agentId, dateStr) {
@@ -7215,13 +7217,9 @@ function purgeReplacementArchives() {
 
             tracked.forEach(function(skillId) {
                 if (agentSkills.indexOf(String(skillId)) === -1) return;
-                // Autre membre de l'équipe avec la compétence ?
-                let otherMembers = 0;
-                (team.agents || []).forEach(function(a) {
-                    if (!a || !a.id || a.id === agentId) return;
-                    if (agentHasSkillLocal(a, skillId)) otherMembers++;
-                });
-                if (otherMembers > 0) return;
+                // Compétence recommandée s'il n'y a AUCUN autre détenteur PRÉSENT ce jour
+                // (membre d'équipe au travail ou remplaçant déjà affecté).
+                // Un autre agent CC en congés / repos ne compte PAS : la compétence devient obligatoire.
                 if (otherHoldersPresent(skillId).length > 0) return;
                 result.push(skillId);
             });
@@ -7356,15 +7354,8 @@ function purgeReplacementArchives() {
                 const absentAgent = findAgentById(absentId);
                 if (!agentHasSkill(absentAgent, skillId)) return false;
 
-                // Autres membres de l\'équipe (composition) qui ont la compétence
-                let otherMembersWithSkill = 0;
-                (team.agents || []).forEach(function(a) {
-                    if (!a || !a.id || a.id === absentId) return;
-                    if (agentHasSkill(a, skillId)) otherMembersWithSkill++;
-                });
-                if (otherMembersWithSkill > 0) return false;
-
-                // Remplaçants / présents qui couvrent déjà la compétence ce jour
+                // Uniquement les détenteurs PRÉSENTS ce jour (pas en repos/congés).
+                // Ex. 2 agents CC : si le 1er est déjà en congés, le 2e doit avoir CC recommandé.
                 const presentHolders = otherSkillHoldersPresentForTeam(team, absentId, dateStr, skillId);
                 if (presentHolders.length > 0) return false;
 
@@ -7393,7 +7384,7 @@ function purgeReplacementArchives() {
                     (autoChecked ? '#27ae60' : '#b8c0c8') + '; border-radius:6px;' +
                     (autoChecked ? ' box-shadow:0 0 0 1px rgba(39,174,96,0.25);' : '');
                 const extraBadge = autoChecked
-                    ? ' <span style="font-size:0.68rem; color:#1e8449; font-weight:bold;" title="Seul détenteur dans l\'équipe (aucun remplaçant présent avec cette compétence)">★ seul dans l\'équipe</span>'
+                    ? ' <span style="font-size:0.68rem; color:#1e8449; font-weight:bold;" title="Aucun autre détenteur présent ce jour (équipe + remplaçants)">★ seul présent ce jour</span>'
                     : '';
                 label.innerHTML =
                     '<input type="checkbox" value="' + sk.id + '"' + (autoChecked ? ' checked' : '') + '>' +
@@ -7406,7 +7397,7 @@ function purgeReplacementArchives() {
             if (autoCount > 0) {
                 const hint = document.createElement('p');
                 hint.style.cssText = 'width:100%; margin:8px 0 0 0; font-size:0.72rem; color:#1e8449;';
-                hint.textContent = '★ ' + autoCount + ' compétence(s) pré-cochée(s) : seul détenteur dans l\'équipe, sans remplaçant déjà présent avec cette compétence.';
+                hint.textContent = '★ ' + autoCount + ' compétence(s) pré-cochée(s) : aucun autre détenteur présent ce jour (équipe ou remplaçants).';
                 container.appendChild(hint);
             }
 
