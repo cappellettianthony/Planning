@@ -1700,6 +1700,20 @@
                         <input type="number" id="minAgentsPerTeam" min="0" max="50" value="1" style="width:100px;">
                     </div>
 
+                    <h3>Visibilité par équipe</h3>
+                    <p style="font-size: 0.75rem; color: #666; margin-bottom: 8px;">
+                        Si cette option est activée, un agent (lecture seule) ne voit dans le planning
+                        <strong>que l'équipe (ou les équipes) à laquelle il est lié</strong> via son e-mail.
+                        Les <strong>RE</strong> et <strong>Admin</strong> continuent de voir toutes les équipes.
+                        Les fiches de remplacement restent visibles pour tous dans le panneau latéral et via « Se porter volontaire ».
+                    </p>
+                    <div class="form-group">
+                        <label style="display:inline-flex; align-items:center; gap:8px; cursor:pointer;">
+                            <input type="checkbox" id="restrictTeamVisibility" style="width:auto;">
+                            Restreindre la visibilité du planning par équipe (agents)
+                        </label>
+                    </div>
+
                     <h3>Deadline de traitement des fiches RPL</h3>
                     <p style="font-size: 0.75rem; color: #666; margin-bottom: 8px;">
                         Nombre de jours avant la date du remplacement proposés par défaut comme date limite de traitement de la fiche.
@@ -2023,6 +2037,8 @@
             rplDeadlineDefaultDays: 15,
             /** Seuil minimal d'agents par équipe (suppression interdite si atteint) */
             minAgentsPerTeam: 1,
+            /** Si true : un agent (lecture seule) ne voit que son/ses équipe(s) ; RE et Admin voient tout */
+            restrictTeamVisibility: false,
             rplTrackableSkillIds: [],
             taskTabMap: {},
             yearlyJsonBackupAckYear: null,
@@ -2217,6 +2233,35 @@ function updateUserStatusDisplay() {
 function getMyAgentIds() {
     if (!currentUser || !currentUser.email) return [];
     return getAgentIdsForEmail(currentUser.email);
+}
+
+/**
+ * True si l'utilisateur peut voir toutes les équipes dans le planning.
+ * - Option désactivée → tout le monde voit tout
+ * - Admin ou RE → voient tout
+ * - Agent lecture seule → uniquement si option désactivée
+ */
+function canSeeAllTeams() {
+    if (!settings || !settings.restrictTeamVisibility) return true;
+    if (isAdmin) return true;
+    if (!isReadOnly) return true; // RE
+    return false;
+}
+
+/**
+ * Équipes visibles dans le tableau de planning pour l'utilisateur connecté.
+ * N'affecte pas le panneau RPL ni « Se porter volontaire ».
+ */
+function getTeamsVisibleForCurrentUser() {
+    const all = teams || [];
+    if (canSeeAllTeams()) return all;
+    const myIds = (typeof getMyAgentIds === 'function') ? getMyAgentIds() : [];
+    if (!myIds.length) return [];
+    return all.filter(function(t) {
+        return (t.agents || []).some(function(a) {
+            return a && myIds.indexOf(a.id) !== -1;
+        });
+    });
 }
 
 function getMyLinkedAgentId() {
@@ -2626,6 +2671,9 @@ if (resetAckBtn) {
                 settings.minAgentsPerTeam = 1;
             } else if (settings && settings.minAgentsPerTeam < 0) {
                 settings.minAgentsPerTeam = 0;
+            }
+            if (settings && typeof settings.restrictTeamVisibility !== 'boolean') {
+                settings.restrictTeamVisibility = !!settings.restrictTeamVisibility;
             }
             if (settings && !Array.isArray(settings.rplTrackableSkillIds)) {
                 settings.rplTrackableSkillIds = [];
@@ -4096,7 +4144,23 @@ if (resetAckBtn) {
     tbody.innerHTML = '';
     const dates = getVisibleDates();
 
-    teams.forEach(team => {
+    // Visibilité par équipe (option) : agents lecture seule → uniquement leur(s) équipe(s)
+    const teamsToShow = (typeof getTeamsVisibleForCurrentUser === 'function')
+        ? getTeamsVisibleForCurrentUser()
+        : (teams || []);
+
+    if ((!teamsToShow || teamsToShow.length === 0) && settings && settings.restrictTeamVisibility && isReadOnly) {
+        const emptyTr = document.createElement('tr');
+        const emptyTd = document.createElement('td');
+        emptyTd.colSpan = Math.max(2, dates.length + 2);
+        emptyTd.style.cssText = 'padding:16px; text-align:center; color:#888; font-style:italic;';
+        emptyTd.textContent = 'Aucune équipe visible. Vérifiez la liaison Agents ↔ e-mail dans les paramètres (Admin), ou désactivez la visibilité par équipe.';
+        emptyTr.appendChild(emptyTd);
+        tbody.appendChild(emptyTr);
+        return;
+    }
+
+    teamsToShow.forEach(team => {
         const teamTr = document.createElement('tr'); 
         teamTr.className = 'team-row';
         const tdTeamName = document.createElement('td'); 
@@ -9313,6 +9377,11 @@ function resetAcknowledgedAlerts() {
         minAgentsInput.value = (!isNaN(minA) && minA >= 0) ? minA : 1;
     }
 
+    const restrictVisCb = document.getElementById('restrictTeamVisibility');
+    if (restrictVisCb) {
+        restrictVisCb.checked = !!(settings && settings.restrictTeamVisibility);
+    }
+
     const deadlineDaysInput = document.getElementById('rplDeadlineDefaultDays');
     if (deadlineDaysInput) {
         deadlineDaysInput.value = (settings.rplDeadlineDefaultDays !== undefined && settings.rplDeadlineDefaultDays !== null)
@@ -9699,6 +9768,9 @@ function renderMonitoredGroupRow(group = []) {
 
     const minAgentsVal = parseInt(document.getElementById('minAgentsPerTeam').value, 10);
     settings.minAgentsPerTeam = (!isNaN(minAgentsVal) && minAgentsVal >= 0) ? minAgentsVal : 1;
+
+    const restrictVisCb = document.getElementById('restrictTeamVisibility');
+    settings.restrictTeamVisibility = !!(restrictVisCb && restrictVisCb.checked);
 
     const deadlineDaysVal = parseInt(document.getElementById('rplDeadlineDefaultDays').value, 10);
     settings.rplDeadlineDefaultDays = (!isNaN(deadlineDaysVal) && deadlineDaysVal >= 1) ? deadlineDaysVal : 15;
