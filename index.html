@@ -363,6 +363,69 @@
             font-size: 0.85rem;
             transition: background-color 0.2s ease, box-shadow 0.2s ease;
         }
+
+        .absence-request-btn {
+            width: 100%;
+            margin-bottom: 6px;
+            padding: 10px 8px;
+            font-weight: 700;
+            font-size: 0.85rem;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            background: linear-gradient(135deg, #2980b9, #3498db);
+            color: #fff;
+        }
+        .absence-request-btn:hover { filter: brightness(1.05); }
+        .absence-process-btn {
+            width: 100%;
+            margin-bottom: 6px;
+            padding: 8px 8px;
+            font-weight: 700;
+            font-size: 0.8rem;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            background: linear-gradient(135deg, #8e44ad, #9b59b6);
+            color: #fff;
+        }
+        .absence-process-btn:hover { filter: brightness(1.05); }
+        .absence-process-btn .abs-pending-count {
+            display: inline-block;
+            margin-left: 6px;
+            background: #e74c3c;
+            color: #fff;
+            border-radius: 10px;
+            padding: 1px 7px;
+            font-size: 0.72rem;
+        }
+        .absence-req-row {
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 10px 12px;
+            margin-bottom: 10px;
+            background: #fafbfc;
+        }
+        .absence-req-row .abs-meta { font-size: 0.8rem; color: #555; margin: 4px 0; }
+        .absence-req-row .abs-actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+        .absence-reason-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin: 8px 0 12px;
+        }
+        .absence-reason-grid label {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.82rem;
+            padding: 5px 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            background: #fff;
+            cursor: pointer;
+        }
+
         .rpl-volunteer-btn:hover { opacity: 0.92; }
         /* Toutes les fiches où l'agent est disponible ont été vues */
         .rpl-volunteer-btn.vol-all-seen {
@@ -1181,6 +1244,15 @@
             <button type="button" class="rpl-volunteer-btn" id="volunteerOpenBtn" onclick="openVolunteerModal()">
                 ✋ Se porter volontaire
             </button>
+            <button type="button" class="absence-request-btn" id="absenceRequestOpenBtn" onclick="openAbsenceRequestModal()">
+                🏖️ Demande d'absence
+            </button>
+            <button type="button" class="absence-process-btn" id="absenceProcessOpenBtn" onclick="openAbsenceProcessModal()" style="display:none;">
+                📥 Traitement des absences <span class="abs-pending-count" id="absencePendingCount" style="display:none;">0</span>
+            </button>
+            <button type="button" class="btn btn-secondary" id="absenceArchiveOpenBtn" onclick="openAbsenceArchiveModal()" style="display:none; width:100%; margin-bottom:8px; font-size:0.78rem;">
+                📂 Archives demandes d'absence
+            </button>
             <aside class="rpl-side-panel" id="rplSidePanel">
                 <div class="rpl-side-panel-header">
                     📋 Remplacements <span class="count" id="rplSidePanelCount">(0)</span>
@@ -1250,6 +1322,84 @@
             <div class="modal-actions">
                 <button class="btn btn-secondary" onclick="cancelRplDeadlineModal()">Annuler</button>
                 <button class="btn btn-success" onclick="confirmRplDeadlineAndSave()">Valider</button>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- Modale Demande d'absence (agents) -->
+    <div class="modal" id="absenceRequestModal" style="display:none;">
+        <div class="modal-content" style="width:520px; max-width:95vw;">
+            <h2>🏖️ Demande d'absence</h2>
+            <p style="font-size:0.8rem;color:#666;margin:0 0 12px 0;">
+                Indiquez la période, la raison (tâches de type remplacement) et un commentaire facultatif.
+                Un RE validera ou refusera votre demande.
+            </p>
+            <div class="form-group" id="absenceRequestAgentGroup">
+                <label for="absenceRequestAgent">Agent concerné</label>
+                <select id="absenceRequestAgent" style="width:100%;padding:6px 8px;"></select>
+            </div>
+            <div class="form-group" style="display:flex;gap:10px;flex-wrap:wrap;">
+                <div style="flex:1;min-width:140px;">
+                    <label for="absenceRequestStart">Du</label>
+                    <input type="date" id="absenceRequestStart" style="width:100%;padding:6px 8px;">
+                </div>
+                <div style="flex:1;min-width:140px;">
+                    <label for="absenceRequestEnd">Au</label>
+                    <input type="date" id="absenceRequestEnd" style="width:100%;padding:6px 8px;">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Raison <span style="color:#c0392b;">*</span></label>
+                <div class="absence-reason-grid" id="absenceRequestReasons"></div>
+            </div>
+            <div class="form-group">
+                <label for="absenceRequestComment">Commentaire (facultatif)</label>
+                <textarea id="absenceRequestComment" rows="3" style="width:100%;padding:6px 8px;resize:vertical;" placeholder="Précisions éventuelles…"></textarea>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" onclick="closeAbsenceRequestModal()">Annuler</button>
+                <button type="button" class="btn btn-success" onclick="submitAbsenceRequest()">Envoyer la demande</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modale Traitement des demandes d'absence (RE / Admin) -->
+    <div class="modal" id="absenceProcessModal" style="display:none;">
+        <div class="modal-content" style="width:640px; max-width:96vw;">
+            <h2>📥 Traitement des demandes d'absence</h2>
+            <p style="font-size:0.8rem;color:#666;margin:0 0 12px 0;">
+                Valider une demande met à jour le planning (comme un RPL sur la période).
+                Refuser n'applique aucune modification.
+            </p>
+            <div id="absenceProcessList" style="max-height:55vh;overflow-y:auto;"></div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" onclick="closeAbsenceProcessModal()">Fermer</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modale Archives des demandes d'absence -->
+    <div class="modal" id="absenceArchiveModal" style="display:none;">
+        <div class="modal-content" style="width:900px; max-width:96vw;">
+            <h2>📂 Archives des demandes d'absence</h2>
+            <div style="max-height:60vh;overflow-y:auto;">
+                <table class="archive-table">
+                    <thead>
+                        <tr>
+                            <th>Demandeur</th>
+                            <th>Période</th>
+                            <th>Raison</th>
+                            <th>Commentaire</th>
+                            <th>Décision</th>
+                            <th>Traité par / le</th>
+                        </tr>
+                    </thead>
+                    <tbody id="absenceArchiveTableBody"></tbody>
+                </table>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" onclick="closeAbsenceArchiveModal()">Fermer</button>
             </div>
         </div>
     </div>
@@ -2068,6 +2218,8 @@
 let replacementSheets = {};    // Stocke les volontaires pour une fiche
 let replacementArchives = [];  // Stocke l'historique des fiches soldées
 let modificationLog = [];      // Historique des modifications de cellules
+let absenceRequests = [];      // Demandes d'absence en attente (pending)
+let absenceRequestArchives = []; // Demandes d'absence traitées (validées / refusées)
 let activeRplContext = null;   // Contexte courant de la fiche ouverte
 let rplShowAllAgents = false; // false = liste filtrée (éligibles), true = tous les agents
 let clickTimer = null;         // Pour distinguer le clic simple du double-clic
@@ -2563,6 +2715,16 @@ function markAgentSeenOnSheet(sheetKey, agentId) {
                 modLogBtn.style.display = canSeeLog ? 'inline-block' : 'none';
                 modLogBtn.disabled = !canSeeLog;
             }
+            // Demandes d'absence : traitement + archives pour RE / Admin
+            const absProcBtn = document.getElementById('absenceProcessOpenBtn');
+            const absArchBtn = document.getElementById('absenceArchiveOpenBtn');
+            if (absProcBtn) {
+                absProcBtn.style.display = !isReadOnly ? 'block' : 'none';
+            }
+            if (absArchBtn) {
+                absArchBtn.style.display = !isReadOnly ? 'block' : 'none';
+            }
+            if (typeof updateAbsencePendingBadge === 'function') updateAbsencePendingBadge();
 
             updatePlanningEditToggleBtn();
             
@@ -2611,6 +2773,8 @@ if (resetAckBtn) {
                 replacementSheets: replacementSheets,
                 replacementArchives: replacementArchives,
                 modificationLog: modificationLog,
+                absenceRequests: absenceRequests,
+                absenceRequestArchives: absenceRequestArchives,
                 schoolHolidaysZoneA: schoolHolidaysZoneA
             };
         }
@@ -2704,6 +2868,8 @@ if (resetAckBtn) {
             }
             replacementArchives = Array.isArray(data.replacementArchives) ? data.replacementArchives : [];
             modificationLog = Array.isArray(data.modificationLog) ? data.modificationLog : [];
+            absenceRequests = Array.isArray(data.absenceRequests) ? data.absenceRequests : [];
+            absenceRequestArchives = Array.isArray(data.absenceRequestArchives) ? data.absenceRequestArchives : [];
 
             if (data.schoolHolidaysZoneA && typeof data.schoolHolidaysZoneA === 'object') {
                 schoolHolidaysZoneA = data.schoolHolidaysZoneA;
@@ -2775,6 +2941,28 @@ if (resetAckBtn) {
                 console.error("Erreur de sauvegarde des fiches RPL : ", e);
             }
         }
+
+        /**
+         * Sauvegarde des demandes d'absence (autorisée aussi en lecture seule).
+         * Permet aux agents de déposer une demande sans droits d'écriture complets.
+         */
+        function saveAbsenceRequestsToFirebase() {
+            if (!planningRef) {
+                console.error("saveAbsenceRequestsToFirebase: Firebase non initialisé");
+                return;
+            }
+            try {
+                planningRef.child('absenceRequests').set(absenceRequests || []).then(function() {
+                    console.log('Sauvegarde demandes d\'absence OK');
+                }).catch(function(err) {
+                    console.error("Erreur de sauvegarde des demandes d'absence : ", err);
+                    alert("Impossible d'enregistrer la demande d'absence (droits Firebase ou connexion).\n" + (err && err.message ? err.message : ''));
+                });
+            } catch (e) {
+                console.error("Erreur de sauvegarde des demandes d'absence : ", e);
+            }
+        }
+
 
         // sert à exporter toutes les données de l'application dans un fichier JSON téléchargeable afin de réaliser une sauvegarde locale.
         function exportData() {
@@ -3225,6 +3413,7 @@ if (resetAckBtn) {
             applyColumnSelection();
             updateRplSidePanel();
             if (typeof updateVolunteerButtonState === 'function') updateVolunteerButtonState();
+            if (typeof updateAbsencePendingBadge === 'function') updateAbsencePendingBadge();
             checkRestAlerts();
             if (save && !isReadOnly) saveToFirebase();
             applyReadOnlyMode();
@@ -6434,6 +6623,481 @@ function updateVolunteerButtonState() {
             ? 'Toutes les fiches où vous êtes disponible ont été consultées.'
             : 'Se porter volontaire pour les remplacements';
     }
+}
+
+
+// ========================================================================
+// DEMANDES D'ABSENCE (agents → RE / Admin)
+// ========================================================================
+
+/**
+ * Liste des codes de tâches « raison d'absence » = tâches marquées remplacement (RPL).
+ * Toute nouvelle tâche RPL ajoutée dans Paramètres apparaît automatiquement.
+ */
+function getAbsenceReasonTasks() {
+    const codes = (typeof getOrderedTaskCodes === 'function')
+        ? getOrderedTaskCodes()
+        : Object.keys(TASKS || {});
+    const list = [];
+    codes.forEach(function(code) {
+        const def = TASKS[code];
+        if (!def) return;
+        const isRpl = (typeof isRplLikeCode === 'function')
+            ? isRplLikeCode(code)
+            : !!def.isReplacement;
+        if (isRpl || def.isReplacement) {
+            list.push({ code: code, label: def.label || code, color: def.color || '#e74c3c', text: def.text || '#fff' });
+        }
+    });
+    return list;
+}
+
+function generateAbsenceRequestId() {
+    return 'abs_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
+}
+
+function updateAbsencePendingBadge() {
+    const btn = document.getElementById('absenceProcessOpenBtn');
+    const badge = document.getElementById('absencePendingCount');
+    if (!btn || !badge) return;
+    const pending = (absenceRequests || []).filter(function(r) { return r && r.status === 'pending'; });
+    const n = pending.length;
+    if (n > 0 && !isReadOnly) {
+        badge.style.display = 'inline-block';
+        badge.textContent = String(n);
+    } else {
+        badge.style.display = 'none';
+    }
+}
+
+function openAbsenceRequestModal() {
+    if (!currentUser || !currentUser.email) {
+        alert('Connexion requise pour demander une absence.');
+        return;
+    }
+    const myIds = (typeof getMyAgentIds === 'function') ? getMyAgentIds() : [];
+    if (!myIds.length) {
+        alert(
+            'Aucun agent n\'est lié à votre adresse e-mail.\n' +
+            'Demandez à un administrateur de renseigner la liaison Agents ↔ e-mail dans les paramètres.'
+        );
+        return;
+    }
+
+    const select = document.getElementById('absenceRequestAgent');
+    const agentGroup = document.getElementById('absenceRequestAgentGroup');
+    if (select) {
+        select.innerHTML = '';
+        myIds.forEach(function(id) {
+            let name = id;
+            let teamName = '';
+            (teams || []).forEach(function(t) {
+                const a = (t.agents || []).find(function(ag) { return ag.id === id; });
+                if (a) {
+                    name = a.name || id;
+                    teamName = t.name || '';
+                }
+            });
+            const opt = document.createElement('option');
+            opt.value = id;
+            opt.textContent = teamName ? (name + ' (' + teamName + ')') : name;
+            select.appendChild(opt);
+        });
+        if (agentGroup) agentGroup.style.display = myIds.length > 1 ? 'block' : 'none';
+    }
+
+    const reasonsEl = document.getElementById('absenceRequestReasons');
+    if (reasonsEl) {
+        reasonsEl.innerHTML = '';
+        const reasons = getAbsenceReasonTasks();
+        if (!reasons.length) {
+            reasonsEl.innerHTML = '<span style="color:#c0392b;font-size:0.8rem;">Aucune raison disponible. Un Admin doit définir des tâches de type remplacement dans Paramètres.</span>';
+        } else {
+            reasons.forEach(function(r, idx) {
+                const lab = document.createElement('label');
+                lab.innerHTML =
+                    '<input type="radio" name="absenceReason" value="' + r.code + '"' + (idx === 0 ? ' checked' : '') + '>' +
+                    '<span class="badge" style="background:' + r.color + ';color:' + r.text + ';padding:2px 6px;border-radius:3px;">' + r.code + '</span>' +
+                    '<span>' + (r.label || r.code) + '</span>';
+                reasonsEl.appendChild(lab);
+            });
+        }
+    }
+
+    const startEl = document.getElementById('absenceRequestStart');
+    const endEl = document.getElementById('absenceRequestEnd');
+    const commentEl = document.getElementById('absenceRequestComment');
+    const today = formatDate(new Date());
+    if (startEl) startEl.value = today;
+    if (endEl) endEl.value = today;
+    if (commentEl) commentEl.value = '';
+
+    document.getElementById('absenceRequestModal').style.display = 'flex';
+}
+
+function closeAbsenceRequestModal() {
+    const m = document.getElementById('absenceRequestModal');
+    if (m) m.style.display = 'none';
+}
+
+function submitAbsenceRequest() {
+    if (!currentUser || !currentUser.email) {
+        alert('Connexion requise.');
+        return;
+    }
+    const agentSelect = document.getElementById('absenceRequestAgent');
+    const agentId = agentSelect ? agentSelect.value : '';
+    if (!agentId) {
+        alert('Veuillez sélectionner un agent.');
+        return;
+    }
+    const myIds = (typeof getMyAgentIds === 'function') ? getMyAgentIds() : [];
+    if (myIds.indexOf(agentId) === -1 && isReadOnly) {
+        alert('Vous ne pouvez demander une absence que pour un agent lié à votre e-mail.');
+        return;
+    }
+
+    const startDate = (document.getElementById('absenceRequestStart') || {}).value || '';
+    const endDate = (document.getElementById('absenceRequestEnd') || {}).value || '';
+    if (!startDate || !endDate) {
+        alert('Veuillez indiquer la période (date de début et de fin).');
+        return;
+    }
+    if (startDate > endDate) {
+        alert('La date de fin doit être postérieure ou égale à la date de début.');
+        return;
+    }
+
+    const reasonRadio = document.querySelector('input[name="absenceReason"]:checked');
+    if (!reasonRadio || !reasonRadio.value) {
+        alert('Veuillez sélectionner une raison d\'absence.');
+        return;
+    }
+    const reasonCode = reasonRadio.value;
+    const def = TASKS[reasonCode] || {};
+    const reasonLabel = def.label || reasonCode;
+    const comment = ((document.getElementById('absenceRequestComment') || {}).value || '').trim();
+
+    let agentName = agentId;
+    let teamId = '';
+    let teamName = '';
+    (teams || []).forEach(function(t) {
+        const a = (t.agents || []).find(function(ag) { return ag.id === agentId; });
+        if (a) {
+            agentName = a.name || agentId;
+            teamId = t.id;
+            teamName = t.name || '';
+        }
+    });
+
+    if (!Array.isArray(absenceRequests)) absenceRequests = [];
+    absenceRequests.push({
+        id: generateAbsenceRequestId(),
+        agentId: agentId,
+        agentName: agentName,
+        teamId: teamId,
+        teamName: teamName,
+        startDate: startDate,
+        endDate: endDate,
+        reasonCode: reasonCode,
+        reasonLabel: reasonLabel,
+        comment: comment,
+        status: 'pending',
+        createdAt: formatDate(new Date()),
+        createdByEmail: currentUser.email,
+        processedAt: '',
+        processedBy: ''
+    });
+
+    if (isReadOnly) {
+        if (typeof saveAbsenceRequestsToFirebase === 'function') saveAbsenceRequestsToFirebase();
+        else if (typeof saveToFirebase === 'function') saveToFirebase();
+    } else if (typeof saveToFirebase === 'function') {
+        saveToFirebase();
+    }
+    updateAbsencePendingBadge();
+    closeAbsenceRequestModal();
+    alert('✅ Demande d\'absence envoyée.\nUn RE pourra la valider ou la refuser.');
+}
+
+function openAbsenceProcessModal() {
+    if (isReadOnly) {
+        alert('Accès réservé aux RE et Administrateurs.');
+        return;
+    }
+    renderAbsenceProcessList();
+    document.getElementById('absenceProcessModal').style.display = 'flex';
+}
+
+function closeAbsenceProcessModal() {
+    const m = document.getElementById('absenceProcessModal');
+    if (m) m.style.display = 'none';
+}
+
+function renderAbsenceProcessList() {
+    const listEl = document.getElementById('absenceProcessList');
+    if (!listEl) return;
+    const pending = (absenceRequests || []).filter(function(r) { return r && r.status === 'pending'; });
+    if (!pending.length) {
+        listEl.innerHTML = '<p style="color:#888;font-style:italic;text-align:center;padding:16px;">Aucune demande en attente.</p>';
+        return;
+    }
+    // Plus anciennes d'abord
+    pending.sort(function(a, b) {
+        if ((a.createdAt || '') < (b.createdAt || '')) return -1;
+        if ((a.createdAt || '') > (b.createdAt || '')) return 1;
+        return 0;
+    });
+    listEl.innerHTML = '';
+    pending.forEach(function(req) {
+        const div = document.createElement('div');
+        div.className = 'absence-req-row';
+        const period = formatDateStrDisplay(req.startDate) +
+            (req.startDate !== req.endDate ? (' → ' + formatDateStrDisplay(req.endDate)) : '');
+        div.innerHTML =
+            '<div style="font-weight:bold;font-size:0.95rem;">' + (req.agentName || req.agentId) +
+            (req.teamName ? ' <span style="font-weight:normal;color:#666;">(' + req.teamName + ')</span>' : '') +
+            '</div>' +
+            '<div class="abs-meta">📅 Période : <strong>' + period + '</strong></div>' +
+            '<div class="abs-meta">🏷️ Raison : <strong>' + (req.reasonCode || '') +
+            '</strong> — ' + (req.reasonLabel || '') + '</div>' +
+            (req.comment
+                ? ('<div class="abs-meta">💬 Commentaire : ' + String(req.comment).replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</div>')
+                : '') +
+            '<div class="abs-meta" style="color:#888;">Demandé le ' + formatDateStrDisplay(req.createdAt || '') +
+            (req.createdByEmail ? (' par ' + req.createdByEmail) : '') + '</div>' +
+            '<div class="abs-actions">' +
+            '<button type="button" class="btn btn-success" onclick="approveAbsenceRequest(\'' + req.id + '\')">✅ Valider</button>' +
+            '<button type="button" class="btn btn-danger" onclick="refuseAbsenceRequest(\'' + req.id + '\')">✕ Refuser</button>' +
+            '</div>';
+        listEl.appendChild(div);
+    });
+}
+
+/**
+ * Génère la liste inclusive des dates YYYY-MM-DD entre start et end.
+ */
+function getDateRangeInclusiveStr(startStr, endStr) {
+    const out = [];
+    try {
+        let cur = parseDate(startStr);
+        const last = parseDate(endStr);
+        if (!cur || !last) return [startStr];
+        while (cur <= last) {
+            out.push(formatDate(cur));
+            cur.setDate(cur.getDate() + 1);
+        }
+    } catch (e) {
+        return [startStr];
+    }
+    return out.length ? out : [startStr];
+}
+
+/**
+ * Applique une demande validée sur le planning agent (même logique que RPL RE).
+ */
+function applyApprovedAbsenceToPlanning(req) {
+    if (!req || !req.agentId || !req.reasonCode) return;
+    const taskCode = req.reasonCode;
+    if (!TASKS[taskCode]) {
+        console.warn('Raison inconnue:', taskCode);
+        return;
+    }
+    const dateStrs = getDateRangeInclusiveStr(req.startDate, req.endDate);
+    const deadlineDate = (typeof computeDefaultRplDeadline === 'function')
+        ? computeDefaultRplDeadline(req.startDate)
+        : req.startDate;
+    const userComment = (req.comment || '').trim();
+
+    if (!agentSchedules[req.agentId]) agentSchedules[req.agentId] = {};
+
+    dateStrs.forEach(function(dStr) {
+        const beforeCode = (typeof getCellTaskCode === 'function')
+            ? getCellTaskCode(false, req.agentId, dStr)
+            : (agentSchedules[req.agentId][dStr] || 'R');
+
+        let codeToWrite = taskCode;
+        if (typeof resolveRplCodeIfRestOrDay === 'function') {
+            codeToWrite = resolveRplCodeIfRestOrDay(req.agentId, dStr, taskCode);
+        }
+        if (typeof applyWeekendFormationRule === 'function') {
+            codeToWrite = applyWeekendFormationRule(dStr, codeToWrite, taskCode, req.agentId);
+        }
+
+        const writtenDef = TASKS[codeToWrite];
+        const isRplLike = (typeof isRplLikeCode === 'function')
+            ? isRplLikeCode(codeToWrite)
+            : !!(writtenDef && writtenDef.isReplacement);
+        const rotCode = (typeof getTeamRotationCodeForAgent === 'function')
+            ? getTeamRotationCodeForAgent(req.agentId, dStr)
+            : 'R';
+        const isWorkShiftRpl = (typeof isRotationRestOrDayCode === 'function')
+            ? (!isRotationRestOrDayCode(rotCode) && isRplLike)
+            : isRplLike;
+
+        agentSchedules[req.agentId][dStr] = codeToWrite;
+        if (typeof logCellModification === 'function') {
+            logCellModification(false, req.agentId, dStr, beforeCode, codeToWrite);
+        }
+
+        const dKey = req.agentId + '_' + dStr;
+        let dayDesc = '';
+        if (typeof buildRplAvailabilityComment === 'function') {
+            dayDesc = buildRplAvailabilityComment(false, req.agentId, dStr) || '';
+        }
+        if (userComment) {
+            dayDesc = dayDesc ? (dayDesc.replace(/\s+$/, '') + '\n' + userComment) : userComment;
+        }
+        if (dayDesc) {
+            taskDescriptions[dKey] = dayDesc;
+        }
+
+        if (isWorkShiftRpl) {
+            const daySkills = (typeof computeAutoRecommendedSkillsForAbsence === 'function')
+                ? computeAutoRecommendedSkillsForAbsence(req.agentId, dStr)
+                : [];
+            const sheetKey = req.agentId + '_' + dStr;
+            const sheet = ensureReplacementSheet(sheetKey);
+            sheet.deadlineDate = deadlineDate;
+            sheet.recommendedSkills = daySkills;
+            if (!sheet.createdAt) sheet.createdAt = formatDate(new Date());
+            if (!sheet.createdBy) {
+                sheet.createdBy = (currentUser && currentUser.email) ? currentUser.email : 'demande_absence';
+            }
+            replacementSheets[sheetKey] = sheet;
+        } else {
+            const sheetKey = req.agentId + '_' + dStr;
+            if (replacementSheets && replacementSheets[sheetKey]) {
+                delete replacementSheets[sheetKey];
+            }
+        }
+    });
+}
+
+function findAbsenceRequestById(id) {
+    if (!id || !Array.isArray(absenceRequests)) return null;
+    for (let i = 0; i < absenceRequests.length; i++) {
+        if (absenceRequests[i] && absenceRequests[i].id === id) return absenceRequests[i];
+    }
+    return null;
+}
+
+function removeAbsenceRequestById(id) {
+    if (!Array.isArray(absenceRequests)) return;
+    absenceRequests = absenceRequests.filter(function(r) { return r && r.id !== id; });
+}
+
+function archiveAbsenceRequest(req, status) {
+    if (!Array.isArray(absenceRequestArchives)) absenceRequestArchives = [];
+    const copy = Object.assign({}, req, {
+        status: status,
+        processedAt: formatDate(new Date()),
+        processedBy: (currentUser && currentUser.email) ? currentUser.email : 'RE'
+    });
+    absenceRequestArchives.unshift(copy);
+    // Limite raisonnable
+    if (absenceRequestArchives.length > 500) {
+        absenceRequestArchives = absenceRequestArchives.slice(0, 500);
+    }
+}
+
+function approveAbsenceRequest(id) {
+    if (isReadOnly) {
+        alert('Accès réservé aux RE et Administrateurs.');
+        return;
+    }
+    const req = findAbsenceRequestById(id);
+    if (!req || req.status !== 'pending') {
+        alert('Demande introuvable ou déjà traitée.');
+        renderAbsenceProcessList();
+        return;
+    }
+    if (!confirm(
+        'Valider la demande d\'absence de ' + (req.agentName || req.agentId) +
+        ' du ' + formatDateStrDisplay(req.startDate) +
+        (req.startDate !== req.endDate ? (' au ' + formatDateStrDisplay(req.endDate)) : '') +
+        ' (' + (req.reasonCode || '') + ') ?\n\nLe planning sera mis à jour et des fiches RPL pourront être créées.'
+    )) {
+        return;
+    }
+
+    applyApprovedAbsenceToPlanning(req);
+    archiveAbsenceRequest(req, 'approved');
+    removeAbsenceRequestById(id);
+
+    if (typeof saveToFirebase === 'function') saveToFirebase();
+    if (typeof renderAll === 'function') renderAll(true);
+    updateAbsencePendingBadge();
+    renderAbsenceProcessList();
+    alert('✅ Demande validée. Le planning a été mis à jour.');
+}
+
+function refuseAbsenceRequest(id) {
+    if (isReadOnly) {
+        alert('Accès réservé aux RE et Administrateurs.');
+        return;
+    }
+    const req = findAbsenceRequestById(id);
+    if (!req || req.status !== 'pending') {
+        alert('Demande introuvable ou déjà traitée.');
+        renderAbsenceProcessList();
+        return;
+    }
+    if (!confirm(
+        'Refuser la demande d\'absence de ' + (req.agentName || req.agentId) +
+        ' ?\n\nAucune modification ne sera apportée au planning.'
+    )) {
+        return;
+    }
+
+    archiveAbsenceRequest(req, 'refused');
+    removeAbsenceRequestById(id);
+
+    if (typeof saveToFirebase === 'function') saveToFirebase();
+    updateAbsencePendingBadge();
+    renderAbsenceProcessList();
+    alert('Demande refusée. Aucune modification du planning.');
+}
+
+function openAbsenceArchiveModal() {
+    if (isReadOnly) {
+        alert('Accès réservé aux RE et Administrateurs.');
+        return;
+    }
+    const tbody = document.getElementById('absenceArchiveTableBody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+    const archives = Array.isArray(absenceRequestArchives) ? absenceRequestArchives.slice() : [];
+    if (!archives.length) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#888;">Aucune archive de demande d\'absence.</td></tr>';
+    } else {
+        archives.forEach(function(arch) {
+            const tr = document.createElement('tr');
+            const period = formatDateStrDisplay(arch.startDate || '') +
+                (arch.startDate !== arch.endDate ? (' → ' + formatDateStrDisplay(arch.endDate || '')) : '');
+            const decision = arch.status === 'approved'
+                ? '<span style="color:#1e8449;font-weight:bold;">Validée</span>'
+                : (arch.status === 'refused'
+                    ? '<span style="color:#c0392b;font-weight:bold;">Refusée</span>'
+                    : (arch.status || '—'));
+            tr.innerHTML =
+                '<td>' + (arch.agentName || arch.agentId || '') +
+                (arch.teamName ? '<br><small style="color:#888;">' + arch.teamName + '</small>' : '') + '</td>' +
+                '<td>' + period + '</td>' +
+                '<td><strong>' + (arch.reasonCode || '') + '</strong><br><small>' + (arch.reasonLabel || '') + '</small></td>' +
+                '<td>' + (arch.comment ? String(arch.comment).replace(/</g, '&lt;').replace(/>/g, '&gt;') : '—') + '</td>' +
+                '<td>' + decision + '</td>' +
+                '<td>' + (arch.processedBy || '—') +
+                '<br><small>' + (arch.processedAt ? formatDateStrDisplay(arch.processedAt) : '') + '</small></td>';
+            tbody.appendChild(tr);
+        });
+    }
+    document.getElementById('absenceArchiveModal').style.display = 'flex';
+}
+
+function closeAbsenceArchiveModal() {
+    const m = document.getElementById('absenceArchiveModal');
+    if (m) m.style.display = 'none';
 }
 
 function openVolunteerModal() {
