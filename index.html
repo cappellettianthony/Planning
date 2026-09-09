@@ -1461,7 +1461,9 @@
                     <tbody id="absenceArchiveTableBody"></tbody>
                 </table>
             </div>
-            <div class="modal-actions">
+            <div class="modal-actions" style="flex-wrap:wrap; gap:8px;">
+                <button type="button" class="btn btn-success" onclick="exportAbsenceArchivesToCsv()">📥 Export CSV</button>
+                <button type="button" class="btn btn-danger" onclick="purgeAbsenceRequestArchives()">🗑️ Purger les archives</button>
                 <button type="button" class="btn btn-secondary" onclick="closeAbsenceArchiveModal()">Fermer</button>
             </div>
         </div>
@@ -7919,6 +7921,115 @@ function closeAbsenceArchiveModal() {
     const m = document.getElementById('absenceArchiveModal');
     if (m) m.style.display = 'none';
 }
+
+/**
+ * Export CSV (Excel FR, séparateur ;) des archives de demandes d'absence.
+ */
+function exportAbsenceArchivesToCsv() {
+    if (isReadOnly) {
+        alert('Accès réservé aux RE et Administrateurs.');
+        return;
+    }
+    if (!absenceRequestArchives || absenceRequestArchives.length === 0) {
+        alert('Aucune archive de demande d\'absence à exporter.');
+        return;
+    }
+
+    const headers = [
+        'Demandeur',
+        'Équipe',
+        'Date début',
+        'Date fin',
+        'Raison (code)',
+        'Raison (libellé)',
+        'Commentaire',
+        'Décision',
+        'Détail jours',
+        'Traité par',
+        'Traité le',
+        'Créé le',
+        'Créé par'
+    ];
+
+    function statusLabel(st) {
+        if (st === 'approved') return 'Validée';
+        if (st === 'refused') return 'Refusée';
+        if (st === 'mixed' || st === 'partial') return 'Partielle';
+        return st || '';
+    }
+
+    function dayDetail(arch) {
+        if (!arch.dayStatuses || typeof arch.dayStatuses !== 'object') return '';
+        const bits = [];
+        Object.keys(arch.dayStatuses).sort().forEach(function(d) {
+            const ds = arch.dayStatuses[d];
+            if (!ds) return;
+            let lab = ds.status || '';
+            if (ds.status === 'approved') lab = 'OK';
+            else if (ds.status === 'refused') lab = 'refus' + (ds.refuseReason ? ': ' + ds.refuseReason : '');
+            bits.push(d + ' ' + lab);
+        });
+        return bits.join(' | ');
+    }
+
+    const rows = absenceRequestArchives.map(function(arch) {
+        return [
+            arch.agentName || arch.agentId || '',
+            arch.teamName || '',
+            arch.startDate || '',
+            arch.endDate || '',
+            arch.reasonCode || '',
+            arch.reasonLabel || '',
+            arch.comment || '',
+            statusLabel(arch.status),
+            dayDetail(arch),
+            arch.processedBy || '',
+            arch.processedAt || '',
+            arch.createdAt || '',
+            arch.createdByEmail || ''
+        ].map(function(val) {
+            const str = String(val).replace(/"/g, '""');
+            return '"' + str + '"';
+        }).join(';');
+    });
+
+    const csvContent = '\uFEFF' + headers.join(';') + '\n' + rows.join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'archives_demandes_absence_' + formatDate(new Date()) + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+/**
+ * Vide les archives des demandes d'absence (RE / Admin, confirmation).
+ */
+function purgeAbsenceRequestArchives() {
+    if (isReadOnly) {
+        alert('Accès réservé aux RE et Administrateurs.');
+        return;
+    }
+    if (!absenceRequestArchives || absenceRequestArchives.length === 0) {
+        alert('Les archives sont déjà vides.');
+        return;
+    }
+    if (!confirm(
+        'Purger toutes les archives des demandes d\'absence ?\n\n' +
+        absenceRequestArchives.length + ' entrée(s) seront définitivement supprimées.\n' +
+        'Cette action est irréversible.'
+    )) {
+        return;
+    }
+    absenceRequestArchives = [];
+    if (typeof saveToFirebase === 'function') saveToFirebase();
+    if (typeof openAbsenceArchiveModal === 'function') openAbsenceArchiveModal();
+    alert('Archives des demandes d\'absence vidées.');
+}
+
 
 
 /**
