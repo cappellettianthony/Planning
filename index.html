@@ -1364,6 +1364,24 @@
         </div>
     </div>
 
+    <!-- Alerte demandes d'absence en attente (RE / Admin à l'ouverture) -->
+    <div class="modal" id="absencePendingAlertModal" style="display:none; z-index:10050;">
+        <div class="modal-content" style="width:440px; max-width:94vw; text-align:center;">
+            <h2 style="color:#8e44ad; margin-bottom:10px;">📥 Demandes d'absence en attente</h2>
+            <p id="absencePendingAlertText" style="font-size:0.95rem; color:#333; margin:0 0 16px 0; line-height:1.45;">
+                Des demandes d'absence sont en attente de traitement.
+            </p>
+            <div class="modal-actions" style="justify-content:center; flex-wrap:wrap; gap:10px;">
+                <button type="button" class="btn btn-success" onclick="goToAbsenceProcessFromAlert()">
+                    Traiter les absences
+                </button>
+                <button type="button" class="btn btn-secondary" onclick="dismissAbsencePendingAlert()">
+                    Continuer sans traitement
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Modale Traitement des demandes d'absence (RE / Admin) -->
     <div class="modal" id="absenceProcessModal" style="display:none;">
         <div class="modal-content" style="width:640px; max-width:96vw;">
@@ -2220,6 +2238,7 @@ let replacementArchives = [];  // Stocke l'historique des fiches soldées
 let modificationLog = [];      // Historique des modifications de cellules
 let absenceRequests = [];      // Demandes d'absence en attente (pending)
 let absenceRequestArchives = []; // Demandes d'absence traitées (validées / refusées)
+let absencePendingAlertShown = false; // Pop-up déjà affiché cette session (RE/Admin)
 let activeRplContext = null;   // Contexte courant de la fiche ouverte
 let rplShowAllAgents = false; // false = liste filtrée (éligibles), true = tous les agents
 let clickTimer = null;         // Pour distinguer le clic simple du double-clic
@@ -2547,6 +2566,9 @@ function markAgentSeenOnSheet(sheetKey, agentId) {
                         try { syncReplacementCountsOnOpen(); } catch (e) {}
                     }
                     renderAll(false);
+                    if (typeof maybeShowAbsencePendingAlert === 'function') {
+                        try { maybeShowAbsencePendingAlert(); } catch (e) {}
+                    }
                 } else {
                     document.getElementById('authModal').style.display = 'flex';
                     document.getElementById('userStatus').style.display = 'none';
@@ -2554,6 +2576,9 @@ function markAgentSeenOnSheet(sheetKey, agentId) {
                     isReadOnly = true;
                     isAdmin = false;
                     planningEditUnlocked = false;
+                    absencePendingAlertShown = false;
+                    const absAlert = document.getElementById('absencePendingAlertModal');
+                    if (absAlert) absAlert.style.display = 'none';
                     applyReadOnlyMode();
                 }
             });
@@ -2886,6 +2911,9 @@ if (resetAckBtn) {
 
             // Recalcul des droits après chargement des rôles / e-mails
             if (typeof refreshUserRoles === 'function') refreshUserRoles();
+            if (typeof maybeShowAbsencePendingAlert === 'function') {
+                try { maybeShowAbsencePendingAlert(); } catch (e) { console.warn(e); }
+            }
 }
 
         // sert à sauvegarder l'état complet de l'application dans Firebase Realtime Database, tout en effectuant quelques contrôles d'intégrité avant l'enregistrement.
@@ -6669,6 +6697,45 @@ function updateAbsencePendingBadge() {
         badge.style.display = 'none';
     }
 }
+
+/**
+ * Pop-up à l'ouverture du planning pour RE / Admin s'il reste des demandes en attente.
+ * Affiché une seule fois par session de connexion.
+ */
+function maybeShowAbsencePendingAlert() {
+    if (isReadOnly) return;
+    if (!currentUser) return;
+    if (absencePendingAlertShown) return;
+
+    const pending = (absenceRequests || []).filter(function(r) { return r && r.status === 'pending'; });
+    const n = pending.length;
+    if (n <= 0) return;
+
+    const modal = document.getElementById('absencePendingAlertModal');
+    const textEl = document.getElementById('absencePendingAlertText');
+    if (!modal) return;
+
+    if (textEl) {
+        textEl.innerHTML =
+            (n === 1
+                ? 'Il y a <strong>1 demande d'absence</strong> en attente de traitement.'
+                : ('Il y a <strong>' + n + ' demandes d'absence</strong> en attente de traitement.')) +
+            '<br><span style="font-size:0.85rem;color:#666;">Vous pouvez les traiter maintenant ou continuer et y revenir plus tard.</span>';
+    }
+    absencePendingAlertShown = true;
+    modal.style.display = 'flex';
+}
+
+function dismissAbsencePendingAlert() {
+    const modal = document.getElementById('absencePendingAlertModal');
+    if (modal) modal.style.display = 'none';
+}
+
+function goToAbsenceProcessFromAlert() {
+    dismissAbsencePendingAlert();
+    if (typeof openAbsenceProcessModal === 'function') openAbsenceProcessModal();
+}
+
 
 function openAbsenceRequestModal() {
     if (!currentUser || !currentUser.email) {
