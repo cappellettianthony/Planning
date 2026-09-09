@@ -7532,24 +7532,91 @@ function approveAbsenceRequest(id) {
         renderAbsenceProcessList();
         return;
     }
-    if (!confirm(
-        'Valider la demande d\'absence de ' + (req.agentName || req.agentId) +
-        ' du ' + formatDateStrDisplay(req.startDate) +
-        (req.startDate !== req.endDate ? (' au ' + formatDateStrDisplay(req.endDate)) : '') +
-        ' (' + (req.reasonCode || '') + ') ?\n\nLe planning sera mis à jour et des fiches RPL pourront être créées.'
-    )) {
+    if (!req.reasonCode || !TASKS[req.reasonCode]) {
+        alert('Raison d\'absence inconnue ou tâche absente des paramètres.');
         return;
     }
 
-    applyApprovedAbsenceToPlanning(req);
-    archiveAbsenceRequest(req, 'approved');
-    removeAbsenceRequestById(id);
+    const dateStrs = (typeof getDateRangeInclusiveStr === 'function')
+        ? getDateRangeInclusiveStr(req.startDate, req.endDate)
+        : [req.startDate];
+    if (!dateStrs.length) {
+        alert('Période invalide.');
+        return;
+    }
+    const isMulti = dateStrs.length > 1;
+    const comment = (req.comment || '').trim();
 
-    if (typeof saveToFirebase === 'function') saveToFirebase();
-    if (typeof renderAll === 'function') renderAll(true);
-    updateAbsencePendingBadge();
-    renderAbsenceProcessList();
-    alert('✅ Demande validée. Le planning a été mis à jour.');
+    // Préparer la même modale que pour une fiche RPL classique
+    pendingRplTaskAssignment = {
+        isTeam: false,
+        targetId: req.agentId,
+        targetName: req.agentName || req.agentId,
+        dateStr: dateStrs[0],
+        dateStrs: dateStrs,
+        taskCode: req.reasonCode,
+        descValue: comment,
+        descKey: req.agentId + '_' + dateStrs[0],
+        userProvidedComment: !!comment,
+        multiDay: isMulti,
+        fromAbsenceRequestId: req.id
+    };
+
+    // Contexte cellule pour populate compétences (jour unique)
+    activeTaskCellSelection = {
+        isTeam: false,
+        targetId: req.agentId,
+        targetName: req.agentName || req.agentId,
+        dateStr: dateStrs[0],
+        dateStrs: dateStrs,
+        multiDay: isMulti
+    };
+
+    const defaultDeadline = (typeof computeDefaultRplDeadline === 'function')
+        ? computeDefaultRplDeadline(dateStrs[0])
+        : dateStrs[0];
+
+    const infoEl = document.getElementById('rplDeadlineModalInfo');
+    if (infoEl) {
+        let dateHtml = formatDateStrDisplay(dateStrs[0]);
+        if (isMulti) {
+            dateHtml = formatDateStrDisplay(dateStrs[0]) + ' → ' + formatDateStrDisplay(dateStrs[dateStrs.length - 1]) +
+                ' <span style="color:#2980b9;">(' + dateStrs.length + ' jours)</span>';
+        }
+        let extra = '';
+        if (isMulti) {
+            extra = '<br><span style="font-size:0.8rem;color:#666;">Une fiche RPL par jour travaillé. Date limite <strong>identique</strong>. ' +
+                'Compétences calculées <strong>jour par jour</strong> selon l\'équipe.</span>';
+        }
+        infoEl.innerHTML =
+            'Validation demande d\'absence — <strong>' + (req.agentName || req.agentId) + '</strong>' +
+            (req.teamName ? ' (' + req.teamName + ')' : '') +
+            '<br>Raison : <strong>' + (req.reasonCode || '') + '</strong> — ' + (req.reasonLabel || '') +
+            '<br>Période : <strong>' + dateHtml + '</strong>.' + extra;
+    }
+
+    const input = document.getElementById('rplDeadlineDateInput');
+    if (input) input.value = defaultDeadline;
+
+    if (typeof populateRplRecommendedSkillsCheckboxes === 'function') {
+        populateRplRecommendedSkillsCheckboxes();
+    }
+
+    // Pour jour unique : pré-cocher compétences auto si aucune case cochée
+    if (!isMulti && typeof computeAutoRecommendedSkillsForAbsence === 'function') {
+        try {
+            const autoSkills = computeAutoRecommendedSkillsForAbsence(req.agentId, dateStrs[0]) || [];
+            autoSkills.forEach(function(skId) {
+                const cb = document.querySelector('#rplRecommendedSkillsCheckboxes input[type="checkbox"][value="' + skId + '"]');
+                if (cb) cb.checked = true;
+            });
+        } catch (e) {}
+    }
+
+    // Fermer le traitement des absences pour laisser la modale deadline au premier plan
+    const processModal = document.getElementById('absenceProcessModal');
+    if (processModal) processModal.style.display = 'none';
+    document.getElementById('rplDeadlineModal').style.display = 'flex';
 }
 
 function refuseAbsenceRequest(id) {
@@ -9003,7 +9070,11 @@ function purgeReplacementArchives() {
          * puis applique l'affectation de tâche (individuelle ou d'équipe avec récurrence).
          */
         function confirmRplDeadlineAndSave() {
-            if ((typeof canModifyPlanning === 'function' ? !canModifyPlanning() : isReadOnly) || !pendingRplTaskAssignment) return;
+            if (!pendingRplTaskAssignment) return;
+            // Validation d'une demande d'absence : RE/Admin suffit (pas besoin main déverrouillée)
+            const fromAbsence = !!pendingRplTaskAssignment.fromAbsenceRequestId;
+            if (isReadOnly) return;
+            if (!fromAbsence && (typeof canModifyPlanning === 'function' ? !canModifyPlanning() : false)) return;
             const deadlineInput = document.getElementById('rplDeadlineDateInput');
             let deadlineDate = deadlineInput ? deadlineInput.value : '';
             if (!deadlineDate) {
@@ -9090,11 +9161,29 @@ function purgeReplacementArchives() {
                 });
             }
 
+            // Si validation depuis une demande d'absence : archiver la demande
+            const absReqId = pendingRplTaskAssignment && pendingRplTaskAssignment.fromAbsenceRequestId;
+            if (absReqId && typeof findAbsenceRequestById === 'function') {
+                const absReq = findAbsenceRequestById(absReqId);
+                if (absReq) {
+                    if (typeof archiveAbsenceRequest === 'function') archiveAbsenceRequest(absReq, 'approved');
+                    if (typeof removeAbsenceRequestById === 'function') removeAbsenceRequestById(absReqId);
+                    if (typeof updateAbsencePendingBadge === 'function') updateAbsencePendingBadge();
+                    if (typeof renderAbsenceProcessList === 'function') renderAbsenceProcessList();
+                }
+            }
+
             document.getElementById('rplDeadlineModal').style.display = 'none';
             pendingRplTaskAssignment = null;
-            closeTaskModal();
+            if (typeof closeTaskModal === 'function') closeTaskModal();
             // Pour équipe : le render se fait après applyTeamRotation
-            if (!isTeam) renderAll(true);
+            if (!isTeam) {
+                if (typeof renderAll === 'function') renderAll(true);
+                else if (typeof saveToFirebase === 'function') saveToFirebase();
+            }
+            if (absReqId) {
+                alert('✅ Demande d\'absence validée. Le planning a été mis à jour.');
+            }
         }
 
         function clearTaskAndDesc() {
