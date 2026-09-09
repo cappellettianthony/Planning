@@ -1393,9 +1393,10 @@
 
     <!-- Aperçu période demande d'absence (roulement équipe + tâches agent) -->
     <div class="modal" id="absencePeriodPreviewModal" style="display:none; z-index:10060;">
-        <div class="modal-content" style="width:920px; max-width:98vw;">
+        <div class="modal-content" style="width:1100px; max-width:98vw;">
             <h2 style="margin-bottom:6px;">📅 Période demandée</h2>
             <p id="absencePeriodPreviewSubtitle" style="font-size:0.85rem;color:#555;margin:0 0 12px 0;"></p>
+            <input type="hidden" id="absencePeriodPreviewRequestId" value="">
             <div style="max-height:55vh;overflow:auto;border:1px solid #e0e0e0;border-radius:6px;">
                 <table class="archive-table" style="width:100%;">
                     <thead>
@@ -1406,18 +1407,21 @@
                             <th>Tâche agent</th>
                             <th>Éligibles</th>
                             <th>TPR</th>
+                            <th>Statut</th>
+                            <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody id="absencePeriodPreviewBody"></tbody>
                 </table>
             </div>
             <p style="font-size:0.75rem;color:#888;margin:10px 0 0 0;">
-                <strong>Éligibles</strong> : mêmes règles que les stats (repos de roulement, compétences recommandées, pas d'absence CA/CE/RC…).<br>
-                <strong>TPR</strong> (taux probable de remplaçant) : proba qu'au moins un éligible se propose.
-                Sans historique, une proba a priori (35&nbsp;% par personne) est utilisée selon le nombre d'éligibles ;
-                elle s'affine automatiquement quand les stats se remplissent.
+                <strong>Éligibles / TPR</strong> : mêmes règles que les stats.<br>
+                Validez ou refusez <strong>jour par jour</strong>, ou utilisez <strong>Tout valider</strong> / <strong>Tout refuser</strong>.
+                La demande reste active tant qu'il reste au moins un jour en attente. Un <strong>motif est obligatoire</strong> en cas de refus.
             </p>
-            <div class="modal-actions">
+            <div class="modal-actions" style="flex-wrap:wrap; gap:8px;">
+                <button type="button" class="btn btn-success" onclick="approveAllPendingAbsenceDaysFromPreview()">✅ Tout valider</button>
+                <button type="button" class="btn btn-danger" onclick="refuseAllPendingAbsenceDaysFromPreview()">✕ Tout refuser</button>
                 <button type="button" class="btn btn-secondary" onclick="closeAbsencePeriodPreview()">Fermer</button>
             </div>
         </div>
@@ -6967,7 +6971,12 @@ function updateAbsencePendingBadge() {
     const btn = document.getElementById('absenceProcessOpenBtn');
     const badge = document.getElementById('absencePendingCount');
     if (!btn || !badge) return;
-    const pending = (absenceRequests || []).filter(function(r) { return r && r.status === 'pending'; });
+    const pending = (absenceRequests || []).filter(function(r) {
+        if (!r) return false;
+        if (r.status === 'pending' || r.status === 'partial') return true;
+        if (typeof getAbsencePendingDays === 'function' && getAbsencePendingDays(r).length > 0) return true;
+        return false;
+    });
     const n = pending.length;
     if (n > 0 && !isReadOnly) {
         badge.style.display = 'inline-block';
@@ -6986,7 +6995,12 @@ function maybeShowAbsencePendingAlert() {
     if (!currentUser) return;
     if (absencePendingAlertShown) return;
 
-    const pending = (absenceRequests || []).filter(function(r) { return r && r.status === 'pending'; });
+    const pending = (absenceRequests || []).filter(function(r) {
+        if (!r) return false;
+        if (r.status === 'pending' || r.status === 'partial') return true;
+        if (typeof getAbsencePendingDays === 'function' && getAbsencePendingDays(r).length > 0) return true;
+        return false;
+    });
     const n = pending.length;
     if (n <= 0) return;
 
@@ -7186,6 +7200,14 @@ function submitAbsenceRequest() {
     });
 
     if (!Array.isArray(absenceRequests)) absenceRequests = [];
+    const dayStatuses = {};
+    const rangeForDays = (typeof getDateRangeInclusiveStr === 'function')
+        ? getDateRangeInclusiveStr(startDate, endDate)
+        : [startDate];
+    rangeForDays.forEach(function(d) {
+        dayStatuses[d] = { status: 'pending', refuseReason: '' };
+    });
+
     absenceRequests.push({
         id: generateAbsenceRequestId(),
         agentId: agentId,
@@ -7198,6 +7220,7 @@ function submitAbsenceRequest() {
         reasonLabel: reasonLabel,
         comment: comment,
         status: 'pending',
+        dayStatuses: dayStatuses,
         createdAt: formatDate(new Date()),
         createdByEmail: currentUser.email,
         processedAt: '',
@@ -7232,7 +7255,13 @@ function closeAbsenceProcessModal() {
 function renderAbsenceProcessList() {
     const listEl = document.getElementById('absenceProcessList');
     if (!listEl) return;
-    const pending = (absenceRequests || []).filter(function(r) { return r && r.status === 'pending'; });
+    const pending = (absenceRequests || []).filter(function(r) {
+        if (!r) return false;
+        if (r.status === 'pending' || r.status === 'partial') return true;
+        // Secours : encore des jours en attente
+        if (typeof getAbsencePendingDays === 'function' && getAbsencePendingDays(r).length > 0) return true;
+        return false;
+    });
     if (!pending.length) {
         listEl.innerHTML = '<p style="color:#888;font-style:italic;text-align:center;padding:16px;">Aucune demande en attente.</p>';
         return;
@@ -7284,13 +7313,18 @@ function showAbsencePeriodPreview(requestId) {
         return;
     }
 
+    // Normaliser dayStatuses pour les anciennes demandes
+    if (typeof ensureAbsenceDayStatuses === 'function') ensureAbsenceDayStatuses(req);
+
     const modal = document.getElementById('absencePeriodPreviewModal');
     const tbody = document.getElementById('absencePeriodPreviewBody');
     const sub = document.getElementById('absencePeriodPreviewSubtitle');
+    const hid = document.getElementById('absencePeriodPreviewRequestId');
     if (!modal || !tbody) {
         alert('Fenêtre d\'aperçu indisponible. Rechargez la page.');
         return;
     }
+    if (hid) hid.value = requestId;
 
     const agentId = req.agentId;
     let teamId = req.teamId || '';
@@ -7310,6 +7344,7 @@ function showAbsencePeriodPreview(requestId) {
         ? getDateRangeInclusiveStr(req.startDate, req.endDate)
         : [req.startDate];
 
+    const pendingDays = (typeof getAbsencePendingDays === 'function') ? getAbsencePendingDays(req) : dates;
     if (sub) {
         const period = formatDateStrDisplay(req.startDate) +
             (req.startDate !== req.endDate ? (' → ' + formatDateStrDisplay(req.endDate)) : '');
@@ -7317,12 +7352,12 @@ function showAbsencePeriodPreview(requestId) {
             '<strong>' + (req.agentName || agentId) + '</strong>' +
             (teamName ? (' — équipe <strong>' + teamName + '</strong>') : '') +
             '<br>Période : <strong>' + period + '</strong> (' + dates.length + ' jour' + (dates.length > 1 ? 's' : '') + ')' +
-            ' — Raison demandée : <strong>' + (req.reasonCode || '') + '</strong> ' + (req.reasonLabel || '');
+            ' — Raison demandée : <strong>' + (req.reasonCode || '') + '</strong> ' + (req.reasonLabel || '') +
+            '<br><span style="color:#8e44ad;">Jours restant à traiter : <strong>' + pendingDays.length + '</strong> / ' + dates.length + '</span>';
     }
 
     tbody.innerHTML = '';
     dates.forEach(function(dStr) {
-        // Roulement équipe
         let rotCode = 'R';
         if (typeof getTeamRotationCodeForAgent === 'function') {
             rotCode = getTeamRotationCodeForAgent(agentId, dStr) || 'R';
@@ -7331,7 +7366,6 @@ function showAbsencePeriodPreview(requestId) {
         }
         const rotDef = TASKS[rotCode] || TASKS['R'] || { label: rotCode, color: '#ecf0f1', text: '#333' };
 
-        // Tâche agent (effective)
         let agentCode = rotCode;
         if (agentObj && typeof getEffectiveAgentTask === 'function') {
             agentCode = getEffectiveAgentTask(agentObj, teamId, dStr) || rotCode;
@@ -7346,7 +7380,6 @@ function showAbsencePeriodPreview(requestId) {
             dayName = d.toLocaleDateString('fr-FR', { weekday: 'short' });
         } catch (e) {}
 
-        // Éligibles + TPR (mêmes règles que les stats de disponibilité)
         let recommendedForDay = [];
         if (typeof computeAutoRecommendedSkillsForAbsence === 'function') {
             try {
@@ -7361,8 +7394,6 @@ function showAbsencePeriodPreview(requestId) {
         }
         const eligibleCount = eligibleIds.length;
 
-        // TPR = 1 - ∏(1 - p_i)
-        // p_i : historique si disponible, sinon a priori (et shrinkage si peu de données)
         let noneVol = 1;
         eligibleIds.forEach(function(eid) {
             const p = (typeof getAgentVolunteerProbability === 'function')
@@ -7375,7 +7406,29 @@ function showAbsencePeriodPreview(requestId) {
         if (tpr >= 70) tprColor = '#1e8449';
         else if (tpr >= 40) tprColor = '#d68910';
 
+        const daySt = (req.dayStatuses && req.dayStatuses[dStr]) ? req.dayStatuses[dStr] : { status: 'pending' };
+        const st = daySt.status || 'pending';
+        let statusHtml = '<span style="color:#d68910;font-weight:bold;">En attente</span>';
+        if (st === 'approved') {
+            statusHtml = '<span style="color:#1e8449;font-weight:bold;">Validé</span>';
+        } else if (st === 'refused') {
+            const rr = daySt.refuseReason ? String(daySt.refuseReason).replace(/</g, '&lt;') : '';
+            statusHtml = '<span style="color:#c0392b;font-weight:bold;">Refusé</span>' +
+                (rr ? '<br><small style="color:#888;">' + rr + '</small>' : '');
+        }
+
+        let actionsHtml = '—';
+        if (st === 'pending') {
+            actionsHtml =
+                '<button type="button" class="btn btn-success" style="padding:2px 8px;font-size:0.72rem;margin:1px;" ' +
+                'onclick="approveAbsenceDays(\'' + requestId + '\',[ \'' + dStr + '\' ])">Valider</button> ' +
+                '<button type="button" class="btn btn-danger" style="padding:2px 8px;font-size:0.72rem;margin:1px;" ' +
+                'onclick="refuseAbsenceDays(\'' + requestId + '\',[ \'' + dStr + '\' ])">Refuser</button>';
+        }
+
         const tr = document.createElement('tr');
+        if (st === 'approved') tr.style.background = '#eafaf1';
+        else if (st === 'refused') tr.style.background = '#fdedec';
         tr.innerHTML =
             '<td>' + formatDateStrDisplay(dStr) + '</td>' +
             '<td>' + dayName + '</td>' +
@@ -7387,7 +7440,9 @@ function showAbsencePeriodPreview(requestId) {
             '</span> <small style="color:#666;">' + (agentDef.label || '') + '</small></td>' +
             '<td style="text-align:center;font-weight:bold;">' + eligibleCount + '</td>' +
             '<td style="text-align:center;"><strong style="color:' + tprColor + ';" title="Taux probable de remplaçant">' +
-            tpr.toFixed(1) + ' %</strong></td>';
+            tpr.toFixed(1) + ' %</strong></td>' +
+            '<td style="font-size:0.8rem;">' + statusHtml + '</td>' +
+            '<td style="white-space:nowrap;">' + actionsHtml + '</td>';
         tbody.appendChild(tr);
     });
 
@@ -7526,78 +7581,120 @@ function archiveAbsenceRequest(req, status) {
     }
 }
 
-function approveAbsenceRequest(id) {
+
+/**
+ * Initialise dayStatuses sur une demande (compat. anciennes données).
+ */
+function ensureAbsenceDayStatuses(req) {
+    if (!req) return;
+    if (!req.dayStatuses || typeof req.dayStatuses !== 'object') {
+        req.dayStatuses = {};
+    }
+    const dates = (typeof getDateRangeInclusiveStr === 'function')
+        ? getDateRangeInclusiveStr(req.startDate, req.endDate)
+        : [req.startDate];
+    dates.forEach(function(d) {
+        if (!req.dayStatuses[d]) {
+            req.dayStatuses[d] = { status: 'pending', refuseReason: '' };
+        }
+    });
+}
+
+function getAbsencePendingDays(req) {
+    if (!req) return [];
+    ensureAbsenceDayStatuses(req);
+    const dates = (typeof getDateRangeInclusiveStr === 'function')
+        ? getDateRangeInclusiveStr(req.startDate, req.endDate)
+        : [req.startDate];
+    return dates.filter(function(d) {
+        const st = req.dayStatuses[d];
+        return !st || st.status === 'pending';
+    });
+}
+
+function promptAbsenceRefuseReason() {
+    const reason = window.prompt('Motif du refus (obligatoire) :');
+    if (reason === null) return null;
+    const t = String(reason).trim();
+    if (!t) {
+        alert('Le motif de refus est obligatoire.');
+        return null;
+    }
+    return t;
+}
+
+/**
+ * Ouvre la modale date limite / compétences pour valider certains jours d'une demande.
+ * @param {string} requestId
+ * @param {string[]} dateStrs — jours à valider (pending uniquement)
+ */
+function approveAbsenceDays(requestId, dateStrs) {
     if (isReadOnly) {
         alert('Accès réservé aux RE et Administrateurs.');
         return;
     }
-    const req = findAbsenceRequestById(id);
-    if (!req || req.status !== 'pending') {
-        alert('Demande introuvable ou déjà traitée.');
-        renderAbsenceProcessList();
+    const req = findAbsenceRequestById(requestId);
+    if (!req) {
+        alert('Demande introuvable.');
         return;
     }
+    ensureAbsenceDayStatuses(req);
     if (!req.reasonCode || !TASKS[req.reasonCode]) {
         alert('Raison d\'absence inconnue ou tâche absente des paramètres.');
         return;
     }
-
-    const dateStrs = (typeof getDateRangeInclusiveStr === 'function')
-        ? getDateRangeInclusiveStr(req.startDate, req.endDate)
-        : [req.startDate];
-    if (!dateStrs.length) {
-        alert('Période invalide.');
+    const pending = getAbsencePendingDays(req);
+    const dates = (dateStrs && dateStrs.length)
+        ? dateStrs.filter(function(d) { return pending.indexOf(d) !== -1; })
+        : pending.slice();
+    if (!dates.length) {
+        alert('Aucun jour en attente à valider.');
         return;
     }
-    const isMulti = dateStrs.length > 1;
+    dates.sort();
+    const isMulti = dates.length > 1;
     const comment = (req.comment || '').trim();
 
-    // Préparer la même modale que pour une fiche RPL classique
     pendingRplTaskAssignment = {
         isTeam: false,
         targetId: req.agentId,
         targetName: req.agentName || req.agentId,
-        dateStr: dateStrs[0],
-        dateStrs: dateStrs,
+        dateStr: dates[0],
+        dateStrs: dates,
         taskCode: req.reasonCode,
         descValue: comment,
-        descKey: req.agentId + '_' + dateStrs[0],
+        descKey: req.agentId + '_' + dates[0],
         userProvidedComment: !!comment,
         multiDay: isMulti,
-        fromAbsenceRequestId: req.id
+        fromAbsenceRequestId: req.id,
+        absenceDaysToApprove: dates.slice()
     };
 
-    // Contexte cellule pour populate compétences (jour unique)
     activeTaskCellSelection = {
         isTeam: false,
         targetId: req.agentId,
         targetName: req.agentName || req.agentId,
-        dateStr: dateStrs[0],
-        dateStrs: dateStrs,
+        dateStr: dates[0],
+        dateStrs: dates,
         multiDay: isMulti
     };
 
     const defaultDeadline = (typeof computeDefaultRplDeadline === 'function')
-        ? computeDefaultRplDeadline(dateStrs[0])
-        : dateStrs[0];
+        ? computeDefaultRplDeadline(dates[0])
+        : dates[0];
 
     const infoEl = document.getElementById('rplDeadlineModalInfo');
     if (infoEl) {
-        let dateHtml = formatDateStrDisplay(dateStrs[0]);
+        let dateHtml = formatDateStrDisplay(dates[0]);
         if (isMulti) {
-            dateHtml = formatDateStrDisplay(dateStrs[0]) + ' → ' + formatDateStrDisplay(dateStrs[dateStrs.length - 1]) +
-                ' <span style="color:#2980b9;">(' + dateStrs.length + ' jours)</span>';
-        }
-        let extra = '';
-        if (isMulti) {
-            extra = '<br><span style="font-size:0.8rem;color:#666;">Une fiche RPL par jour travaillé. Date limite <strong>identique</strong>. ' +
-                'Compétences calculées <strong>jour par jour</strong> selon l\'équipe.</span>';
+            dateHtml = formatDateStrDisplay(dates[0]) + ' → ' + formatDateStrDisplay(dates[dates.length - 1]) +
+                ' <span style="color:#2980b9;">(' + dates.length + ' jour(s))</span>';
         }
         infoEl.innerHTML =
             'Validation demande d\'absence — <strong>' + (req.agentName || req.agentId) + '</strong>' +
             (req.teamName ? ' (' + req.teamName + ')' : '') +
             '<br>Raison : <strong>' + (req.reasonCode || '') + '</strong> — ' + (req.reasonLabel || '') +
-            '<br>Période : <strong>' + dateHtml + '</strong>.' + extra;
+            '<br>Jour(s) : <strong>' + dateHtml + '</strong>.';
     }
 
     const input = document.getElementById('rplDeadlineDateInput');
@@ -7606,11 +7703,9 @@ function approveAbsenceRequest(id) {
     if (typeof populateRplRecommendedSkillsCheckboxes === 'function') {
         populateRplRecommendedSkillsCheckboxes();
     }
-
-    // Pour jour unique : pré-cocher compétences auto si aucune case cochée
     if (!isMulti && typeof computeAutoRecommendedSkillsForAbsence === 'function') {
         try {
-            const autoSkills = computeAutoRecommendedSkillsForAbsence(req.agentId, dateStrs[0]) || [];
+            const autoSkills = computeAutoRecommendedSkillsForAbsence(req.agentId, dates[0]) || [];
             autoSkills.forEach(function(skId) {
                 const cb = document.querySelector('#rplRecommendedSkillsCheckboxes input[type="checkbox"][value="' + skId + '"]');
                 if (cb) cb.checked = true;
@@ -7618,40 +7713,138 @@ function approveAbsenceRequest(id) {
         } catch (e) {}
     }
 
-    // Fermer le traitement des absences pour laisser la modale deadline au premier plan
-    const processModal = document.getElementById('absenceProcessModal');
-    if (processModal) processModal.style.display = 'none';
+    // Garder l'aperçu en arrière-plan ; deadline au premier plan
     document.getElementById('rplDeadlineModal').style.display = 'flex';
 }
 
-function refuseAbsenceRequest(id) {
+function approveAbsenceRequest(id) {
+    // Raccourci liste : valider tous les jours encore en attente
+    approveAbsenceDays(id, null);
+}
+
+function approveAllPendingAbsenceDaysFromPreview() {
+    const hid = document.getElementById('absencePeriodPreviewRequestId');
+    const id = hid ? hid.value : '';
+    if (!id) {
+        alert('Demande introuvable.');
+        return;
+    }
+    approveAbsenceDays(id, null);
+}
+
+/**
+ * Refuse un ou plusieurs jours (motif obligatoire).
+ */
+function refuseAbsenceDays(requestId, dateStrs) {
     if (isReadOnly) {
         alert('Accès réservé aux RE et Administrateurs.');
         return;
     }
-    const req = findAbsenceRequestById(id);
-    if (!req || req.status !== 'pending') {
-        alert('Demande introuvable ou déjà traitée.');
-        renderAbsenceProcessList();
+    const req = findAbsenceRequestById(requestId);
+    if (!req) {
+        alert('Demande introuvable.');
         return;
     }
+    ensureAbsenceDayStatuses(req);
+    const pending = getAbsencePendingDays(req);
+    const dates = (dateStrs && dateStrs.length)
+        ? dateStrs.filter(function(d) { return pending.indexOf(d) !== -1; })
+        : pending.slice();
+    if (!dates.length) {
+        alert('Aucun jour en attente à refuser.');
+        return;
+    }
+
+    const reason = promptAbsenceRefuseReason();
+    if (reason === null) return;
+
     if (!confirm(
-        'Refuser la demande d\'absence de ' + (req.agentName || req.agentId) +
-        ' ?\n\nAucune modification ne sera apportée au planning.'
+        'Refuser ' + dates.length + ' jour(s) pour ' + (req.agentName || req.agentId) +
+        ' ?\n\nMotif : ' + reason + '\n\nAucune modification du planning pour ces jours.'
     )) {
         return;
     }
 
-    archiveAbsenceRequest(req, 'refused');
-    removeAbsenceRequestById(id);
+    dates.forEach(function(d) {
+        req.dayStatuses[d] = { status: 'refused', refuseReason: reason };
+    });
+
+    finalizeAbsenceRequestIfComplete(req);
 
     if (typeof saveToFirebase === 'function') saveToFirebase();
+    else if (typeof saveAbsenceRequestsToFirebase === 'function') saveAbsenceRequestsToFirebase();
+
     updateAbsencePendingBadge();
     renderAbsenceProcessList();
-    alert('Demande refusée. Aucune modification du planning.');
+
+    // Rafraîchir l'aperçu si encore ouvert
+    const hid = document.getElementById('absencePeriodPreviewRequestId');
+    if (hid && hid.value === requestId && findAbsenceRequestById(requestId)) {
+        showAbsencePeriodPreview(requestId);
+    } else if (hid && hid.value === requestId) {
+        closeAbsencePeriodPreview();
+    }
+}
+
+function refuseAbsenceRequest(id) {
+    refuseAbsenceDays(id, null);
+}
+
+function refuseAllPendingAbsenceDaysFromPreview() {
+    const hid = document.getElementById('absencePeriodPreviewRequestId');
+    const id = hid ? hid.value : '';
+    if (!id) {
+        alert('Demande introuvable.');
+        return;
+    }
+    refuseAbsenceDays(id, null);
+}
+
+/**
+ * Marque des jours comme validés après application planning (deadline confirmée).
+ */
+function markAbsenceDaysApproved(requestId, dateStrs) {
+    const req = findAbsenceRequestById(requestId);
+    if (!req) return;
+    ensureAbsenceDayStatuses(req);
+    (dateStrs || []).forEach(function(d) {
+        req.dayStatuses[d] = { status: 'approved', refuseReason: '' };
+    });
+    finalizeAbsenceRequestIfComplete(req);
+}
+
+/**
+ * Si plus aucun jour pending : archiver et retirer de la liste active.
+ */
+function finalizeAbsenceRequestIfComplete(req) {
+    if (!req) return;
+    ensureAbsenceDayStatuses(req);
+    const pending = getAbsencePendingDays(req);
+    if (pending.length > 0) {
+        req.status = 'partial';
+        return;
+    }
+    // Déterminer statut global
+    const dates = (typeof getDateRangeInclusiveStr === 'function')
+        ? getDateRangeInclusiveStr(req.startDate, req.endDate)
+        : [req.startDate];
+    let nApp = 0, nRef = 0;
+    dates.forEach(function(d) {
+        const st = (req.dayStatuses[d] && req.dayStatuses[d].status) || 'pending';
+        if (st === 'approved') nApp++;
+        else if (st === 'refused') nRef++;
+    });
+    let globalStatus = 'mixed';
+    if (nApp === dates.length) globalStatus = 'approved';
+    else if (nRef === dates.length) globalStatus = 'refused';
+    else globalStatus = 'mixed';
+
+    archiveAbsenceRequest(req, globalStatus);
+    removeAbsenceRequestById(req.id);
 }
 
 function openAbsenceArchiveModal() {
+
     if (isReadOnly) {
         alert('Accès réservé aux RE et Administrateurs.');
         return;
@@ -7667,11 +7860,28 @@ function openAbsenceArchiveModal() {
             const tr = document.createElement('tr');
             const period = formatDateStrDisplay(arch.startDate || '') +
                 (arch.startDate !== arch.endDate ? (' → ' + formatDateStrDisplay(arch.endDate || '')) : '');
-            const decision = arch.status === 'approved'
-                ? '<span style="color:#1e8449;font-weight:bold;">Validée</span>'
-                : (arch.status === 'refused'
-                    ? '<span style="color:#c0392b;font-weight:bold;">Refusée</span>'
-                    : (arch.status || '—'));
+            let decision;
+            if (arch.status === 'approved') {
+                decision = '<span style="color:#1e8449;font-weight:bold;">Validée</span>';
+            } else if (arch.status === 'refused') {
+                decision = '<span style="color:#c0392b;font-weight:bold;">Refusée</span>';
+            } else if (arch.status === 'mixed' || arch.status === 'partial') {
+                decision = '<span style="color:#8e44ad;font-weight:bold;">Partielle</span>';
+                if (arch.dayStatuses && typeof arch.dayStatuses === 'object') {
+                    const bits = [];
+                    Object.keys(arch.dayStatuses).sort().forEach(function(d) {
+                        const ds = arch.dayStatuses[d];
+                        if (!ds) return;
+                        const lab = ds.status === 'approved' ? 'OK' : (ds.status === 'refused' ? ('refus' + (ds.refuseReason ? ': ' + ds.refuseReason : '')) : ds.status);
+                        bits.push(formatDateStrDisplay(d) + ' ' + lab);
+                    });
+                    if (bits.length) {
+                        decision += '<br><small style="color:#666;">' + bits.join(' · ').replace(/</g, '&lt;') + '</small>';
+                    }
+                }
+            } else {
+                decision = (arch.status || '—');
+            }
             tr.innerHTML =
                 '<td>' + (arch.agentName || arch.agentId || '') +
                 (arch.teamName ? '<br><small style="color:#888;">' + arch.teamName + '</small>' : '') + '</td>' +
@@ -9222,19 +9432,21 @@ function purgeReplacementArchives() {
                 });
             }
 
-            // Si validation depuis une demande d'absence : archiver la demande
+            // Si validation depuis une demande d'absence : marquer les jours validés
             const absReqId = pendingRplTaskAssignment && pendingRplTaskAssignment.fromAbsenceRequestId;
-            if (absReqId && typeof findAbsenceRequestById === 'function') {
-                const absReq = findAbsenceRequestById(absReqId);
-                if (absReq) {
-                    if (typeof archiveAbsenceRequest === 'function') archiveAbsenceRequest(absReq, 'approved');
-                    if (typeof removeAbsenceRequestById === 'function') removeAbsenceRequestById(absReqId);
-                    if (typeof updateAbsencePendingBadge === 'function') updateAbsencePendingBadge();
-                    if (typeof renderAbsenceProcessList === 'function') renderAbsenceProcessList();
-                }
+            const absDays = (pendingRplTaskAssignment && pendingRplTaskAssignment.absenceDaysToApprove)
+                ? pendingRplTaskAssignment.absenceDaysToApprove.slice()
+                : (pendingRplTaskAssignment && pendingRplTaskAssignment.dateStrs
+                    ? pendingRplTaskAssignment.dateStrs.slice()
+                    : []);
+            if (absReqId && typeof markAbsenceDaysApproved === 'function') {
+                markAbsenceDaysApproved(absReqId, absDays);
+                if (typeof updateAbsencePendingBadge === 'function') updateAbsencePendingBadge();
+                if (typeof renderAbsenceProcessList === 'function') renderAbsenceProcessList();
             }
 
             document.getElementById('rplDeadlineModal').style.display = 'none';
+            const reopenPreviewId = absReqId;
             pendingRplTaskAssignment = null;
             if (typeof closeTaskModal === 'function') closeTaskModal();
             // Pour équipe : le render se fait après applyTeamRotation
@@ -9243,7 +9455,18 @@ function purgeReplacementArchives() {
                 else if (typeof saveToFirebase === 'function') saveToFirebase();
             }
             if (absReqId) {
-                alert('✅ Demande d\'absence validée. Le planning a été mis à jour.');
+                const stillThere = (typeof findAbsenceRequestById === 'function')
+                    ? findAbsenceRequestById(reopenPreviewId)
+                    : null;
+                if (stillThere) {
+                    alert('✅ Jour(s) validé(s). Le planning a été mis à jour.\nLa demande reste active tant qu\'il reste des jours à traiter.');
+                    if (typeof showAbsencePeriodPreview === 'function') {
+                        showAbsencePeriodPreview(reopenPreviewId);
+                    }
+                } else {
+                    alert('✅ Demande d\'absence entièrement traitée. Le planning a été mis à jour.');
+                    if (typeof closeAbsencePeriodPreview === 'function') closeAbsencePeriodPreview();
+                }
             }
         }
 
