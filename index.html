@@ -6675,8 +6675,12 @@ function openAbsenceRequestModal() {
         alert('Connexion requise pour demander une absence.');
         return;
     }
+
+    // RE / Admin : tous les agents ; sinon uniquement les agents liés à l'e-mail
+    const canPickAllAgents = !isReadOnly; // RE ou Admin
     const myIds = (typeof getMyAgentIds === 'function') ? getMyAgentIds() : [];
-    if (!myIds.length) {
+
+    if (!canPickAllAgents && !myIds.length) {
         alert(
             'Aucun agent n\'est lié à votre adresse e-mail.\n' +
             'Demandez à un administrateur de renseigner la liaison Agents ↔ e-mail dans les paramètres.'
@@ -6688,22 +6692,55 @@ function openAbsenceRequestModal() {
     const agentGroup = document.getElementById('absenceRequestAgentGroup');
     if (select) {
         select.innerHTML = '';
-        myIds.forEach(function(id) {
-            let name = id;
-            let teamName = '';
+        const agentEntries = [];
+
+        if (canPickAllAgents) {
             (teams || []).forEach(function(t) {
-                const a = (t.agents || []).find(function(ag) { return ag.id === id; });
-                if (a) {
-                    name = a.name || id;
-                    teamName = t.name || '';
-                }
+                (t.agents || []).forEach(function(a) {
+                    if (!a || !a.id) return;
+                    agentEntries.push({
+                        id: a.id,
+                        name: a.name || a.id,
+                        teamName: t.name || ''
+                    });
+                });
             });
+            agentEntries.sort(function(a, b) {
+                return String(a.name).localeCompare(String(b.name), 'fr');
+            });
+        } else {
+            myIds.forEach(function(id) {
+                let name = id;
+                let teamName = '';
+                (teams || []).forEach(function(t) {
+                    const a = (t.agents || []).find(function(ag) { return ag.id === id; });
+                    if (a) {
+                        name = a.name || id;
+                        teamName = t.name || '';
+                    }
+                });
+                agentEntries.push({ id: id, name: name, teamName: teamName });
+            });
+        }
+
+        if (!agentEntries.length) {
+            alert('Aucun agent disponible pour une demande d\'absence.');
+            return;
+        }
+
+        agentEntries.forEach(function(entry) {
             const opt = document.createElement('option');
-            opt.value = id;
-            opt.textContent = teamName ? (name + ' (' + teamName + ')') : name;
+            opt.value = entry.id;
+            opt.textContent = entry.teamName
+                ? (entry.name + ' (' + entry.teamName + ')')
+                : entry.name;
             select.appendChild(opt);
         });
-        if (agentGroup) agentGroup.style.display = myIds.length > 1 ? 'block' : 'none';
+
+        // Liste toujours visible pour RE/Admin ; pour les agents si plusieurs profils liés
+        if (agentGroup) {
+            agentGroup.style.display = (canPickAllAgents || agentEntries.length > 1) ? 'block' : 'none';
+        }
     }
 
     const reasonsEl = document.getElementById('absenceRequestReasons');
@@ -6751,10 +6788,13 @@ function submitAbsenceRequest() {
         alert('Veuillez sélectionner un agent.');
         return;
     }
-    const myIds = (typeof getMyAgentIds === 'function') ? getMyAgentIds() : [];
-    if (myIds.indexOf(agentId) === -1 && isReadOnly) {
-        alert('Vous ne pouvez demander une absence que pour un agent lié à votre e-mail.');
-        return;
+    // Agent lecture seule : uniquement ses agents liés ; RE / Admin : tous
+    if (isReadOnly) {
+        const myIds = (typeof getMyAgentIds === 'function') ? getMyAgentIds() : [];
+        if (myIds.indexOf(agentId) === -1) {
+            alert('Vous ne pouvez demander une absence que pour un agent lié à votre e-mail.');
+            return;
+        }
     }
 
     const startDate = (document.getElementById('absenceRequestStart') || {}).value || '';
