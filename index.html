@@ -6831,6 +6831,15 @@ function openAbsenceRequestModal() {
             select.appendChild(opt);
         });
 
+        // RE / Admin : pré-sélectionner leur propre agent lié (modifiable ensuite)
+        if (canPickAllAgents && myIds.length > 0) {
+            const preferredId = myIds[0];
+            const hasPreferred = agentEntries.some(function(e) { return e.id === preferredId; });
+            if (hasPreferred) {
+                select.value = preferredId;
+            }
+        }
+
         // Liste toujours visible pour RE/Admin ; pour les agents si plusieurs profils liés
         if (agentGroup) {
             agentGroup.style.display = (canPickAllAgents || agentEntries.length > 1) ? 'block' : 'none';
