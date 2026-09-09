@@ -1404,7 +1404,9 @@
             </div>
             <p style="font-size:0.75rem;color:#888;margin:10px 0 0 0;">
                 <strong>Éligibles</strong> : mêmes règles que les stats (repos de roulement, compétences recommandées, pas d'absence CA/CE/RC…).<br>
-                <strong>TPR</strong> (taux probable de remplaçant) : probabilité qu'au moins un agent éligible se propose, d'après leurs taux de disponibilité historiques.
+                <strong>TPR</strong> (taux probable de remplaçant) : proba qu'au moins un éligible se propose.
+                Sans historique, une proba a priori (35&nbsp;% par personne) est utilisée selon le nombre d'éligibles ;
+                elle s'affine automatiquement quand les stats se remplissent.
             </p>
             <div class="modal-actions">
                 <button type="button" class="btn btn-secondary" onclick="closeAbsencePeriodPreview()">Fermer</button>
@@ -7236,16 +7238,13 @@ function showAbsencePeriodPreview(requestId) {
         }
         const eligibleCount = eligibleIds.length;
 
-        // TPR = 1 - ∏(1 - p_i) avec p_i = taux de disponibilité de chaque éligible
+        // TPR = 1 - ∏(1 - p_i)
+        // p_i : historique si disponible, sinon a priori (et shrinkage si peu de données)
         let noneVol = 1;
         eligibleIds.forEach(function(eid) {
-            let p = 0;
-            if (typeof getAgentVolunteerAvailabilityRate === 'function') {
-                const s = getAgentVolunteerAvailabilityRate(eid);
-                if (s && s.rate !== null && s.rate !== undefined && !isNaN(s.rate)) {
-                    p = Math.max(0, Math.min(1, s.rate / 100));
-                }
-            }
+            const p = (typeof getAgentVolunteerProbability === 'function')
+                ? getAgentVolunteerProbability(eid)
+                : 0.35;
             noneVol *= (1 - p);
         });
         const tpr = eligibleCount === 0 ? 0 : (1 - noneVol) * 100;
@@ -7549,6 +7548,29 @@ function getAgentVolunteerAvailabilityRate(agentId) {
     const opportunities = parseInt(st.opportunities, 10) || 0;
     const rate = opportunities > 0 ? (proposed / opportunities) * 100 : null;
     return { proposed: proposed, opportunities: opportunities, rate: rate };
+}
+
+/**
+ * Probabilité qu'un agent se propose sur une fiche où il est éligible.
+ * - Sans historique : a priori 35 % (base raisonnable pour un volontaire potentiel).
+ * - Avec historique : taux observé, avec shrinkage vers l'a priori tant que le volume est faible
+ *   (pseudo-observations = 2), pour éviter des 0 % / 100 % trop brutaux sur peu de fiches.
+ * @returns {number} entre 0 et 1
+ */
+function getAgentVolunteerProbability(agentId) {
+    const PRIOR_P = 0.35;
+    const PRIOR_STRENGTH = 2;
+    const s = (typeof getAgentVolunteerAvailabilityRate === 'function')
+        ? getAgentVolunteerAvailabilityRate(agentId)
+        : { proposed: 0, opportunities: 0, rate: null };
+    const proposed = s.proposed || 0;
+    const opportunities = s.opportunities || 0;
+    if (opportunities <= 0) {
+        return PRIOR_P;
+    }
+    // (proposed + k * p0) / (opportunities + k)
+    const p = (proposed + PRIOR_STRENGTH * PRIOR_P) / (opportunities + PRIOR_STRENGTH);
+    return Math.max(0, Math.min(1, p));
 }
 
 function openVolunteerStatsModal() {
