@@ -1314,7 +1314,7 @@
     </div>
 
     <!-- Modale Deadline de traitement RPL -->
-    <div class="modal" id="rplDeadlineModal">
+    <div class="modal" id="rplDeadlineModal" style="z-index:10080;">
         <div class="modal-content" style="width: 480px;">
             <h2>Date limite de traitement de la fiche RPL</h2>
             <p style="font-size: 0.85rem; margin-bottom: 12px; color: var(--primary);" id="rplDeadlineModalInfo"></p>
@@ -1428,7 +1428,7 @@
     </div>
 
     <!-- Modale Traitement des demandes d'absence (RE / Admin) -->
-    <div class="modal" id="absenceProcessModal" style="display:none;">
+    <div class="modal" id="absenceProcessModal" style="display:none; z-index:10050;">
         <div class="modal-content" style="width:640px; max-width:96vw;">
             <h2>📥 Traitement des demandes d'absence</h2>
             <p style="font-size:0.8rem;color:#666;margin:0 0 12px 0;">
@@ -7713,8 +7713,26 @@ function approveAbsenceDays(requestId, dateStrs) {
         } catch (e) {}
     }
 
-    // Garder l'aperçu en arrière-plan ; deadline au premier plan
-    document.getElementById('rplDeadlineModal').style.display = 'flex';
+    // Source UI : liste de traitement vs aperçu période
+    const periodModal = document.getElementById('absencePeriodPreviewModal');
+    const processModal = document.getElementById('absenceProcessModal');
+    const periodOpen = periodModal && periodModal.style.display === 'flex';
+    pendingRplTaskAssignment.fromAbsenceUI = periodOpen ? 'periodPreview' : 'processList';
+
+    // Depuis la liste de traitement : fermer la fenêtre pour laisser place à la date limite
+    if (!periodOpen && processModal) {
+        processModal.style.display = 'none';
+    }
+    // Depuis l'aperçu période : laisser en arrière-plan, deadline au premier plan
+    if (periodModal && periodOpen) {
+        periodModal.style.zIndex = '10060';
+    }
+
+    const dlModal = document.getElementById('rplDeadlineModal');
+    if (dlModal) {
+        dlModal.style.zIndex = '10080';
+        dlModal.style.display = 'flex';
+    }
 }
 
 function approveAbsenceRequest(id) {
@@ -9195,8 +9213,32 @@ function purgeReplacementArchives() {
          * Annule la saisie de deadline RPL et ferme la modale associée.
          */
         function cancelRplDeadlineModal() {
+            const pending = pendingRplTaskAssignment;
             document.getElementById('rplDeadlineModal').style.display = 'none';
+            const fromAbsence = pending && pending.fromAbsenceRequestId;
+            const fromUI = pending && pending.fromAbsenceUI;
+            const absId = pending && pending.fromAbsenceRequestId;
             pendingRplTaskAssignment = null;
+
+            if (fromAbsence) {
+                // Revenir à l'écran de traitement d'absence (aperçu période ou liste)
+                if (fromUI === 'periodPreview' && absId && typeof showAbsencePeriodPreview === 'function') {
+                    showAbsencePeriodPreview(absId);
+                    const pm = document.getElementById('absencePeriodPreviewModal');
+                    if (pm) {
+                        pm.style.zIndex = '10070';
+                        pm.style.display = 'flex';
+                    }
+                } else {
+                    const proc = document.getElementById('absenceProcessModal');
+                    if (proc) {
+                        if (typeof renderAbsenceProcessList === 'function') renderAbsenceProcessList();
+                        proc.style.display = 'flex';
+                    }
+                }
+                return;
+            }
+
             // Rouvrir la modale tâche pour permettre de modifier
             if (activeTaskCellSelection) {
                 document.getElementById('taskModal').style.display = 'flex';
@@ -9445,8 +9487,11 @@ function purgeReplacementArchives() {
                 if (typeof renderAbsenceProcessList === 'function') renderAbsenceProcessList();
             }
 
-            document.getElementById('rplDeadlineModal').style.display = 'none';
+                        document.getElementById('rplDeadlineModal').style.display = 'none';
             const reopenPreviewId = absReqId;
+            const fromUI = (pendingRplTaskAssignment && pendingRplTaskAssignment.fromAbsenceUI)
+                ? pendingRplTaskAssignment.fromAbsenceUI
+                : 'processList';
             pendingRplTaskAssignment = null;
             if (typeof closeTaskModal === 'function') closeTaskModal();
             // Pour équipe : le render se fait après applyTeamRotation
@@ -9460,17 +9505,39 @@ function purgeReplacementArchives() {
                     : null;
                 if (stillThere) {
                     alert('✅ Jour(s) validé(s). Le planning a été mis à jour.\nLa demande reste active tant qu\'il reste des jours à traiter.');
-                    if (typeof showAbsencePeriodPreview === 'function') {
+                    // Remettre au premier plan l'écran d'où l'on vient
+                    if (fromUI === 'periodPreview' && typeof showAbsencePeriodPreview === 'function') {
                         showAbsencePeriodPreview(reopenPreviewId);
+                        const pm = document.getElementById('absencePeriodPreviewModal');
+                        if (pm) {
+                            pm.style.zIndex = '10070';
+                            pm.style.display = 'flex';
+                        }
+                    } else {
+                        if (typeof showAbsencePeriodPreview === 'function') {
+                            showAbsencePeriodPreview(reopenPreviewId);
+                        }
+                        const proc = document.getElementById('absenceProcessModal');
+                        if (proc) {
+                            if (typeof renderAbsenceProcessList === 'function') renderAbsenceProcessList();
+                            proc.style.zIndex = '10050';
+                            proc.style.display = 'flex';
+                        }
                     }
                 } else {
                     alert('✅ Demande d\'absence entièrement traitée. Le planning a été mis à jour.');
                     if (typeof closeAbsencePeriodPreview === 'function') closeAbsencePeriodPreview();
+                    // Rouvrir la liste de traitement si encore des autres demandes
+                    const proc = document.getElementById('absenceProcessModal');
+                    if (proc && typeof renderAbsenceProcessList === 'function') {
+                        renderAbsenceProcessList();
+                        proc.style.display = 'flex';
+                    }
                 }
             }
         }
 
-        function clearTaskAndDesc() {
+function clearTaskAndDesc() {
             if ((typeof canModifyPlanning === 'function' ? !canModifyPlanning() : isReadOnly) || !activeTaskCellSelection) return;
             const { isTeam, targetId, dateStr } = activeTaskCellSelection;
             const dateStrs = (activeTaskCellSelection.dateStrs && activeTaskCellSelection.dateStrs.length)
