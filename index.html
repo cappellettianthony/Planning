@@ -6974,11 +6974,100 @@ function renderAbsenceProcessList() {
             '<div class="abs-meta" style="color:#888;">Demandé le ' + formatDateStrDisplay(req.createdAt || '') +
             (req.createdByEmail ? (' par ' + req.createdByEmail) : '') + '</div>' +
             '<div class="abs-actions">' +
+            '<button type="button" class="btn btn-secondary" onclick="showAbsencePeriodPreview(\'' + req.id + '\')">📅 Afficher la période</button>' +
             '<button type="button" class="btn btn-success" onclick="approveAbsenceRequest(\'' + req.id + '\')">✅ Valider</button>' +
             '<button type="button" class="btn btn-danger" onclick="refuseAbsenceRequest(\'' + req.id + '\')">✕ Refuser</button>' +
             '</div>';
         listEl.appendChild(div);
     });
+}
+
+
+
+/**
+ * Affiche le roulement d'équipe et les tâches de l'agent sur la période de la demande.
+ */
+function showAbsencePeriodPreview(requestId) {
+    const req = findAbsenceRequestById(requestId);
+    if (!req) {
+        alert('Demande introuvable.');
+        return;
+    }
+
+    const agentId = req.agentId;
+    let teamId = req.teamId || '';
+    let teamName = req.teamName || '';
+    let agentObj = null;
+
+    (teams || []).forEach(function(t) {
+        const a = (t.agents || []).find(function(ag) { return ag && ag.id === agentId; });
+        if (a) {
+            agentObj = a;
+            teamId = t.id;
+            teamName = t.name || teamName;
+        }
+    });
+
+    const dates = getDateRangeInclusiveStr(req.startDate, req.endDate);
+    const tbody = document.getElementById('absencePeriodPreviewBody');
+    const sub = document.getElementById('absencePeriodPreviewSubtitle');
+    if (!tbody) return;
+
+    if (sub) {
+        const period = formatDateStrDisplay(req.startDate) +
+            (req.startDate !== req.endDate ? (' → ' + formatDateStrDisplay(req.endDate)) : '');
+        sub.innerHTML =
+            '<strong>' + (req.agentName || agentId) + '</strong>' +
+            (teamName ? (' — équipe <strong>' + teamName + '</strong>') : '') +
+            '<br>Période : <strong>' + period + '</strong> (' + dates.length + ' jour' + (dates.length > 1 ? 's' : '') + ')' +
+            ' — Raison demandée : <strong>' + (req.reasonCode || '') + '</strong> ' + (req.reasonLabel || '');
+    }
+
+    tbody.innerHTML = '';
+    dates.forEach(function(dStr) {
+        // Roulement équipe
+        let rotCode = 'R';
+        if (typeof getTeamRotationCodeForAgent === 'function') {
+            rotCode = getTeamRotationCodeForAgent(agentId, dStr) || 'R';
+        } else if (teamId && teamSchedules[teamId] && teamSchedules[teamId][dStr]) {
+            rotCode = teamSchedules[teamId][dStr];
+        }
+        const rotDef = TASKS[rotCode] || TASKS['R'] || { label: rotCode, color: '#ecf0f1', text: '#333' };
+
+        // Tâche agent (effective)
+        let agentCode = rotCode;
+        if (agentObj && typeof getEffectiveAgentTask === 'function') {
+            agentCode = getEffectiveAgentTask(agentObj, teamId, dStr) || rotCode;
+        } else if (agentSchedules[agentId] && agentSchedules[agentId][dStr]) {
+            agentCode = agentSchedules[agentId][dStr];
+        }
+        const agentDef = TASKS[agentCode] || TASKS['R'] || { label: agentCode, color: '#ecf0f1', text: '#333' };
+
+        let dayName = dStr;
+        try {
+            const d = parseDate(dStr);
+            dayName = d.toLocaleDateString('fr-FR', { weekday: 'short' });
+        } catch (e) {}
+
+        const tr = document.createElement('tr');
+        tr.innerHTML =
+            '<td>' + formatDateStrDisplay(dStr) + '</td>' +
+            '<td>' + dayName + '</td>' +
+            '<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-weight:bold;font-size:0.8rem;background:' +
+            (rotDef.color || '#ccc') + ';color:' + (rotDef.text || '#000') + ';">' + rotCode +
+            '</span> <small style="color:#666;">' + (rotDef.label || '') + '</small></td>' +
+            '<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-weight:bold;font-size:0.8rem;background:' +
+            (agentDef.color || '#ccc') + ';color:' + (agentDef.text || '#000') + ';">' + agentCode +
+            '</span> <small style="color:#666;">' + (agentDef.label || '') + '</small></td>';
+        tbody.appendChild(tr);
+    });
+
+    document.getElementById('absencePeriodPreviewModal').style.display = 'flex';
+}
+
+function closeAbsencePeriodPreview() {
+    const m = document.getElementById('absencePeriodPreviewModal');
+    if (m) m.style.display = 'none';
 }
 
 /**
