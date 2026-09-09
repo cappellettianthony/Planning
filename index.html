@@ -106,6 +106,15 @@
             align-items: center;
             gap: 6px;
         }
+        .online-user-badge.admin-kickable {
+            cursor: pointer;
+            transition: background 0.15s, box-shadow 0.15s;
+        }
+        .online-user-badge.admin-kickable:hover {
+            background: #fdecea;
+            box-shadow: 0 0 0 1px #e74c3c;
+        }
+
         .online-indicator {
             width: 8px;
             height: 8px;
@@ -1211,7 +1220,7 @@
     <details class="presence-wrapper" id="presenceWrapper">
         <summary>
             <span>👥 Utilisateurs actuellement connectés</span>
-            <span style="font-size: 0.75rem; color: #7f8c8d; font-weight: normal;">Cliquez pour afficher / masquer</span>
+            <span style="font-size: 0.75rem; color: #7f8c8d; font-weight: normal;">Cliquez pour afficher / masquer — Admin : cliquer un utilisateur pour le déconnecter</span>
         </summary>
         <div class="presence-container">
             <ul id="onlineUsersList" class="online-users-list"></ul>
@@ -2193,6 +2202,7 @@
         const database = (typeof firebase !== 'undefined') ? firebase.database() : null;
         const planningRef = database ? database.ref('planningData') : null;
         const presenceRef = database ? database.ref('onlineUsers') : null;
+        let lastPresenceUsers = {}; // snapshot pour re-rendre après calcul des rôles Admin
         const auth = (typeof firebase !== 'undefined') ? firebase.auth() : null;
 
         // ========================================================================
@@ -2448,6 +2458,9 @@ function refreshUserRoles() {
     isAdmin = admin;
     isReadOnly = !admin && !re;
     updateUserStatusDisplay();
+    if (typeof renderOnlineUsersList === 'function') {
+        try { renderOnlineUsersList(); } catch (e) {}
+    }
 }
 
 function updateUserStatusDisplay() {
@@ -2651,13 +2664,30 @@ function markAgentSeenOnSheet(sheetKey, agentId) {
         // met en place un système de présence en ligne en temps réel avec Firebase Realtime Database.
         function setupPresence(user) {
             const userKey = user.uid;
-            const myPresenceRef = database.ref(`onlineUsers/${userKey}`);
+            const myPresenceRef = database.ref('onlineUsers/' + userKey);
             const connectedRef = database.ref('.info/connected');
+            const forceLogoutRef = database.ref('forcedLogouts/' + userKey);
+
+            // Écoute déconnexion forcée par un Admin
+            forceLogoutRef.on('value', function(snap) {
+                const val = snap.val();
+                if (!val) return;
+                // Nettoyer le signal puis déconnecter (affiche la page de connexion)
+                forceLogoutRef.remove().catch(function() {});
+                try {
+                    if (myPresenceRef) myPresenceRef.remove();
+                } catch (e) {}
+                alert('Vous avez été déconnecté par un administrateur.');
+                if (auth && auth.signOut) {
+                    auth.signOut();
+                }
+            });
 
             connectedRef.on('value', (snap) => {
                 if (snap.val() === true) {
                     myPresenceRef.onDisconnect().remove();
                     myPresenceRef.set({
+                        uid: user.uid,
                         email: user.email,
                         lastSeen: firebase.database.ServerValue.TIMESTAMP
                     });
@@ -2665,17 +2695,78 @@ function markAgentSeenOnSheet(sheetKey, agentId) {
             });
 
             presenceRef.on('value', (snapshot) => {
-                const users = snapshot.val() || {};
-                const listEl = document.getElementById('onlineUsersList');
-                listEl.innerHTML = '';
-                Object.values(users).forEach(u => {
-                    if (u && u.email) {
-                        const li = document.createElement('li');
-                        li.className = 'online-user-badge';
-                        li.innerHTML = `<span class="online-indicator"></span> ${u.email}`;
-                        listEl.appendChild(li);
-                    }
-                });
+                lastPresenceUsers = snapshot.val() || {};
+                if (typeof renderOnlineUsersList === 'function') {
+                    renderOnlineUsersList();
+                }
+            });
+        }
+
+        /** Affiche la liste des utilisateurs connectés (cliquable pour Admin). */
+        function renderOnlineUsersList() {
+            const listEl = document.getElementById('onlineUsersList');
+            if (!listEl) return;
+            const users = lastPresenceUsers || {};
+            listEl.innerHTML = '';
+            Object.keys(users).forEach(function(uid) {
+                const u = users[uid];
+                if (!u || !u.email) return;
+                const li = document.createElement('li');
+                li.className = 'online-user-badge';
+                if (isAdmin) {
+                    li.className += ' admin-kickable';
+                    li.title = 'Admin : cliquer pour déconnecter ' + u.email;
+                    li.addEventListener('click', function(ev) {
+                        ev.preventDefault();
+                        ev.stopPropagation();
+                        adminForceDisconnectUser(uid, u.email);
+                    });
+                }
+                li.innerHTML = '<span class="online-indicator"></span> ' + u.email;
+                listEl.appendChild(li);
+            });
+        }
+
+        /**
+         * Admin uniquement : force la déconnexion d'un utilisateur connecté.
+         * Écrit un signal Firebase ; le client ciblé se déconnecte et affiche le login.
+         */
+        function adminForceDisconnectUser(uid, email) {
+            if (!isAdmin) {
+                alert('Action réservée aux Administrateurs.');
+                return;
+            }
+            if (!uid) {
+                alert('Identifiant utilisateur manquant.');
+                return;
+            }
+            if (currentUser && currentUser.uid === uid) {
+                alert('Vous ne pouvez pas vous déconnecter vous-même via cette action. Utilisez le bouton Déconnexion.');
+                return;
+            }
+            const label = email || uid;
+            if (!confirm(
+                'Déconnecter l\'utilisateur suivant ?\n\n' + label +
+                '\n\nÀ sa prochaine interaction (ou immédiatement), la page de connexion s\'affichera.'
+            )) {
+                return;
+            }
+            if (!database) {
+                alert('Firebase non disponible.');
+                return;
+            }
+            const payload = {
+                by: (currentUser && currentUser.email) ? currentUser.email : 'admin',
+                at: firebase.database.ServerValue.TIMESTAMP
+            };
+            Promise.all([
+                database.ref('forcedLogouts/' + uid).set(payload),
+                database.ref('onlineUsers/' + uid).remove()
+            ]).then(function() {
+                console.log('Déconnexion forcée demandée pour', uid, label);
+            }).catch(function(err) {
+                console.error(err);
+                alert('Impossible de déconnecter cet utilisateur.\n' + (err && err.message ? err.message : ''));
             });
         }
 
@@ -2741,6 +2832,33 @@ function markAgentSeenOnSheet(sheetKey, agentId) {
                 auth.signOut();
             }
         }
+
+        /**
+         * Vérifie qu'une session est toujours active.
+         * Si déconnecté (ex. kick Admin), affiche la page de connexion.
+         * @returns {boolean}
+         */
+        function ensureAuthenticatedSession() {
+            if (currentUser && auth && auth.currentUser) return true;
+            const authModal = document.getElementById('authModal');
+            if (authModal) authModal.style.display = 'flex';
+            return false;
+        }
+
+        // Première interaction après kick / session perdue → écran de connexion
+        (function installAuthInteractionGuard() {
+            const events = ['click', 'keydown', 'touchstart'];
+            events.forEach(function(evt) {
+                document.addEventListener(evt, function() {
+                    if (!currentUser) {
+                        const authModal = document.getElementById('authModal');
+                        if (authModal && authModal.style.display !== 'flex') {
+                            authModal.style.display = 'flex';
+                        }
+                    }
+                }, true);
+            });
+        })();
 
         /** Édition des cellules du planning autorisée ? (RE/Admin + main activée) */
         function canModifyPlanning() {
