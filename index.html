@@ -1384,7 +1384,7 @@
 
     <!-- Aperçu période demande d'absence (roulement équipe + tâches agent) -->
     <div class="modal" id="absencePeriodPreviewModal" style="display:none; z-index:10060;">
-        <div class="modal-content" style="width:760px; max-width:96vw;">
+        <div class="modal-content" style="width:920px; max-width:98vw;">
             <h2 style="margin-bottom:6px;">📅 Période demandée</h2>
             <p id="absencePeriodPreviewSubtitle" style="font-size:0.85rem;color:#555;margin:0 0 12px 0;"></p>
             <div style="max-height:55vh;overflow:auto;border:1px solid #e0e0e0;border-radius:6px;">
@@ -1395,13 +1395,16 @@
                             <th>Jour</th>
                             <th>Roulement équipe</th>
                             <th>Tâche agent</th>
+                            <th>Éligibles</th>
+                            <th>TPR</th>
                         </tr>
                     </thead>
                     <tbody id="absencePeriodPreviewBody"></tbody>
                 </table>
             </div>
             <p style="font-size:0.75rem;color:#888;margin:10px 0 0 0;">
-                Permet de vérifier si l'absence impacte un quart ou une tâche importante avant validation ou refus.
+                <strong>Éligibles</strong> : mêmes règles que les stats (repos de roulement, compétences recommandées, pas d'absence CA/CE/RC…).<br>
+                <strong>TPR</strong> (taux probable de remplaçant) : probabilité qu'au moins un agent éligible se propose, d'après leurs taux de disponibilité historiques.
             </p>
             <div class="modal-actions">
                 <button type="button" class="btn btn-secondary" onclick="closeAbsencePeriodPreview()">Fermer</button>
@@ -1838,11 +1841,41 @@
     </div>
 
     <!-- Modale Paramètres -->
+    <!-- Statistiques disponibilité remplacement -->
+    <div class="modal" id="volunteerStatsModal" style="display:none; z-index:10040;">
+        <div class="modal-content" style="width:720px; max-width:96vw;">
+            <h2>📊 Stats — Disponibilité aux remplacements</h2>
+            <p style="font-size:0.8rem;color:#666;margin:0 0 12px 0;">
+                Taux de proposition sur les fiches de remplacement clôturées où l'agent était disponible.
+                Cumul <strong>multi-années</strong> (non réinitialisé au changement d'année).
+            </p>
+            <div style="max-height:60vh;overflow:auto;border:1px solid #e0e0e0;border-radius:6px;">
+                <table class="archive-table" style="width:100%;">
+                    <thead>
+                        <tr>
+                            <th>Agent</th>
+                            <th>Équipe</th>
+                            <th>Propositions</th>
+                            <th>Opportunités</th>
+                            <th>Taux de disponibilité</th>
+                        </tr>
+                    </thead>
+                    <tbody id="volunteerStatsTableBody"></tbody>
+                </table>
+            </div>
+            <div class="modal-actions" style="justify-content:space-between;">
+                <span style="font-size:0.75rem;color:#888;align-self:center;">Mise à jour à chaque fiche RPL soldée</span>
+                <button type="button" class="btn btn-secondary" onclick="closeVolunteerStatsModal()">Fermer</button>
+            </div>
+        </div>
+    </div>
+
     <div class="modal" id="settingsModal">
         <div class="modal-content">
             <div class="settings-header">
                 <h2>⚙️ Paramètres (Administrateur)</h2>
                 <div class="settings-toolbar">
+                    <button type="button" class="btn" onclick="openVolunteerStatsModal()" title="Statistiques de disponibilité aux remplacements" id="statsBtn" style="background:#16a085;color:#fff;">📊 Stats</button>
                     <button type="button" class="btn btn-success" onclick="exportData()" title="Sauvegarder les données dans un fichier" id="exportBtn">💾 Exporter JSON</button>
                     <button type="button" class="btn btn-purple" onclick="document.getElementById('importFile').click()" title="Charger un fichier de sauvegarde" id="importBtn">📂 Importer JSON</button>
                 </div>
@@ -2265,6 +2298,8 @@ let replacementArchives = [];  // Stocke l'historique des fiches soldées
 let modificationLog = [];      // Historique des modifications de cellules
 let absenceRequests = [];      // Demandes d'absence en attente (pending)
 let absenceRequestArchives = []; // Demandes d'absence traitées (validées / refusées)
+/** Stats cumulées (multi-années) : { agentId: { proposed, opportunities } } */
+let replacementVolunteerStats = {};
 let absencePendingAlertShown = false; // Pop-up déjà affiché cette session (RE/Admin)
 let activeRplContext = null;   // Contexte courant de la fiche ouverte
 let rplShowAllAgents = false; // false = liste filtrée (éligibles), true = tous les agents
@@ -2827,6 +2862,7 @@ if (resetAckBtn) {
                 modificationLog: modificationLog,
                 absenceRequests: absenceRequests,
                 absenceRequestArchives: absenceRequestArchives,
+                replacementVolunteerStats: replacementVolunteerStats,
                 schoolHolidaysZoneA: schoolHolidaysZoneA
             };
         }
@@ -2922,6 +2958,9 @@ if (resetAckBtn) {
             modificationLog = Array.isArray(data.modificationLog) ? data.modificationLog : [];
             absenceRequests = Array.isArray(data.absenceRequests) ? data.absenceRequests : [];
             absenceRequestArchives = Array.isArray(data.absenceRequestArchives) ? data.absenceRequestArchives : [];
+            replacementVolunteerStats = (data.replacementVolunteerStats && typeof data.replacementVolunteerStats === 'object')
+                ? data.replacementVolunteerStats
+                : {};
 
             if (data.schoolHolidaysZoneA && typeof data.schoolHolidaysZoneA === 'object') {
                 schoolHolidaysZoneA = data.schoolHolidaysZoneA;
@@ -4827,7 +4866,8 @@ function getTeamShortLabel(team) {
 
 /**
  * Construit un commentaire listant les ÉQUIPES disponibles pour un remplacement
- * (mêmes contrôles que canAgentTakeReplacement : statut R/J, 11h, 35h, max 11 jours).
+ * (canAgentTakeReplacement + compétences recommandées obligatoires si présentes sur la fiche ;
+ *  absences CA/CE/RC exclues ; repos de roulement OK).
  * Format : "Quart à combler : M (Matin) | Équipes dispo : EQ2, EQ4"
  */
 function buildRplAvailabilityComment(isTeam, targetId, dateStr) {
@@ -4879,7 +4919,7 @@ function buildRplAvailabilityComment(isTeam, targetId, dateStr) {
  * Liste des agentIds éligibles pour une fiche RPL
  * (mêmes règles que la liste des volontaires filtrée).
  */
-function getEligibleAgentsForRpl(isTeam, targetId, dateStr) {
+function getEligibleAgentsForRpl(isTeam, targetId, dateStr, recommendedSkillsOverride) {
     const shiftToFill = (typeof getShiftToFillForRpl === 'function')
         ? getShiftToFillForRpl(isTeam, targetId, dateStr)
         : null;
@@ -4896,6 +4936,22 @@ function getEligibleAgentsForRpl(isTeam, targetId, dateStr) {
         shiftToFill: shiftToFill
     };
 
+    // Compétences recommandées : override (ex. prévisualisation) ou fiche existante
+    let recommendedSkills = [];
+    if (Array.isArray(recommendedSkillsOverride)) {
+        recommendedSkills = recommendedSkillsOverride.slice();
+    } else {
+        const sheetKey = targetId + '_' + dateStr;
+        if (replacementSheets && replacementSheets[sheetKey]) {
+            const sheet = (typeof ensureReplacementSheet === 'function')
+                ? ensureReplacementSheet(sheetKey)
+                : replacementSheets[sheetKey];
+            recommendedSkills = (typeof toArraySafe === 'function')
+                ? toArraySafe(sheet.recommendedSkills)
+                : (Array.isArray(sheet.recommendedSkills) ? sheet.recommendedSkills : []);
+        }
+    }
+
     const eligible = [];
     (teams || []).forEach(function(t) {
         (t.agents || []).forEach(function(a) {
@@ -4904,6 +4960,12 @@ function getEligibleAgentsForRpl(isTeam, targetId, dateStr) {
             const agentIsRE = (typeof agentHasRECompetence === 'function') && agentHasRECompetence(a.id);
             if (requireRE && !agentIsRE) return;
             if (!requireRE && agentIsRE) return;
+            // Compétences recommandées manquantes → non éligible
+            if (recommendedSkills.length > 0) {
+                if (typeof agentHasAllRecommendedSkills === 'function') {
+                    if (!agentHasAllRecommendedSkills(a, recommendedSkills)) return;
+                }
+            }
             if (typeof canAgentTakeReplacement === 'function' &&
                 canAgentTakeReplacement(a.id, dateStr, shiftToFill)) {
                 eligible.push(a.id);
@@ -5185,6 +5247,55 @@ function getVolunteerRestWarnings(agentId, dateStr, targetShiftCode) {
  * - Les alertes correspondantes sont calculées par getVolunteerRestWarnings()
  *   et affichées dans la liste des volontaires pour décision du RE.
  */
+/**
+ * Indique si le code de tâche est une absence / congé (CA, CE, RC…)
+ * et non un simple repos de roulement (R, H, HD…).
+ * Les absences bloquent l'éligibilité au remplacement.
+ */
+function isLeaveOrAbsenceRestCode(code) {
+    if (code === undefined || code === null || code === '') return false;
+    const c = String(code).trim().toUpperCase();
+
+    // Repos / journée strictement liés au roulement → éligibles (pas une absence)
+    const rotationRestCodes = {
+        R: 1, H: 1, RD: 1, OFF: 1, HD: 1, HC: 1,
+        RH: 1, RHD: 1, RHC: 1, J: 1
+    };
+    if (rotationRestCodes[c]) return false;
+
+    // Codes d'absence / congés (prioritaires même s'ils sont marqués isRest)
+    const leaveCodes = {
+        CA: 1, CE: 1, RC: 1, RCA: 1, RTT: 1, CP: 1, CL: 1,
+        MAL: 1, AT: 1, CSS: 1, MAP: 1, CFA: 1, CET: 1,
+        CM: 1, MAT: 1, PAT: 1, EVF: 1, CONG: 1, ANP: 1
+    };
+    if (leaveCodes[c]) return true;
+    if (c.indexOf('CA') === 0 || c.indexOf('CE') === 0 || c === 'RC' || c.indexOf('RC') === 0) {
+        if (c !== 'R' && c !== 'RD' && c !== 'RH' && c !== 'RHD' && c !== 'RHC') return true;
+    }
+
+    // Toute autre tâche isRest qui n'est pas un repos de roulement = absence
+    const def = (typeof TASKS !== 'undefined' && TASKS[code]) ? TASKS[code]
+        : ((typeof TASKS !== 'undefined' && TASKS[c]) ? TASKS[c] : null);
+    if (def && def.isRest) return true;
+
+    return false;
+}
+
+/**
+ * L'agent possède-t-il toutes les compétences recommandées de la fiche ?
+ * S'il n'y a aucune compétence recommandée, retourne true.
+ */
+function agentHasAllRecommendedSkills(agent, recommendedSkillIds) {
+    const rec = Array.isArray(recommendedSkillIds) ? recommendedSkillIds : [];
+    if (!rec.length) return true;
+    if (!agent) return false;
+    const skills = Array.isArray(agent.skills) ? agent.skills.map(String) : [];
+    return rec.every(function(skId) {
+        return skills.indexOf(String(skId)) !== -1;
+    });
+}
+
 function canAgentTakeReplacement(agentId, dateStr, targetShiftCode) {
     if (!targetShiftCode || !TASKS[targetShiftCode]) return false;
 
@@ -5197,11 +5308,15 @@ function canAgentTakeReplacement(agentId, dateStr, targetShiftCode) {
     }
 
     // ------------------------------------------------------------------
-    // 1. Statut du jour : doit être en Repos OU en J
+    // 1. Statut du jour : repos de ROULEMENT ou J — pas les absences (CA, CE, RC…)
     // ------------------------------------------------------------------
     const currentDef = info.taskDef;
     const currentCode = String(info.taskCode || '').toUpperCase();
     const isOnJ = (currentDef.shift === 'J' || currentCode === 'J');
+    // Absence / congé posé (CA, CE, RC…) → non disponible
+    if (typeof isLeaveOrAbsenceRestCode === 'function' && isLeaveOrAbsenceRestCode(info.taskCode)) {
+        return false;
+    }
     const isEligibleStatus = currentDef.isRest || isOnJ;
     if (!isEligibleStatus) return false;
 
@@ -6334,6 +6449,18 @@ function validateReplacementSheet() {
         closedAt: formatDate(new Date())
     });
 
+    // Stats disponibilité (cumul multi-années) : opportunités + propositions
+    if (typeof recordVolunteerStatsOnSheetClose === 'function') {
+        try {
+            recordVolunteerStatsOnSheetClose(
+                activeRplContext.isTeam,
+                activeRplContext.targetId,
+                activeRplContext.dateStr,
+                volunteersList
+            );
+        } catch (e) { console.warn('recordVolunteerStatsOnSheetClose', e); }
+    }
+
     // Suppression de la fiche active
     delete replacementSheets[sheetKey];
 
@@ -7094,6 +7221,38 @@ function showAbsencePeriodPreview(requestId) {
             dayName = d.toLocaleDateString('fr-FR', { weekday: 'short' });
         } catch (e) {}
 
+        // Éligibles + TPR (mêmes règles que les stats de disponibilité)
+        let recommendedForDay = [];
+        if (typeof computeAutoRecommendedSkillsForAbsence === 'function') {
+            try {
+                recommendedForDay = computeAutoRecommendedSkillsForAbsence(agentId, dStr) || [];
+            } catch (e) { recommendedForDay = []; }
+        }
+        let eligibleIds = [];
+        if (typeof getEligibleAgentsForRpl === 'function') {
+            try {
+                eligibleIds = getEligibleAgentsForRpl(false, agentId, dStr, recommendedForDay) || [];
+            } catch (e) { eligibleIds = []; }
+        }
+        const eligibleCount = eligibleIds.length;
+
+        // TPR = 1 - ∏(1 - p_i) avec p_i = taux de disponibilité de chaque éligible
+        let noneVol = 1;
+        eligibleIds.forEach(function(eid) {
+            let p = 0;
+            if (typeof getAgentVolunteerAvailabilityRate === 'function') {
+                const s = getAgentVolunteerAvailabilityRate(eid);
+                if (s && s.rate !== null && s.rate !== undefined && !isNaN(s.rate)) {
+                    p = Math.max(0, Math.min(1, s.rate / 100));
+                }
+            }
+            noneVol *= (1 - p);
+        });
+        const tpr = eligibleCount === 0 ? 0 : (1 - noneVol) * 100;
+        let tprColor = '#c0392b';
+        if (tpr >= 70) tprColor = '#1e8449';
+        else if (tpr >= 40) tprColor = '#d68910';
+
         const tr = document.createElement('tr');
         tr.innerHTML =
             '<td>' + formatDateStrDisplay(dStr) + '</td>' +
@@ -7103,7 +7262,10 @@ function showAbsencePeriodPreview(requestId) {
             '</span> <small style="color:#666;">' + (rotDef.label || '') + '</small></td>' +
             '<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-weight:bold;font-size:0.8rem;background:' +
             (agentDef.color || '#ccc') + ';color:' + (agentDef.text || '#000') + ';">' + agentCode +
-            '</span> <small style="color:#666;">' + (agentDef.label || '') + '</small></td>';
+            '</span> <small style="color:#666;">' + (agentDef.label || '') + '</small></td>' +
+            '<td style="text-align:center;font-weight:bold;">' + eligibleCount + '</td>' +
+            '<td style="text-align:center;"><strong style="color:' + tprColor + ';" title="Taux probable de remplaçant">' +
+            tpr.toFixed(1) + ' %</strong></td>';
         tbody.appendChild(tr);
     });
 
@@ -7338,6 +7500,116 @@ function openAbsenceArchiveModal() {
 
 function closeAbsenceArchiveModal() {
     const m = document.getElementById('absenceArchiveModal');
+    if (m) m.style.display = 'none';
+}
+
+
+/**
+ * Enregistre les stats de disponibilité à la clôture d'une fiche RPL.
+ * Pour chaque agent éligible : +1 opportunité ; s'il est volontaire : +1 proposition.
+ * Cumul permanent (pas de reset annuel).
+ */
+function recordVolunteerStatsOnSheetClose(isTeam, targetId, dateStr, volunteersList) {
+    if (!replacementVolunteerStats || typeof replacementVolunteerStats !== 'object') {
+        replacementVolunteerStats = {};
+    }
+    const volunteers = Array.isArray(volunteersList) ? volunteersList : [];
+    let eligible = [];
+    if (typeof getEligibleAgentsForRpl === 'function') {
+        try {
+            eligible = getEligibleAgentsForRpl(isTeam, targetId, dateStr) || [];
+        } catch (e) {
+            eligible = [];
+        }
+    }
+    // Au minimum, compter les volontaires même si éligibilité non calculable
+    const agentIds = {};
+    eligible.forEach(function(id) { if (id) agentIds[id] = true; });
+    volunteers.forEach(function(id) { if (id) agentIds[id] = true; });
+
+    Object.keys(agentIds).forEach(function(agentId) {
+        if (!replacementVolunteerStats[agentId] || typeof replacementVolunteerStats[agentId] !== 'object') {
+            replacementVolunteerStats[agentId] = { proposed: 0, opportunities: 0 };
+        }
+        const st = replacementVolunteerStats[agentId];
+        st.opportunities = (parseInt(st.opportunities, 10) || 0) + 1;
+        if (volunteers.indexOf(agentId) !== -1) {
+            st.proposed = (parseInt(st.proposed, 10) || 0) + 1;
+        }
+        replacementVolunteerStats[agentId] = st;
+    });
+}
+
+function getAgentVolunteerAvailabilityRate(agentId) {
+    if (!replacementVolunteerStats || !replacementVolunteerStats[agentId]) {
+        return { proposed: 0, opportunities: 0, rate: null };
+    }
+    const st = replacementVolunteerStats[agentId];
+    const proposed = parseInt(st.proposed, 10) || 0;
+    const opportunities = parseInt(st.opportunities, 10) || 0;
+    const rate = opportunities > 0 ? (proposed / opportunities) * 100 : null;
+    return { proposed: proposed, opportunities: opportunities, rate: rate };
+}
+
+function openVolunteerStatsModal() {
+    const tbody = document.getElementById('volunteerStatsTableBody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    const rows = [];
+    (teams || []).forEach(function(t) {
+        (t.agents || []).forEach(function(a) {
+            if (!a || !a.id) return;
+            const s = getAgentVolunteerAvailabilityRate(a.id);
+            rows.push({
+                agentId: a.id,
+                agentName: a.name || a.id,
+                teamName: t.name || '',
+                proposed: s.proposed,
+                opportunities: s.opportunities,
+                rate: s.rate
+            });
+        });
+    });
+
+    // Tri : taux décroissant, puis nom
+    rows.sort(function(a, b) {
+        const ra = a.rate === null ? -1 : a.rate;
+        const rb = b.rate === null ? -1 : b.rate;
+        if (rb !== ra) return rb - ra;
+        return String(a.agentName).localeCompare(String(b.agentName), 'fr');
+    });
+
+    if (!rows.length) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#888;">Aucun agent.</td></tr>';
+    } else {
+        rows.forEach(function(r) {
+            const tr = document.createElement('tr');
+            let rateHtml;
+            if (r.rate === null) {
+                rateHtml = '<span style="color:#999;">—</span>';
+            } else {
+                const pct = r.rate.toFixed(1) + ' %';
+                let color = '#c0392b';
+                if (r.rate >= 70) color = '#1e8449';
+                else if (r.rate >= 40) color = '#d68910';
+                rateHtml = '<strong style="color:' + color + ';">' + pct + '</strong>';
+            }
+            tr.innerHTML =
+                '<td>' + r.agentName + '</td>' +
+                '<td>' + r.teamName + '</td>' +
+                '<td style="text-align:center;">' + r.proposed + '</td>' +
+                '<td style="text-align:center;">' + r.opportunities + '</td>' +
+                '<td style="text-align:center;">' + rateHtml + '</td>';
+            tbody.appendChild(tr);
+        });
+    }
+
+    document.getElementById('volunteerStatsModal').style.display = 'flex';
+}
+
+function closeVolunteerStatsModal() {
+    const m = document.getElementById('volunteerStatsModal');
     if (m) m.style.display = 'none';
 }
 
