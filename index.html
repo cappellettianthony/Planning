@@ -1858,7 +1858,9 @@
             <h2>📊 Stats — Disponibilité aux remplacements</h2>
             <p style="font-size:0.8rem;color:#666;margin:0 0 12px 0;">
                 Taux de proposition sur les fiches de remplacement clôturées où l'agent était disponible.
-                Cumul <strong>multi-années</strong> (non réinitialisé au changement d'année).
+                Cumul <strong>multi-années</strong> (non réinitialisé au changement d'année).<br>
+                <em>Exception :</em> si la fiche a été créée à moins de 30 jours de la date du remplacement,
+                un agent qui <strong>n'a pas vu</strong> la fiche n'est pas compté (pas de pénalité).
             </p>
             <div style="max-height:60vh;overflow:auto;border:1px solid #e0e0e0;border-radius:6px;">
                 <table class="archive-table" style="width:100%;">
@@ -1874,9 +1876,12 @@
                     <tbody id="volunteerStatsTableBody"></tbody>
                 </table>
             </div>
-            <div class="modal-actions" style="justify-content:space-between;">
+            <div class="modal-actions" style="justify-content:space-between; flex-wrap:wrap; gap:8px;">
                 <span style="font-size:0.75rem;color:#888;align-self:center;">Mise à jour à chaque fiche RPL soldée</span>
-                <button type="button" class="btn btn-secondary" onclick="closeVolunteerStatsModal()">Fermer</button>
+                <span style="display:flex; gap:8px; flex-wrap:wrap;">
+                    <button type="button" class="btn btn-danger" onclick="resetVolunteerStats()" title="Remettre tous les compteurs à zéro">🗑 Remettre à zéro</button>
+                    <button type="button" class="btn btn-secondary" onclick="closeVolunteerStatsModal()">Fermer</button>
+                </span>
             </div>
         </div>
     </div>
@@ -7698,6 +7703,34 @@ function recordVolunteerStatsOnSheetClose(isTeam, targetId, dateStr, volunteersL
         replacementVolunteerStats = {};
     }
     const volunteers = Array.isArray(volunteersList) ? volunteersList : [];
+    const sheetKey = targetId + '_' + dateStr;
+    const sheet = (replacementSheets && replacementSheets[sheetKey]) ? replacementSheets[sheetKey] : null;
+
+    // Délai création → date RPL < 30 jours : pas de pénalité pour ceux qui n'ont pas vu la fiche
+    let shortNotice = false;
+    const createdAt = sheet && sheet.createdAt ? String(sheet.createdAt).trim() : '';
+    if (createdAt && dateStr) {
+        try {
+            const dCreated = (typeof parseDate === 'function') ? parseDate(createdAt) : null;
+            const dRpl = (typeof parseDate === 'function') ? parseDate(dateStr) : null;
+            if (dCreated && dRpl) {
+                dCreated.setHours(0, 0, 0, 0);
+                dRpl.setHours(0, 0, 0, 0);
+                const days = Math.round((dRpl.getTime() - dCreated.getTime()) / 86400000);
+                shortNotice = days < 30;
+            }
+        } catch (e) {
+            shortNotice = false;
+        }
+    }
+
+    let seenByAgents = {};
+    if (sheet && typeof normalizeSeenByAgents === 'function') {
+        seenByAgents = normalizeSeenByAgents(sheet.seenByAgents);
+    } else if (sheet && sheet.seenByAgents && typeof sheet.seenByAgents === 'object') {
+        seenByAgents = sheet.seenByAgents;
+    }
+
     let eligible = [];
     if (typeof getEligibleAgentsForRpl === 'function') {
         try {
@@ -7712,12 +7745,20 @@ function recordVolunteerStatsOnSheetClose(isTeam, targetId, dateStr, volunteersL
     volunteers.forEach(function(id) { if (id) agentIds[id] = true; });
 
     Object.keys(agentIds).forEach(function(agentId) {
+        const isVol = volunteers.indexOf(agentId) !== -1;
+        const hasSeen = !!(seenByAgents && seenByAgents[agentId]);
+
+        // Court délai (< 30 j) + fiche non vue + pas volontaire → ne pas pénaliser
+        if (shortNotice && !hasSeen && !isVol) {
+            return;
+        }
+
         if (!replacementVolunteerStats[agentId] || typeof replacementVolunteerStats[agentId] !== 'object') {
             replacementVolunteerStats[agentId] = { proposed: 0, opportunities: 0 };
         }
         const st = replacementVolunteerStats[agentId];
         st.opportunities = (parseInt(st.opportunities, 10) || 0) + 1;
-        if (volunteers.indexOf(agentId) !== -1) {
+        if (isVol) {
             st.proposed = (parseInt(st.proposed, 10) || 0) + 1;
         }
         replacementVolunteerStats[agentId] = st;
@@ -7818,6 +7859,26 @@ function openVolunteerStatsModal() {
 function closeVolunteerStatsModal() {
     const m = document.getElementById('volunteerStatsModal');
     if (m) m.style.display = 'none';
+}
+
+/**
+ * Admin : remet à zéro tous les compteurs de disponibilité RPL.
+ */
+function resetVolunteerStats() {
+    if (!isAdmin) {
+        alert('Action réservée aux Administrateurs.');
+        return;
+    }
+    if (!confirm(
+        'Remettre à zéro toutes les statistiques de disponibilité aux remplacements ?\n\n' +
+        'Cette action est irréversible (propositions et opportunités à 0 pour tous les agents).'
+    )) {
+        return;
+    }
+    replacementVolunteerStats = {};
+    if (typeof saveToFirebase === 'function') saveToFirebase();
+    if (typeof openVolunteerStatsModal === 'function') openVolunteerStatsModal();
+    alert('Statistiques remises à zéro.');
 }
 
 function openVolunteerModal() {
