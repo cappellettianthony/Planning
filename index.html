@@ -1382,6 +1382,33 @@
         </div>
     </div>
 
+    <!-- Aperçu période demande d'absence (roulement équipe + tâches agent) -->
+    <div class="modal" id="absencePeriodPreviewModal" style="display:none; z-index:10060;">
+        <div class="modal-content" style="width:760px; max-width:96vw;">
+            <h2 style="margin-bottom:6px;">📅 Période demandée</h2>
+            <p id="absencePeriodPreviewSubtitle" style="font-size:0.85rem;color:#555;margin:0 0 12px 0;"></p>
+            <div style="max-height:55vh;overflow:auto;border:1px solid #e0e0e0;border-radius:6px;">
+                <table class="archive-table" style="width:100%;">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Jour</th>
+                            <th>Roulement équipe</th>
+                            <th>Tâche agent</th>
+                        </tr>
+                    </thead>
+                    <tbody id="absencePeriodPreviewBody"></tbody>
+                </table>
+            </div>
+            <p style="font-size:0.75rem;color:#888;margin:10px 0 0 0;">
+                Permet de vérifier si l'absence impacte un quart ou une tâche importante avant validation ou refus.
+            </p>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" onclick="closeAbsencePeriodPreview()">Fermer</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Modale Traitement des demandes d'absence (RE / Admin) -->
     <div class="modal" id="absenceProcessModal" style="display:none;">
         <div class="modal-content" style="width:640px; max-width:96vw;">
@@ -6988,9 +7015,19 @@ function renderAbsenceProcessList() {
  * Affiche le roulement d'équipe et les tâches de l'agent sur la période de la demande.
  */
 function showAbsencePeriodPreview(requestId) {
-    const req = findAbsenceRequestById(requestId);
+    const req = (typeof findAbsenceRequestById === 'function')
+        ? findAbsenceRequestById(requestId)
+        : null;
     if (!req) {
         alert('Demande introuvable.');
+        return;
+    }
+
+    const modal = document.getElementById('absencePeriodPreviewModal');
+    const tbody = document.getElementById('absencePeriodPreviewBody');
+    const sub = document.getElementById('absencePeriodPreviewSubtitle');
+    if (!modal || !tbody) {
+        alert('Fenêtre d\'aperçu indisponible. Rechargez la page.');
         return;
     }
 
@@ -7008,10 +7045,9 @@ function showAbsencePeriodPreview(requestId) {
         }
     });
 
-    const dates = getDateRangeInclusiveStr(req.startDate, req.endDate);
-    const tbody = document.getElementById('absencePeriodPreviewBody');
-    const sub = document.getElementById('absencePeriodPreviewSubtitle');
-    if (!tbody) return;
+    const dates = (typeof getDateRangeInclusiveStr === 'function')
+        ? getDateRangeInclusiveStr(req.startDate, req.endDate)
+        : [req.startDate];
 
     if (sub) {
         const period = formatDateStrDisplay(req.startDate) +
@@ -7062,7 +7098,7 @@ function showAbsencePeriodPreview(requestId) {
         tbody.appendChild(tr);
     });
 
-    document.getElementById('absencePeriodPreviewModal').style.display = 'flex';
+    modal.style.display = 'flex';
 }
 
 function closeAbsencePeriodPreview() {
