@@ -1204,10 +1204,8 @@
 
         <div style="display:flex; gap:8px; flex-wrap: wrap;">
             <button class="btn btn-purple" onclick="openPrintModal()">🖨️ Imprimer Mois</button>
-            <button class="btn btn-secondary" onclick="openArchiveRemplacementModal()" id="archiveRplBtn">📋 Archives Remplacements</button>
+            <button class="btn btn-secondary" onclick="openArchivesHubModal()" id="archivesHubBtn" title="Accéder aux différentes archives">📁 Archives</button>
             <input type="file" id="importFile" style="display:none" accept=".json" onchange="importData(event)">
-            
-            <button class="btn btn-secondary" onclick="openArchiveModal()" id="archiveBtn">📁 Archives Alertes</button>
             <button class="btn btn-secondary" onclick="openModificationLogModal()" id="modLogBtn" style="display:none;">📝 Suivi des modifications</button>
             <button class="btn" onclick="openSettings()" id="settingsBtn">⚙️ Paramètres</button>
             <button type="button" class="btn" id="planningEditToggleBtn" onclick="togglePlanningEditMode()" title="Édition du planning verrouillée — cliquer pour déverrouiller" style="display:none;">✋</button>
@@ -1258,9 +1256,6 @@
             </button>
             <button type="button" class="absence-process-btn" id="absenceProcessOpenBtn" onclick="openAbsenceProcessModal()" style="display:none;">
                 📥 Traitement des absences <span class="abs-pending-count" id="absencePendingCount" style="display:none;">0</span>
-            </button>
-            <button type="button" class="btn btn-secondary" id="absenceArchiveOpenBtn" onclick="openAbsenceArchiveModal()" style="display:none; width:100%; margin-bottom:8px; font-size:0.78rem;">
-                📂 Archives demandes d'absence
             </button>
             <aside class="rpl-side-panel" id="rplSidePanel">
                 <div class="rpl-side-panel-header">
@@ -1438,6 +1433,31 @@
             <div id="absenceProcessList" style="max-height:55vh;overflow-y:auto;"></div>
             <div class="modal-actions">
                 <button type="button" class="btn btn-secondary" onclick="closeAbsenceProcessModal()">Fermer</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hub Archives (point d'entrée unique) -->
+    <div class="modal" id="archivesHubModal" style="display:none; z-index:10040;">
+        <div class="modal-content" style="width:420px; max-width:94vw;">
+            <h2 style="margin-bottom:8px;">📁 Archives</h2>
+            <p style="font-size:0.82rem;color:#666;margin:0 0 16px 0;">Choisissez l'archive à consulter.</p>
+            <div style="display:flex; flex-direction:column; gap:10px;">
+                <button type="button" class="btn btn-secondary" style="width:100%; text-align:left; padding:12px 14px;"
+                        onclick="openArchiveFromHub('rpl')">
+                    📋 Archives Remplacements
+                </button>
+                <button type="button" class="btn btn-secondary" style="width:100%; text-align:left; padding:12px 14px;"
+                        onclick="openArchiveFromHub('alerts')">
+                    📁 Archives Alertes
+                </button>
+                <button type="button" class="btn btn-secondary" id="archivesHubAbsenceBtn" style="width:100%; text-align:left; padding:12px 14px; display:none;"
+                        onclick="openArchiveFromHub('absence')">
+                    📂 Archives demandes d'absence
+                </button>
+            </div>
+            <div class="modal-actions" style="margin-top:16px;">
+                <button type="button" class="btn btn-secondary" onclick="closeArchivesHubModal()">Fermer</button>
             </div>
         </div>
     </div>
@@ -2933,14 +2953,15 @@ function markAgentSeenOnSheet(sheetKey, agentId) {
                 modLogBtn.style.display = canSeeLog ? 'inline-block' : 'none';
                 modLogBtn.disabled = !canSeeLog;
             }
-            // Demandes d'absence : traitement + archives pour RE / Admin
+            // Demandes d'absence : traitement pour RE / Admin
             const absProcBtn = document.getElementById('absenceProcessOpenBtn');
-            const absArchBtn = document.getElementById('absenceArchiveOpenBtn');
             if (absProcBtn) {
                 absProcBtn.style.display = !isReadOnly ? 'block' : 'none';
             }
-            if (absArchBtn) {
-                absArchBtn.style.display = !isReadOnly ? 'block' : 'none';
+            // Hub archives : bouton absences visible seulement RE / Admin
+            const hubAbsBtn = document.getElementById('archivesHubAbsenceBtn');
+            if (hubAbsBtn) {
+                hubAbsBtn.style.display = !isReadOnly ? 'block' : 'none';
             }
             if (typeof updateAbsencePendingBadge === 'function') updateAbsencePendingBadge();
 
@@ -7861,6 +7882,41 @@ function finalizeAbsenceRequestIfComplete(req) {
 
     archiveAbsenceRequest(req, globalStatus);
     removeAbsenceRequestById(req.id);
+}
+
+
+/** Ouvre le menu unique des archives. */
+function openArchivesHubModal() {
+    const hubAbsBtn = document.getElementById('archivesHubAbsenceBtn');
+    if (hubAbsBtn) {
+        hubAbsBtn.style.display = !isReadOnly ? 'block' : 'none';
+    }
+    const m = document.getElementById('archivesHubModal');
+    if (m) m.style.display = 'flex';
+}
+
+function closeArchivesHubModal() {
+    const m = document.getElementById('archivesHubModal');
+    if (m) m.style.display = 'none';
+}
+
+/**
+ * Ouvre une archive depuis le hub puis ferme le menu.
+ * @param {'rpl'|'alerts'|'absence'} kind
+ */
+function openArchiveFromHub(kind) {
+    closeArchivesHubModal();
+    if (kind === 'rpl') {
+        if (typeof openArchiveRemplacementModal === 'function') openArchiveRemplacementModal();
+    } else if (kind === 'alerts') {
+        if (typeof openArchiveModal === 'function') openArchiveModal();
+    } else if (kind === 'absence') {
+        if (isReadOnly) {
+            alert('Accès réservé aux RE et Administrateurs.');
+            return;
+        }
+        if (typeof openAbsenceArchiveModal === 'function') openAbsenceArchiveModal();
+    }
 }
 
 function openAbsenceArchiveModal() {
