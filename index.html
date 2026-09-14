@@ -746,6 +746,14 @@
             border: 1px solid #e67e22;
             font-weight: bold;
         }
+        .extra-shifts-badge.clickable {
+            cursor: pointer;
+            transition: background 0.15s, box-shadow 0.15s;
+        }
+        .extra-shifts-badge.clickable:hover {
+            background-color: #f5cba7;
+            box-shadow: 0 0 0 1px #d35400;
+        }
 
         .task-cell {
             cursor: pointer;
@@ -1458,6 +1466,30 @@
             </div>
             <div class="modal-actions" style="margin-top:16px;">
                 <button type="button" class="btn btn-secondary" onclick="closeArchivesHubModal()">Fermer</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Détail remplacements agent (RE / Admin) -->
+    <div class="modal" id="agentReplacementDetailModal" style="display:none; z-index:10045;">
+        <div class="modal-content" style="width:420px; max-width:94vw;">
+            <h2 style="margin-bottom:6px;">📊 Détail des remplacements</h2>
+            <p id="agentReplacementDetailSubtitle" style="font-size:0.85rem;color:#555;margin:0 0 14px 0;"></p>
+            <table class="archive-table" style="width:100%;">
+                <thead>
+                    <tr>
+                        <th>Type</th>
+                        <th style="text-align:right;">Nombre</th>
+                    </tr>
+                </thead>
+                <tbody id="agentReplacementDetailBody"></tbody>
+            </table>
+            <p style="font-size:0.72rem;color:#888;margin:12px 0 0 0;">
+                Un quart n'est pas compté si le roulement de l'équipe était déjà M, A ou N ce jour-là.
+                « Sur J » = remplacements effectués alors que le roulement était en journée (J).
+            </p>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" onclick="closeAgentReplacementDetailModal()">Fermer</button>
             </div>
         </div>
     </div>
@@ -4265,28 +4297,29 @@ if (resetAckBtn) {
         }
 
         /**
-         * Nombre de remplacements (quarts M/A/N hors roulement) sur une année calendaire.
-         * À chaque nouvelle année le décompte repart de 0.
-         * @param year année calendaire (défaut = année affichée currentYear)
+         * Détail des remplacements (quarts M/A/N hors roulement) sur une année calendaire.
+         * Règle : si le roulement de l'équipe est déjà M, A ou N, le quart n'est PAS compté
+         * (l'agent était déjà en quart travaillé — ce n'est pas un remplacement supplémentaire).
+         * Compté uniquement depuis un repos (ou J) / fiche RPL / écart hors quart de roulement.
+         * @returns {{ total:number, M:number, A:number, N:number, onJ:number, year:number }}
          */
-        function calculateExtraShiftsCount(agent, teamId, year) {
-            let count = 0;
-            if (!agent || !agent.id) return 0;
+        function calculateExtraShiftsBreakdown(agent, teamId, year) {
+            const out = { total: 0, M: 0, A: 0, N: 0, onJ: 0, year: currentYear };
+            if (!agent || !agent.id) return out;
             const y = (year !== undefined && year !== null && !isNaN(parseInt(year, 10)))
                 ? parseInt(year, 10)
                 : currentYear;
+            out.year = y;
             const startYearDate = new Date(y, 0, 1);
             const endYearDate = new Date(y, 11, 31);
             let curr = new Date(startYearDate);
 
-            // Changement d'équipe : avant date effective, comparer à l'ancienne équipe
             const tc = agent.teamChange || null;
             const eff = (tc && tc.effectiveDate) ? String(tc.effectiveDate) : null;
             const oldTeamId = (tc && tc.oldTeamId) ? tc.oldTeamId : null;
 
             while (curr <= endYearDate) {
                 const dStr = formatDate(curr);
-                // Roulement de référence pour ce jour
                 let refTeamId = teamId;
                 if (eff && oldTeamId && dStr < eff) {
                     refTeamId = oldTeamId;
@@ -4296,10 +4329,18 @@ if (resetAckBtn) {
                     teamTaskCode = teamSchedules[refTeamId][dStr];
                 }
                 const teamTask = TASKS[teamTaskCode] || TASKS['R'];
+                const teamShift = teamTask.shift || '';
+                // Déjà en M / A / N sur le roulement → ne pas compter comme remplacement
+                const teamAlreadyWorkShift = (teamShift === 'M' || teamShift === 'A' || teamShift === 'N');
+                if (teamAlreadyWorkShift) {
+                    curr.setDate(curr.getDate() + 1);
+                    continue;
+                }
 
                 const agentTaskCode = getEffectiveAgentTask(agent, teamId, dStr);
                 const agentTask = TASKS[agentTaskCode] || TASKS['R'];
-                const isWorkShift = agentTask.shift === 'M' || agentTask.shift === 'A' || agentTask.shift === 'N';
+                const agentShift = agentTask.shift || '';
+                const isWorkShift = agentShift === 'M' || agentShift === 'A' || agentShift === 'N';
                 if (!isWorkShift) {
                     curr.setDate(curr.getDate() + 1);
                     continue;
@@ -4309,18 +4350,29 @@ if (resetAckBtn) {
                 const desc = (taskDescriptions && taskDescriptions[descKey]) ? String(taskDescriptions[descKey]) : '';
                 const fromRpl = /RPL validé/i.test(desc);
                 const differsFromTeam = String(agentTaskCode) !== String(teamTaskCode);
+                const teamIsRestOrJ = !!(teamTask.isRest || teamShift === 'J');
 
-                if (teamTask.isRest || fromRpl || (differsFromTeam && isWorkShift)) {
-                    count++;
+                // Comptable uniquement hors quart de roulement déjà travaillé (déjà exclu ci-dessus)
+                if (teamIsRestOrJ || fromRpl || differsFromTeam) {
+                    out.total++;
+                    if (agentShift === 'M') out.M++;
+                    else if (agentShift === 'A') out.A++;
+                    else if (agentShift === 'N') out.N++;
+                    if (teamShift === 'J') out.onJ++;
                 }
                 curr.setDate(curr.getDate() + 1);
             }
+            return out;
+        }
 
-            // Baseline mémorisée à l'ancien équipe (déjà incluse via refTeamId si figé correctement).
-            // Si baseline fournie pour l'année et pas de détail avant date : additionner uniquement
-            // la part "après date" calculée + baseline — évite double compte si on a déjà compté via old team.
-            // Ici le calcul jour par jour avec oldTeamId avant eff est suffisant.
-            return count;
+        /**
+         * Nombre de remplacements (quarts M/A/N hors roulement) sur une année calendaire.
+         * À chaque nouvelle année le décompte repart de 0.
+         * @param year année calendaire (défaut = année affichée currentYear)
+         */
+        function calculateExtraShiftsCount(agent, teamId, year) {
+            const b = calculateExtraShiftsBreakdown(agent, teamId, year);
+            return b.total || 0;
         }
 
         /** Année calendaire d'une date YYYY-MM-DD */
@@ -4329,6 +4381,55 @@ if (resetAckBtn) {
          * Synchronisation à l'ouverture : recalcule les décomptes remplacements
          * (année calendaire) pour le planning et les fiches RPL ouvertes.
          */
+
+        /**
+         * Ouvre le détail M / A / N / sur J pour un agent (RE / Admin uniquement).
+         */
+        function openAgentReplacementDetailModal(agentId, teamId) {
+            if (isReadOnly) {
+                alert('Détail réservé aux RE et Administrateurs.');
+                return;
+            }
+            let agent = null;
+            let teamName = '';
+            (teams || []).forEach(function(t) {
+                (t.agents || []).forEach(function(a) {
+                    if (a && a.id === agentId) {
+                        agent = a;
+                        teamName = t.name || '';
+                        if (!teamId) teamId = t.id;
+                    }
+                });
+            });
+            if (!agent) {
+                alert('Agent introuvable.');
+                return;
+            }
+            const b = calculateExtraShiftsBreakdown(agent, teamId, currentYear);
+            const sub = document.getElementById('agentReplacementDetailSubtitle');
+            if (sub) {
+                sub.innerHTML = '<strong>' + (agent.name || agentId) + '</strong>' +
+                    (teamName ? (' — ' + teamName) : '') +
+                    '<br>Année calendaire <strong>' + b.year + '</strong> — Total : <strong>' + b.total + '</strong> remplacement(s)';
+            }
+            const tbody = document.getElementById('agentReplacementDetailBody');
+            if (tbody) {
+                tbody.innerHTML =
+                    '<tr><td>🌅 Matin (M)</td><td style="text-align:right;font-weight:bold;">' + b.M + '</td></tr>' +
+                    '<tr><td>☀️ Après-midi (A)</td><td style="text-align:right;font-weight:bold;">' + b.A + '</td></tr>' +
+                    '<tr><td>🌙 Nuit (N)</td><td style="text-align:right;font-weight:bold;">' + b.N + '</td></tr>' +
+                    '<tr><td>📅 Effectués sur journée (J)</td><td style="text-align:right;font-weight:bold;">' + b.onJ + '</td></tr>' +
+                    '<tr style="background:#f8f9fa;"><td><strong>Total</strong></td><td style="text-align:right;font-weight:bold;">' + b.total + '</td></tr>';
+            }
+            const m = document.getElementById('agentReplacementDetailModal');
+            if (m) m.style.display = 'flex';
+        }
+
+        function closeAgentReplacementDetailModal() {
+            const m = document.getElementById('agentReplacementDetailModal');
+            if (m) m.style.display = 'none';
+        }
+
         function syncReplacementCountsOnOpen() {
             // Compteurs planning : recalculés dans renderAll via calculateExtraShiftsCount(currentYear)
             // Fiches RPL ouvertes : rafraîchir listes + stats
@@ -4687,13 +4788,21 @@ if (resetAckBtn) {
                 ? `<button class="btn btn-danger" style="padding:0 4px; font-size:0.65rem; margin-right:4px;" title="Supprimer cet agent" onclick="event.stopPropagation(); deleteAgentFromTeam('${team.id}', '${agent.id}');">🗑️</button>` 
                 : '';
 
+            const canSeeShiftDetail = !isReadOnly; // RE ou Admin
+            const badgeClick = canSeeShiftDetail
+                ? `onclick="event.stopPropagation(); openAgentReplacementDetailModal('${agent.id}', '${team.id}');"`
+                : '';
+            const badgeClass = 'extra-shifts-badge' + (canSeeShiftDetail ? ' clickable' : '');
+            const badgeTitle = canSeeShiftDetail
+                ? `Remplacements (hors roulement M/A/N) — année ${currentYear}. Cliquer pour le détail.`
+                : `Remplacements (hors roulement M/A/N) — année calendaire ${currentYear}`;
             tdName.innerHTML = `
                 <div style="display:flex; align-items:center; justify-content:space-between; width:100%;">
                     <div style="display:flex; align-items:center; overflow:hidden; text-overflow:ellipsis;">
                         ${deleteBtnHtml}
                         <span style="cursor:${isReadOnly ? 'default' : 'pointer'};" onclick="${!isReadOnly ? `openAgentModal('${agent.id}')` : ''}">${agent.name}</span>
                     </div>
-                    <span class="extra-shifts-badge" title="Remplacements (quarts M/A/N hors roulement) — année calendaire ${currentYear}">${extraShifts} q.</span>
+                    <span class="${badgeClass}" title="${badgeTitle}" ${badgeClick}>${extraShifts} q.</span>
                 </div>`;
             
             tr.appendChild(tdName);
