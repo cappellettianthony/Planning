@@ -1989,6 +1989,14 @@
                 </div>
 
                 <div class="settings-tab-panel" id="settingsTab-effectifs">
+                    <h3>Noms des équipes</h3>
+                    <p style="font-size: 0.75rem; color: #666; margin-bottom: 8px;">
+                        Modifiez le nom affiché de chaque équipe. L'<strong>identifiant interne</strong> (ex. team_1) ne change pas :
+                        plannings, roulements, RPL et liaisons restent intactes.
+                    </p>
+                    <div id="teamNamesConfigContainer" style="margin-bottom:16px;"></div>
+                    <button type="button" class="btn btn-secondary" style="margin-bottom:18px; font-size:0.8rem;" onclick="applyTeamNamesFromSettings(true)">Appliquer les noms d'équipes</button>
+
                     <h3>Seuils d'effectifs globaux</h3>
                     <div class="form-group"><label>Matin (Or / Vert)</label><div style="display:flex; gap:10px;"><input type="number" id="th_M_orange" value="5"><input type="number" id="th_M_green" value="7"></div></div>
                     <div class="form-group"><label>Après-midi (Or / Vert)</label><div style="display:flex; gap:10px;"><input type="number" id="th_A_orange" value="5"><input type="number" id="th_A_green" value="7"></div></div>
@@ -3087,10 +3095,7 @@ if (resetAckBtn) {
                 teams = defaultTeams;
             }
 
-            // Nom court de l'équipe journée (team_7) pour l'affichage planning
-            (teams || []).forEach(function(t) {
-                if (t && t.id === 'team_7') t.name = 'Journée';
-            });
+            // Ne plus forcer le nom de team_7 : le nom personnalisé (Paramètres) est conservé
 
             acknowledgedAlerts = data.acknowledgedAlerts || [];
             skillDefinitions = data.skillDefinitions || skillDefinitions;
@@ -11348,6 +11353,91 @@ function resetAcknowledgedAlerts() {
             alert('✅ Vacances scolaires Zone A enregistrées.');
         }
 
+
+        /**
+         * Affiche les champs de renommage des équipes (onglet Effectifs).
+         * Seul team.name est éditable — team.id reste la clé stable.
+         */
+        function renderTeamNamesSettings() {
+            const container = document.getElementById('teamNamesConfigContainer');
+            if (!container) return;
+            container.innerHTML = '';
+            if (!Array.isArray(teams) || !teams.length) {
+                container.innerHTML = '<p style="color:#888;font-style:italic;">Aucune équipe.</p>';
+                return;
+            }
+            teams.forEach(function(team) {
+                if (!team || !team.id) return;
+                const row = document.createElement('div');
+                row.className = 'form-group';
+                row.style.cssText = 'display:flex; align-items:center; gap:10px; margin-bottom:8px; flex-wrap:wrap;';
+                const label = document.createElement('label');
+                label.style.cssText = 'min-width:90px; margin:0; font-size:0.8rem; color:#666;';
+                label.textContent = team.id;
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.setAttribute('data-team-id', team.id);
+                input.className = 'team-name-settings-input';
+                input.value = team.name || '';
+                input.placeholder = 'Nom de l\'équipe';
+                input.style.cssText = 'flex:1; min-width:160px; max-width:320px; padding:6px 8px;';
+                const badge = document.createElement('span');
+                badge.style.cssText = 'font-size:0.72rem;color:#888;';
+                badge.textContent = team.isDayTeam ? '(équipe journée)' : '';
+                row.appendChild(label);
+                row.appendChild(input);
+                row.appendChild(badge);
+                container.appendChild(row);
+            });
+        }
+
+        /**
+         * Applique les noms saisis dans Paramètres → Effectifs.
+         * Ne modifie que team.name (jamais team.id ni teamSchedules).
+         * @param {boolean} showFeedback
+         * @returns {boolean} true si au moins un nom a changé ou appliqué
+         */
+        function applyTeamNamesFromSettings(showFeedback) {
+            const inputs = document.querySelectorAll('#teamNamesConfigContainer input.team-name-settings-input[data-team-id]');
+            if (!inputs || !inputs.length) {
+                if (showFeedback) alert('Aucun champ de nom d\'équipe à appliquer.');
+                return false;
+            }
+            let changed = 0;
+            let emptyBlocked = 0;
+            inputs.forEach(function(input) {
+                const id = input.getAttribute('data-team-id');
+                const newName = String(input.value || '').trim();
+                if (!newName) {
+                    emptyBlocked++;
+                    return;
+                }
+                const team = (teams || []).find(function(t) { return t && t.id === id; });
+                if (!team) return;
+                if (String(team.name || '') !== newName) {
+                    team.name = newName;
+                    changed++;
+                } else {
+                    team.name = newName; // normalise espaces
+                }
+            });
+            if (emptyBlocked > 0 && showFeedback) {
+                alert('Certains noms vides ont été ignorés (le nom ne peut pas être vide).');
+            }
+            if (changed > 0 || showFeedback) {
+                if (typeof saveToFirebase === 'function') saveToFirebase();
+                if (typeof renderAll === 'function') renderAll(false);
+            }
+            if (showFeedback) {
+                if (changed > 0) {
+                    alert(changed + ' nom(s) d\'équipe mis à jour.');
+                } else if (emptyBlocked === 0) {
+                    alert('Aucun changement de nom.');
+                }
+            }
+            return changed > 0;
+        }
+
         function switchSettingsTab(tabId) {
             if (typeof flushSchoolHolidaysTableToDraft === 'function') {
                 try { flushSchoolHolidaysTableToDraft(); } catch (e) {}
@@ -11362,6 +11452,9 @@ function resetAcknowledgedAlerts() {
             });
             if (tabId === 'vacances' && typeof initSchoolHolidaysTab === 'function') {
                 initSchoolHolidaysTab();
+            }
+            if (tabId === 'effectifs' && typeof renderTeamNamesSettings === 'function') {
+                renderTeamNamesSettings();
             }
         }
 
@@ -11408,6 +11501,10 @@ function resetAcknowledgedAlerts() {
         const minA = (settings.minAgentsPerTeam !== undefined && settings.minAgentsPerTeam !== null)
             ? parseInt(settings.minAgentsPerTeam, 10) : 1;
         minAgentsInput.value = (!isNaN(minA) && minA >= 0) ? minA : 1;
+    }
+
+    if (typeof renderTeamNamesSettings === 'function') {
+        try { renderTeamNamesSettings(); } catch (e) {}
     }
 
     const restrictVisCb = document.getElementById('restrictTeamVisibility');
@@ -11735,6 +11832,11 @@ function renderMonitoredGroupRow(group = []) {
         // est le point de validation central de toute la configuration administrateur. 
         // Elle récupère les données saisies dans la fenêtre Paramètres, reconstruit les structures métier (skillDefinitions, exclusiveSkillMonitoredGroups, TASKS, settings.thresholds), ferme la fenêtre puis recharge l'application.
         function saveSettings() {
+            // Appliquer d'abord les noms d'équipes saisis dans l'onglet Effectifs
+            if (typeof applyTeamNamesFromSettings === 'function') {
+                try { applyTeamNamesFromSettings(false); } catch (e) {}
+            }
+
     if (isReadOnly || !isAdmin) return;
 
     // 1. Sauvegarde des compétences
