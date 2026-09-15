@@ -1293,7 +1293,10 @@
     <!-- Modale Sélection & Attribution de Tâche -->
     <div class="modal" id="taskModal">
         <div class="modal-content" style="width: 500px;">
-            <h2>Affecter une Tâche</h2>
+            <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:4px;">
+                <h2 style="margin:0;">Affecter une Tâche</h2>
+                <div id="taskModalTargetNameBadge" style="color:#c0392b; font-weight:800; font-size:1.05rem; letter-spacing:0.02em; text-align:right; line-height:1.2; max-width:55%; word-break:break-word;"></div>
+            </div>
             <p style="font-size: 0.85rem; margin-bottom: 12px; color: var(--primary);" id="taskModalTargetInfo"></p>
             
             <div class="task-modal-tabs" role="tablist" style="display:flex; gap:4px; flex-wrap:wrap; border-bottom:2px solid #ddd; margin-bottom:10px;">
@@ -9024,8 +9027,14 @@ function purgeReplacementArchives() {
             if (dates.length > 1) {
                 dateLabel = dates[0] + ' → ' + dates[dates.length - 1] + ' <span style="color:#2980b9;">(' + dates.length + ' jours)</span>';
             }
+            const nameBadge = document.getElementById('taskModalTargetNameBadge');
+            if (nameBadge) {
+                const prefix = isTeam ? '👥 ' : '👤 ';
+                nameBadge.textContent = prefix + (targetName || targetId || '');
+                nameBadge.title = isTeam ? ('Équipe : ' + (targetName || targetId)) : ('Agent : ' + (targetName || targetId));
+            }
             document.getElementById('taskModalTargetInfo').innerHTML =
-                'Cible: <strong>' + targetName + '</strong> | Date: <strong>' + dateLabel + '</strong>';
+                (isTeam ? 'Équipe' : 'Agent') + ' : <strong>' + (targetName || targetId) + '</strong> | Date : <strong>' + dateLabel + '</strong>';
             document.getElementById('taskModalDescription').value = currentDesc || '';
 
             // Onglets Présences / Remplacement / Absences
