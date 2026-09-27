@@ -5204,6 +5204,26 @@ function buildRplAvailabilityComment(isTeam, targetId, dateStr) {
 }
 
 /**
+ * Fusionne le commentaire automatique RPL (équipes dispo) avec un commentaire
+ * saisi manuellement (ou issu d'une demande d'absence).
+ * - Si le champ contient déjà le texte auto (prérempli puis édité) → on le conserve tel quel.
+ * - Sinon le commentaire utilisateur est ajouté sous le texte auto.
+ * @param {string} autoComment
+ * @param {string} userOrCombinedComment
+ * @returns {string}
+ */
+function mergeRplAutoAndUserComment(autoComment, userOrCombinedComment) {
+    const auto = String(autoComment || '').replace(/\s+$/, '');
+    const user = String(userOrCombinedComment || '').replace(/^\s+|\s+$/g, '');
+    if (!user) return auto;
+    if (!auto) return user;
+    if (user === auto) return auto;
+    // Déjà prérempli avec l'auto (éventuellement suivi d'un ajout)
+    if (user.indexOf(auto) === 0) return user;
+    return auto + '\n' + user;
+}
+
+/**
  * Liste des agentIds éligibles pour une fiche RPL
  * (mêmes règles que la liste des volontaires filtrée).
  */
@@ -7685,7 +7705,9 @@ function applyApprovedAbsenceToPlanning(req) {
             dayDesc = buildRplAvailabilityComment(false, req.agentId, dStr) || '';
         }
         if (userComment) {
-            dayDesc = dayDesc ? (dayDesc.replace(/\s+$/, '') + '\n' + userComment) : userComment;
+            dayDesc = (typeof mergeRplAutoAndUserComment === 'function')
+                ? mergeRplAutoAndUserComment(dayDesc, userComment)
+                : (dayDesc ? (dayDesc.replace(/\s+$/, '') + '\n' + userComment) : userComment);
         }
         if (dayDesc) {
             taskDescriptions[dKey] = dayDesc;
@@ -9739,8 +9761,19 @@ function purgeReplacementArchives() {
 
             if (isTeam) {
                 promptTeamRotation(targetId, dateStr, taskCode, deadlineDate, manualRecommendedSkills);
-                if (descValue) {
-                    taskDescriptions[descKey] = descValue;
+                const autoTeam = (typeof buildRplAvailabilityComment === 'function')
+                    ? (buildRplAvailabilityComment(true, targetId, dateStr) || '')
+                    : '';
+                let teamDesc = '';
+                if (userProvidedComment && descValue) {
+                    teamDesc = (typeof mergeRplAutoAndUserComment === 'function')
+                        ? mergeRplAutoAndUserComment(autoTeam, descValue)
+                        : (autoTeam ? (autoTeam.replace(/\s+$/, '') + '\n' + descValue) : descValue);
+                } else {
+                    teamDesc = autoTeam || descValue || '';
+                }
+                if (teamDesc) {
+                    taskDescriptions[descKey] = teamDesc;
                 } else {
                     delete taskDescriptions[descKey];
                 }
@@ -9763,16 +9796,20 @@ function purgeReplacementArchives() {
                     logCellModification(false, targetId, dStr, beforeCode, codeToWrite);
 
                     const dKey = targetId + '_' + dStr;
+                    // Toujours partir du commentaire auto (équipes dispo), puis y ajouter
+                    // le commentaire manuel / demande d'absence s'il y en a un.
+                    const autoComment = (typeof buildRplAvailabilityComment === 'function')
+                        ? (buildRplAvailabilityComment(false, targetId, dStr) || '')
+                        : '';
                     let dayDesc;
-                    if (isMulti) {
-                        dayDesc = buildRplAvailabilityComment(false, targetId, dStr) || '';
-                        if (userProvidedComment && descValue) {
-                            dayDesc = dayDesc
-                                ? (dayDesc.replace(/\s+$/, '') + '\n' + descValue)
-                                : descValue;
-                        }
+                    if (userProvidedComment && descValue) {
+                        dayDesc = (typeof mergeRplAutoAndUserComment === 'function')
+                            ? mergeRplAutoAndUserComment(autoComment, descValue)
+                            : (autoComment
+                                ? (autoComment.replace(/\s+$/, '') + '\n' + descValue)
+                                : descValue);
                     } else {
-                        dayDesc = descValue || buildRplAvailabilityComment(false, targetId, dStr);
+                        dayDesc = autoComment || descValue || '';
                     }
                     if (dayDesc) {
                         taskDescriptions[dKey] = dayDesc;
