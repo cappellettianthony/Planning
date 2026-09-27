@@ -534,6 +534,25 @@
             line-height: 1.4;
         }
         .vol-row-main strong { color: var(--primary); }
+        .vol-row .vol-comment {
+            font-size: 0.78rem;
+            color: #555;
+            margin-top: 6px;
+            padding: 6px 8px;
+            background: #f4f6f7;
+            border-left: 3px solid #7f8c8d;
+            border-radius: 4px;
+            line-height: 1.35;
+            word-break: break-word;
+            white-space: pre-wrap;
+        }
+        .vol-row .vol-comment-label {
+            font-weight: bold;
+            color: #2c3e50;
+            font-size: 0.72rem;
+            display: block;
+            margin-bottom: 2px;
+        }
         .vol-row-choices {
             display: flex;
             gap: 16px;
@@ -8507,6 +8526,11 @@ function openVolunteerModal() {
                 });
             }
 
+            const descKey = item.targetId + '_' + item.dateStr;
+            const rplComment = (taskDescriptions && taskDescriptions[descKey])
+                ? String(taskDescriptions[descKey])
+                : '';
+
             rows.push({
                 agentId: agent.id,
                 agentName: agent.name,
@@ -8518,7 +8542,8 @@ function openVolunteerModal() {
                 needingTeamName: needingTeamName,
                 alreadyVolunteer: alreadyVolunteer,
                 alreadySeen: alreadySeen,
-                sheetKey: sheetKey
+                sheetKey: sheetKey,
+                comment: rplComment
             });
         });
     });
@@ -8585,6 +8610,19 @@ function openVolunteerModal() {
                     missingLabels.join(', ') + '</span>';
             }
 
+            let commentHtml = '';
+            if (row.comment && String(row.comment).trim()) {
+                const safeComment = String(row.comment)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;');
+                commentHtml =
+                    '<div class="vol-comment">' +
+                        '<span class="vol-comment-label">💬 Commentaire</span>' +
+                        safeComment +
+                    '</div>';
+            }
+
             div.innerHTML =
                 '<div class="vol-row-main">' +
                     '<strong>' + formatDateStrDisplay(row.dateStr) + '</strong> — ' +
@@ -8592,6 +8630,7 @@ function openVolunteerModal() {
                     'Équipe concernée : <strong>' + (row.needingTeamName || '—') + '</strong>' +
                     (row.isTeam ? '' : ' — Agent : ' + row.targetName) + multiAgent +
                     statusBadge + missingBadge +
+                    commentHtml +
                 '</div>' +
                 '<div class="vol-row-choices">' +
                     '<label><input type="checkbox" id="vol_yes_' + rowId + '" ' +
