@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gestionnaire de Planning Annuel</title>
+    <title>Gestionnaire de Planning Annuel Opérationnel</title>
     
     <style>
         :root {
@@ -1020,10 +1020,30 @@
         .auth-error { font-size: 0.9rem; margin-top: 10px; text-align: center; display: none; }
         .user-info { font-size: 0.85rem; padding: 6px 12px; background: #ecf0f1; border-radius: 4px; display: flex; align-items: center; gap: 8px; }
 
+        /* Zone d'impression : invisible à l'écran, uniquement pour window.print() */
+        #printSection {
+            display: none;
+            position: absolute;
+            left: -9999px;
+            top: 0;
+            width: 1px;
+            height: 1px;
+            overflow: hidden;
+            pointer-events: none;
+        }
         @media print {
             body * { visibility: hidden; }
             #printSection, #printSection * { visibility: visible; }
-            #printSection { position: absolute; left: 0; top: 0; width: 100%; }
+            #printSection {
+                display: block !important;
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+                height: auto;
+                overflow: visible;
+                pointer-events: auto;
+            }
             #printSection table { 
                 width: 100%; 
                 border-collapse: collapse; 
@@ -1209,7 +1229,7 @@
     <header>
         
         <div style="display: flex; align-items: center; gap: 15px;">
-            <h1>Planning Opérationnel</h1>
+            <h1>Planning Opérationnel (Synchronisé avec Firebase)</h1>
             <div id="userStatus" class="user-info" style="display: none;"></div>
         </div>
         
@@ -12228,8 +12248,23 @@ function renderMonitoredGroupRow(group = []) {
 
             html += `</tbody></table>`;
 
-            document.getElementById('printSection').innerHTML = html;
+            const printEl = document.getElementById('printSection');
+            if (printEl) printEl.innerHTML = html;
             closePrintModal();
+
+            const clearPrintSection = function() {
+                const el = document.getElementById('printSection');
+                if (el) el.innerHTML = '';
+            };
+            // Nettoyage après fermeture de la boîte d'impression (évite le fantôme en bas de page)
+            const onAfterPrint = function() {
+                clearPrintSection();
+                window.removeEventListener('afterprint', onAfterPrint);
+            };
+            window.addEventListener('afterprint', onAfterPrint);
+            // Filet de sécurité si afterprint n'est pas déclenché (certains navigateurs)
+            setTimeout(clearPrintSection, 2000);
+
             window.print();
         }
 
