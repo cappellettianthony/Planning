@@ -2066,6 +2066,21 @@
                         </label>
                     </div>
 
+                    <h3>Visibilité du nombre de remplacements</h3>
+                    <p style="font-size: 0.75rem; color: #666; margin-bottom: 8px;">
+                        Si cette option est activée, un agent (lecture seule) ne voit dans le planning
+                        <strong>que le badge indiquant son propre nombre de remplacements</strong>
+                        (agents liés à son e-mail). Les <strong>RE</strong> et <strong>Admin</strong>
+                        continuent de voir le nombre pour tous les agents. Si désactivée, tout le monde
+                        voit les badges de tous les agents.
+                    </p>
+                    <div class="form-group">
+                        <label style="display:inline-flex; align-items:center; gap:8px; cursor:pointer;">
+                            <input type="checkbox" id="restrictReplacementCountVisibility" style="width:auto;">
+                            Restreindre la visibilité du nombre de remplacements (agents)
+                        </label>
+                    </div>
+
                     <h3>Deadline de traitement des fiches RPL</h3>
                     <p style="font-size: 0.75rem; color: #666; margin-bottom: 8px;">
                         Nombre de jours avant la date du remplacement proposés par défaut comme date limite de traitement de la fiche.
@@ -2392,6 +2407,8 @@
             minAgentsPerTeam: 1,
             /** Si true : un agent (lecture seule) ne voit que son/ses équipe(s) ; RE et Admin voient tout */
             restrictTeamVisibility: false,
+            /** Si true : un agent (lecture seule) ne voit que son propre badge « X q. » ; RE et Admin voient tous */
+            restrictReplacementCountVisibility: true,
             rplTrackableSkillIds: [],
             taskTabMap: {},
             yearlyJsonBackupAckYear: null,
@@ -3157,6 +3174,12 @@ if (resetAckBtn) {
             }
             if (settings && typeof settings.restrictTeamVisibility !== 'boolean') {
                 settings.restrictTeamVisibility = !!settings.restrictTeamVisibility;
+            }
+            if (settings && typeof settings.restrictReplacementCountVisibility !== 'boolean') {
+                // Défaut true : agents ne voient que leur propre compteur
+                settings.restrictReplacementCountVisibility = settings.restrictReplacementCountVisibility === undefined
+                    ? true
+                    : !!settings.restrictReplacementCountVisibility;
             }
             if (settings && !Array.isArray(settings.rplTrackableSkillIds)) {
                 settings.rplTrackableSkillIds = [];
@@ -4836,6 +4859,16 @@ if (resetAckBtn) {
                 : '';
 
             const canSeeShiftDetail = !isReadOnly; // RE ou Admin
+            // Visibilité du badge « X q. » :
+            // - RE / Admin : toujours visible pour tous
+            // - Option désactivée : visible pour tous
+            // - Option activée + agent lecture seule : uniquement pour les agents liés à son e-mail
+            const restrictCountVis = !!(settings && settings.restrictReplacementCountVisibility);
+            let showReplacementCountBadge = true;
+            if (restrictCountVis && isReadOnly) {
+                const myIds = (typeof getMyAgentIds === 'function') ? getMyAgentIds() : [];
+                showReplacementCountBadge = myIds.indexOf(agent.id) !== -1;
+            }
             const badgeClick = canSeeShiftDetail
                 ? `onclick="event.stopPropagation(); openAgentReplacementDetailModal('${agent.id}', '${team.id}');"`
                 : '';
@@ -4843,13 +4876,16 @@ if (resetAckBtn) {
             const badgeTitle = canSeeShiftDetail
                 ? `Remplacements (hors roulement M/A/N) — année ${currentYear}. Cliquer pour le détail.`
                 : `Remplacements (hors roulement M/A/N) — année calendaire ${currentYear}`;
+            const badgeHtml = showReplacementCountBadge
+                ? `<span class="${badgeClass}" title="${badgeTitle}" ${badgeClick}>${extraShifts} q.</span>`
+                : '';
             tdName.innerHTML = `
                 <div style="display:flex; align-items:center; justify-content:space-between; width:100%;">
                     <div style="display:flex; align-items:center; overflow:hidden; text-overflow:ellipsis;">
                         ${deleteBtnHtml}
                         <span style="cursor:${isReadOnly ? 'default' : 'pointer'};" onclick="${!isReadOnly ? `openAgentModal('${agent.id}')` : ''}">${agent.name}</span>
                     </div>
-                    <span class="${badgeClass}" title="${badgeTitle}" ${badgeClick}>${extraShifts} q.</span>
+                    ${badgeHtml}
                 </div>`;
             
             tr.appendChild(tdName);
@@ -11729,6 +11765,14 @@ function resetAcknowledgedAlerts() {
         restrictVisCb.checked = !!(settings && settings.restrictTeamVisibility);
     }
 
+    const restrictCountVisCb = document.getElementById('restrictReplacementCountVisibility');
+    if (restrictCountVisCb) {
+        // Défaut true si non défini
+        restrictCountVisCb.checked = (settings && typeof settings.restrictReplacementCountVisibility === 'boolean')
+            ? settings.restrictReplacementCountVisibility
+            : true;
+    }
+
     const deadlineDaysInput = document.getElementById('rplDeadlineDefaultDays');
     if (deadlineDaysInput) {
         deadlineDaysInput.value = (settings.rplDeadlineDefaultDays !== undefined && settings.rplDeadlineDefaultDays !== null)
@@ -12123,6 +12167,9 @@ function renderMonitoredGroupRow(group = []) {
 
     const restrictVisCb = document.getElementById('restrictTeamVisibility');
     settings.restrictTeamVisibility = !!(restrictVisCb && restrictVisCb.checked);
+
+    const restrictCountVisCb = document.getElementById('restrictReplacementCountVisibility');
+    settings.restrictReplacementCountVisibility = !!(restrictCountVisCb && restrictCountVisCb.checked);
 
     const deadlineDaysVal = parseInt(document.getElementById('rplDeadlineDefaultDays').value, 10);
     settings.rplDeadlineDefaultDays = (!isNaN(deadlineDaysVal) && deadlineDaysVal >= 1) ? deadlineDaysVal : 15;
