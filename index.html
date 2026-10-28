@@ -2256,6 +2256,37 @@
         </div>
     </div>
 
+
+    <!-- Solde RPL sans volontaire -->
+    <div class="modal" id="rplNoVolunteerModal" style="display:none; z-index:10085;">
+        <div class="modal-content" style="width:520px; max-width:96vw;">
+            <h2 style="margin-bottom:8px;">📋 Solder sans volontaire</h2>
+            <p id="rplNoVolunteerModalInfo" style="font-size:0.88rem; color:#333; margin:0 0 14px 0; line-height:1.45;"></p>
+            <p style="font-size:0.8rem; color:#666; margin:0 0 16px 0;">
+                Choisissez le sort de la cible (agent ou équipe) pour cette date :
+            </p>
+            <div style="display:flex; flex-direction:column; gap:10px;">
+                <button type="button" class="btn btn-success" style="width:100%; text-align:left; padding:12px 14px;"
+                        onclick="confirmRplCloseWithoutVolunteer('rotation')">
+                    🔄 Réintégrer dans le roulement
+                    <div style="font-weight:normal; font-size:0.75rem; margin-top:4px; opacity:0.9;">
+                        Archive la fiche. L’agent n’a plus de tâche individuelle ce jour-là (retour au roulement d’équipe).
+                    </div>
+                </button>
+                <button type="button" class="btn" style="width:100%; text-align:left; padding:12px 14px; background:#8e44ad; color:#fff;"
+                        onclick="confirmRplCloseWithoutVolunteer('task')">
+                    📝 Affecter une tâche
+                    <div style="font-weight:normal; font-size:0.75rem; margin-top:4px; opacity:0.9;">
+                        Archive la fiche puis ouvre la fenêtre d’affectation (onglet Absences).
+                    </div>
+                </button>
+                <button type="button" class="btn btn-secondary" style="width:100%;" onclick="cancelRplCloseWithoutVolunteer()">
+                    Annuler
+                </button>
+            </div>
+        </div>
+    </div>
+
 <!-- Modale Fiche de Remplacement -->
 <div class="modal" id="replacementModal">
     <div class="modal-content" style="width: 550px;">
@@ -2286,7 +2317,7 @@
                 <label for="rplComment">Commentaire obligatoire pour le solde :</label>
                 <textarea id="rplComment" rows="2" placeholder="Saisir la justification ou le commentaire sur ce solde..."></textarea>
             </div>
-            <button class="btn btn-primary" style="width:100%; background:#2980b9; font-weight:bold;" onclick="validateReplacementSheet()">Valider le(s) Volontaire(s) & Archiver</button>
+            <button class="btn btn-primary" style="width:100%; background:#2980b9; font-weight:bold;" onclick="validateReplacementSheet()">Valider / Solder la fiche</button>
         </div>
 
         <div class="modal-actions">
@@ -7167,6 +7198,185 @@ function refreshOpenSheetVolunteerRestBlocks() {
          * archive la fiche et met à jour le planning si nécessaire.
          * Réservé aux RE / Admin.
          */
+
+/** Contexte temporaire pour solder une RPL sans volontaire */
+let pendingRplNoVolunteer = null;
+
+/**
+ * Ouvre le choix : réintégrer au roulement OU affecter une tâche (solde sans volontaire).
+ */
+function openRplNoVolunteerModal(comment, sheetKey, sheet) {
+    if (!activeRplContext) return;
+    pendingRplNoVolunteer = {
+        comment: comment || '',
+        sheetKey: sheetKey,
+        sheet: sheet,
+        isTeam: !!activeRplContext.isTeam,
+        targetId: activeRplContext.targetId,
+        targetName: activeRplContext.targetName,
+        dateStr: activeRplContext.dateStr,
+        shiftToFill: activeRplContext.shiftToFill || null
+    };
+    const info = document.getElementById('rplNoVolunteerModalInfo');
+    if (info) {
+        const d = (typeof formatDateStrDisplay === 'function')
+            ? formatDateStrDisplay(activeRplContext.dateStr)
+            : activeRplContext.dateStr;
+        const who = activeRplContext.isTeam ? 'l’équipe' : 'l’agent';
+        info.innerHTML =
+            'Aucun volontaire inscrit pour <strong>' + (activeRplContext.targetName || '') +
+            '</strong> le <strong>' + d + '</strong>.<br>' +
+            'Vous pouvez tout de même <strong>solder</strong> la fiche et décider du sort de ' + who + '.';
+    }
+    const modal = document.getElementById('rplNoVolunteerModal');
+    if (modal) modal.style.display = 'flex';
+}
+
+function cancelRplCloseWithoutVolunteer() {
+    pendingRplNoVolunteer = null;
+    const modal = document.getElementById('rplNoVolunteerModal');
+    if (modal) modal.style.display = 'none';
+}
+
+/**
+ * Archive une fiche RPL (sans affectation de volontaires) et nettoie la fiche active.
+ */
+function archiveRplSheetWithoutVolunteers(ctx, comment) {
+    const sheetKey = ctx.sheetKey;
+    const sheet = ctx.sheet || (replacementSheets && replacementSheets[sheetKey]);
+    const volunteersList = toArraySafe(sheet && sheet.volunteers);
+    function getAgentName(id) {
+        let name = id;
+        (teams || []).forEach(function(t) {
+            const a = (t.agents || []).find(function(ag) { return ag.id === id; });
+            if (a) name = a.name;
+        });
+        return name;
+    }
+    const volunteersNames = volunteersList.map(getAgentName).join(', ') || 'Aucun';
+    const sheetCreatedAt = (sheet && sheet.createdAt) ? sheet.createdAt : '—';
+    if (!Array.isArray(replacementArchives)) replacementArchives = [];
+    replacementArchives.push({
+        dateRpl: ctx.dateStr,
+        createdAt: sheetCreatedAt,
+        deadlineDate: (sheet && sheet.deadlineDate) ? sheet.deadlineDate : '',
+        targetName: ctx.targetName,
+        shiftFilled: ctx.shiftToFill || 'N/A',
+        volunteers: volunteersNames,
+        selected: 'Aucun (solde sans volontaire)',
+        comment: comment || '',
+        closedBy: currentUser ? currentUser.email : 'RE',
+        closedAt: formatDate(new Date()),
+        closedWithoutVolunteers: true
+    });
+    if (typeof recordVolunteerStatsOnSheetClose === 'function') {
+        try {
+            recordVolunteerStatsOnSheetClose(ctx.isTeam, ctx.targetId, ctx.dateStr, volunteersList);
+        } catch (e) { console.warn(e); }
+    }
+    if (replacementSheets && replacementSheets[sheetKey]) {
+        delete replacementSheets[sheetKey];
+    }
+}
+
+/**
+ * Réintègre la cible dans le roulement (supprime la tâche individuelle / RPL du jour).
+ */
+function reintegrateTargetToRotation(ctx) {
+    const targetId = ctx.targetId;
+    const dateStr = ctx.dateStr;
+    const isTeam = ctx.isTeam;
+    if (isTeam) {
+        // Roulement d'équipe : repasser en Repos (R) ce jour-là
+        if (!teamSchedules[targetId]) teamSchedules[targetId] = {};
+        const beforeCode = getCellTaskCode(true, targetId, dateStr);
+        teamSchedules[targetId][dateStr] = 'R';
+        if (typeof logCellModification === 'function') {
+            logCellModification(true, targetId, dateStr, beforeCode, 'R');
+        }
+        const descKey = targetId + '_' + dateStr;
+        if (taskDescriptions && taskDescriptions[descKey] !== undefined) {
+            delete taskDescriptions[descKey];
+        }
+    } else {
+        // Agent : supprimer l'affectation individuelle → héritage du roulement d'équipe
+        const beforeCode = getCellTaskCode(false, targetId, dateStr);
+        if (agentSchedules[targetId] && agentSchedules[targetId][dateStr] !== undefined) {
+            delete agentSchedules[targetId][dateStr];
+        }
+        if (typeof logCellModification === 'function') {
+            logCellModification(false, targetId, dateStr, beforeCode, '');
+        }
+        const descKey = targetId + '_' + dateStr;
+        if (taskDescriptions && taskDescriptions[descKey] !== undefined) {
+            delete taskDescriptions[descKey];
+        }
+    }
+}
+
+/**
+ * Confirmation du solde sans volontaire : 'rotation' | 'task'
+ */
+function confirmRplCloseWithoutVolunteer(mode) {
+    if (isReadOnly || !pendingRplNoVolunteer) return;
+    if (mode !== 'rotation' && mode !== 'task') return;
+    const ctx = pendingRplNoVolunteer;
+    const comment = ctx.comment || '';
+    pendingRplNoVolunteer = null;
+    const modal = document.getElementById('rplNoVolunteerModal');
+    if (modal) modal.style.display = 'none';
+
+    // Toujours archiver et retirer la fiche active
+    archiveRplSheetWithoutVolunteers(ctx, comment);
+
+    if (mode === 'rotation') {
+        reintegrateTargetToRotation(ctx);
+        closeReplacementModal();
+        if (typeof renderAll === 'function') renderAll(true);
+        alert('✅ Fiche soldée sans volontaire.\\n' +
+            (ctx.isTeam
+                ? 'L’équipe est repassée en roulement (R) pour cette date.'
+                : 'L’agent est réintégré dans son roulement d’équipe (aucune tâche individuelle).'));
+        return;
+    }
+
+    // mode === 'task' : archiver, retirer le RPL (retour temporaire au roulement),
+    // puis ouvrir la fenêtre tâche sur l'onglet Absences.
+    reintegrateTargetToRotation(ctx);
+
+    const isTeam = ctx.isTeam;
+    const targetId = ctx.targetId;
+    const dateStr = ctx.dateStr;
+    let teamId = null;
+    if (!isTeam) {
+        (teams || []).forEach(function(t) {
+            if ((t.agents || []).some(function(a) { return a.id === targetId; })) teamId = t.id;
+        });
+    }
+    let currentCode = 'R';
+    if (isTeam) {
+        currentCode = (teamSchedules[targetId] && teamSchedules[targetId][dateStr] !== undefined)
+            ? teamSchedules[targetId][dateStr]
+            : 'R';
+    } else if (typeof getEffectiveAgentTask === 'function') {
+        currentCode = getEffectiveAgentTask({ id: targetId }, teamId, dateStr) || 'R';
+    }
+
+    closeReplacementModal();
+    if (typeof renderAll === 'function') renderAll(true);
+
+    if (typeof openTaskModal === 'function') {
+        openTaskModal(isTeam, targetId, ctx.targetName, dateStr, currentCode, '');
+        if (typeof switchTaskModalTab === 'function') {
+            setTimeout(function() { switchTaskModalTab('absences'); }, 40);
+        }
+    } else {
+        alert('✅ Fiche archivée. Ouvrez une cellule pour affecter une tâche.');
+        return;
+    }
+    alert('✅ Fiche de remplacement archivée.\nChoisissez maintenant la tâche à affecter (onglet Absences).');
+}
+
 function validateReplacementSheet() {
     if (isReadOnly || !activeRplContext) return;
 
@@ -7183,10 +7393,10 @@ function validateReplacementSheet() {
     let selected = toArraySafe(sheet.selectedVolunteers);
     const volunteersList = toArraySafe(sheet.volunteers);
 
-    // Sécurité : si personne n’est coché mais qu’il y a des volontaires,
-    // on demande confirmation pour prendre tous les volontaires
+        // Aucun volontaire coché
     if (selected.length === 0) {
         if (volunteersList.length > 0) {
+            // Des inscrits existent : proposer de tous les valider
             const ok = confirm(
                 'Aucun volontaire n’est coché.\n\n' +
                 'Voulez-vous valider TOUS les volontaires inscrits ?'
@@ -7194,11 +7404,12 @@ function validateReplacementSheet() {
             if (ok) {
                 selected = volunteersList.slice();
             } else {
-                alert('Cochez au moins un volontaire dans la liste avant de valider.');
+                alert('Cochez au moins un volontaire dans la liste avant de valider,\nou soldez sans volontaire en confirmant après avoir vidé la liste.');
                 return;
             }
         } else {
-            alert('Aucun volontaire sélectionné.');
+            // Aucun volontaire du tout → choix réintégration / affectation tâche
+            openRplNoVolunteerModal(comment, sheetKey, sheet);
             return;
         }
     }
