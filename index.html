@@ -7365,16 +7365,17 @@ function confirmRplCloseWithoutVolunteer(mode) {
     closeReplacementModal();
     if (typeof renderAll === 'function') renderAll(true);
 
+    alert('✅ Fiche de remplacement archivée.\nChoisissez maintenant la tâche à affecter (onglet Absences).');
+
+    // forceEdit=true : ouverture autorisée même si la main ✋ n'est pas active
     if (typeof openTaskModal === 'function') {
-        openTaskModal(isTeam, targetId, ctx.targetName, dateStr, currentCode, '');
+        openTaskModal(isTeam, targetId, ctx.targetName, dateStr, currentCode, '', null, null, true);
         if (typeof switchTaskModalTab === 'function') {
-            setTimeout(function() { switchTaskModalTab('absences'); }, 40);
+            setTimeout(function() { switchTaskModalTab('absences'); }, 50);
         }
     } else {
-        alert('✅ Fiche archivée. Ouvrez une cellule pour affecter une tâche.');
-        return;
+        alert('Ouvrez une cellule du planning pour affecter une tâche.');
     }
-    alert('✅ Fiche de remplacement archivée.\nChoisissez maintenant la tâche à affecter (onglet Absences).');
 }
 
 function validateReplacementSheet() {
@@ -9931,7 +9932,11 @@ function purgeReplacementArchives() {
         }
 
         function openTaskModal(isTeam, targetId, targetName, dateStr, currentTaskCode, currentDesc, dateStrs) {
-            if (typeof canModifyPlanning === 'function' ? !canModifyPlanning() : isReadOnly) return;
+            // 9e argument optionnel : forceEdit (true = autoriser sans main ✋, ex. solde RPL sans volontaire)
+            const forceEdit = (arguments.length >= 9 && arguments[8] === true) ||
+                (arguments.length >= 8 && arguments[7] === true && !Array.isArray(arguments[7]));
+            if (isReadOnly) return;
+            if (!forceEdit && (typeof canModifyPlanning === 'function' ? !canModifyPlanning() : true)) return;
 
             // Roulement d'équipe : réservé Admin + confirmation
             if (isTeam) {
@@ -9965,7 +9970,8 @@ function purgeReplacementArchives() {
                     : targetName,
                 targetNames: multiAgentNames,
                 dateStr: dates[0],
-                dateStrs: dates
+                dateStrs: dates,
+                bypassEditLock: !!forceEdit
             };
             selectedTaskCodeInModal = currentTaskCode || 'R';
 
@@ -10384,7 +10390,9 @@ function purgeReplacementArchives() {
         }
 
         function confirmTaskSelection() {
-            if ((typeof canModifyPlanning === 'function' ? !canModifyPlanning() : isReadOnly) || !activeTaskCellSelection) return;
+            if (isReadOnly || !activeTaskCellSelection) return;
+            const bypassLock = !!activeTaskCellSelection.bypassEditLock;
+            if (!bypassLock && (typeof canModifyPlanning === 'function' ? !canModifyPlanning() : true)) return;
 
             const { isTeam, targetId, dateStr } = activeTaskCellSelection;
             // Sécurité : le roulement d'équipe ne peut être validé que par un Admin
@@ -10856,7 +10864,9 @@ function purgeReplacementArchives() {
         }
 
 function clearTaskAndDesc() {
-            if ((typeof canModifyPlanning === 'function' ? !canModifyPlanning() : isReadOnly) || !activeTaskCellSelection) return;
+            if (isReadOnly || !activeTaskCellSelection) return;
+            const bypassLock = !!activeTaskCellSelection.bypassEditLock;
+            if (!bypassLock && (typeof canModifyPlanning === 'function' ? !canModifyPlanning() : true)) return;
             const { isTeam, targetId, dateStr } = activeTaskCellSelection;
             const dateStrs = (activeTaskCellSelection.dateStrs && activeTaskCellSelection.dateStrs.length)
                 ? activeTaskCellSelection.dateStrs
