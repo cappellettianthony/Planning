@@ -1365,6 +1365,25 @@
     </div>
 
 
+
+    <!-- Commentaire / note de cellule (clic droit en mode édition) -->
+    <div class="modal" id="cellCommentModal" style="display:none; z-index:10056;">
+        <div class="modal-content" style="width:480px; max-width:96vw;">
+            <h2 style="margin-bottom:6px;">📝 Commentaire de la cellule</h2>
+            <p id="cellCommentModalInfo" style="font-size:0.85rem;color:#555;margin:0 0 12px 0;"></p>
+            <div class="form-group">
+                <label for="cellCommentTextarea">Commentaire / note</label>
+                <textarea id="cellCommentTextarea" rows="5" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:6px;resize:vertical;" placeholder="Saisir un commentaire ou une précision…"></textarea>
+            </div>
+            <p style="font-size:0.72rem;color:#888;margin:0 0 10px 0;">Ce texte apparaît aussi dans la fiche d’affectation de tâche et via l’indicateur orange en coin de cellule.</p>
+            <div class="modal-actions" style="flex-wrap:wrap;gap:8px;">
+                <button type="button" class="btn btn-danger" onclick="clearCellCommentFromModal()">Supprimer le commentaire</button>
+                <button type="button" class="btn btn-secondary" onclick="closeCellCommentModal()">Annuler</button>
+                <button type="button" class="btn btn-success" onclick="saveCellCommentFromModal()">Enregistrer</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Composition d'équipe pour une date (clic badge en-tête) -->
     <div class="modal" id="dayStaffingModal" style="display:none; z-index:10055;">
         <div class="modal-content" style="width:560px; max-width:96vw;">
@@ -5349,6 +5368,19 @@ function bindCellEvents(cellDiv, isTeam, targetId, targetName, dateStr, currentT
             clearTimeout(touchTimer);
             touchTimer = null;
         }
+    };
+
+    // --- CLIC DROIT : édition du commentaire de cellule (RE / Admin, mode édition) ---
+    cellDiv.oncontextmenu = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (typeof canModifyPlanning === 'function' ? !canModifyPlanning() : isReadOnly) {
+            return false;
+        }
+        if (typeof openCellCommentModal === 'function') {
+            openCellCommentModal(isTeam, targetId, targetName, dateStr, currentTaskCode, currentDesc);
+        }
+        return false;
     };
 
     // --- CLIC-GLISSER multi-jours (y compris depuis une case RPL) ---
@@ -9489,6 +9521,88 @@ function purgeReplacementArchives() {
                 'Attention : vous êtes sur le point de modifier le roulement d\'une équipe.\n\n' +
                 'Voulez-vous continuer ?'
             );
+        }
+
+
+        let pendingCellComment = null; // { isTeam, targetId, targetName, dateStr, taskCode }
+
+        /**
+         * Ouvre la fenêtre de commentaire d'une cellule (clic droit en mode édition).
+         * RE / Admin uniquement, planning déverrouillé.
+         */
+        function openCellCommentModal(isTeam, targetId, targetName, dateStr, taskCode, currentDesc) {
+            if (typeof canModifyPlanning === 'function' ? !canModifyPlanning() : isReadOnly) {
+                return;
+            }
+            const descKey = targetId + '_' + dateStr;
+            const existing = (taskDescriptions && taskDescriptions[descKey] !== undefined && taskDescriptions[descKey] !== null)
+                ? String(taskDescriptions[descKey])
+                : (currentDesc || '');
+            pendingCellComment = {
+                isTeam: !!isTeam,
+                targetId: targetId,
+                targetName: targetName || targetId,
+                dateStr: dateStr,
+                taskCode: taskCode || ''
+            };
+            const info = document.getElementById('cellCommentModalInfo');
+            const ta = document.getElementById('cellCommentTextarea');
+            if (info) {
+                const dateDisp = (typeof formatDateStrDisplay === 'function')
+                    ? formatDateStrDisplay(dateStr) : dateStr;
+                const typeLabel = isTeam ? 'Équipe' : 'Agent';
+                const codeLabel = taskCode ? (' · tâche ' + taskCode) : '';
+                info.innerHTML = '<strong>' + typeLabel + ' :</strong> ' + (targetName || targetId) +
+                    '<br><strong>Date :</strong> ' + dateDisp + codeLabel;
+            }
+            if (ta) {
+                ta.value = existing;
+                setTimeout(function() { try { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); } catch (e) {} }, 50);
+            }
+            const modal = document.getElementById('cellCommentModal');
+            if (modal) modal.style.display = 'flex';
+        }
+
+        function closeCellCommentModal() {
+            const modal = document.getElementById('cellCommentModal');
+            if (modal) modal.style.display = 'none';
+            pendingCellComment = null;
+        }
+
+        /**
+         * Enregistre le commentaire saisi dans taskDescriptions puis rafraîchit le planning.
+         */
+        function saveCellCommentFromModal() {
+            if (typeof canModifyPlanning === 'function' ? !canModifyPlanning() : isReadOnly) return;
+            if (!pendingCellComment) return;
+            const ta = document.getElementById('cellCommentTextarea');
+            const value = ta ? String(ta.value || '').trim() : '';
+            const descKey = pendingCellComment.targetId + '_' + pendingCellComment.dateStr;
+            if (!taskDescriptions || typeof taskDescriptions !== 'object') taskDescriptions = {};
+            if (value) {
+                taskDescriptions[descKey] = value;
+            } else {
+                delete taskDescriptions[descKey];
+            }
+            closeCellCommentModal();
+            if (typeof renderAll === 'function') renderAll(true);
+        }
+
+        /**
+         * Supprime le commentaire de la cellule.
+         */
+        function clearCellCommentFromModal() {
+            if (typeof canModifyPlanning === 'function' ? !canModifyPlanning() : isReadOnly) return;
+            if (!pendingCellComment) return;
+            if (!confirm('Supprimer le commentaire de cette cellule ?')) return;
+            const descKey = pendingCellComment.targetId + '_' + pendingCellComment.dateStr;
+            if (taskDescriptions && taskDescriptions[descKey] !== undefined) {
+                delete taskDescriptions[descKey];
+            }
+            const ta = document.getElementById('cellCommentTextarea');
+            if (ta) ta.value = '';
+            closeCellCommentModal();
+            if (typeof renderAll === 'function') renderAll(true);
         }
 
         function openTaskModal(isTeam, targetId, targetName, dateStr, currentTaskCode, currentDesc, dateStrs) {
