@@ -149,6 +149,43 @@
         .bg-green { background-color: var(--status-green) !important; }
         .bg-orange { background-color: var(--status-orange) !important; }
         .bg-red { background-color: var(--status-red) !important; }
+        .bg-purple { background-color: #8e44ad !important; }
+        .header-date-badge.clickable-staffing {
+            cursor: pointer;
+            transition: transform 0.12s, box-shadow 0.12s;
+        }
+        .header-date-badge.clickable-staffing:hover {
+            transform: scale(1.08);
+            box-shadow: 0 0 0 2px rgba(142, 68, 173, 0.45);
+        }
+        .day-staffing-shift-card {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 10px 12px;
+            margin-bottom: 10px;
+            background: #fafbfc;
+        }
+        .day-staffing-shift-card h3 {
+            margin: 0 0 8px 0;
+            font-size: 0.95rem;
+            color: #2c3e50;
+            border-bottom: 1px solid #e0e0e0;
+            padding-bottom: 4px;
+        }
+        .day-staffing-agents {
+            font-size: 0.78rem;
+            margin-top: 6px;
+            color: #333;
+            line-height: 1.4;
+        }
+        .day-staffing-agents span.agent-chip {
+            display: inline-block;
+            background: #eef2f5;
+            border: 1px solid #d0d7de;
+            border-radius: 10px;
+            padding: 1px 7px;
+            margin: 2px 3px 2px 0;
+        }
 
         .header-date-badge {
             display: block;
@@ -1327,6 +1364,19 @@
         </div>
     </div>
 
+
+    <!-- Composition d'équipe pour une date (clic badge en-tête) -->
+    <div class="modal" id="dayStaffingModal" style="display:none; z-index:10055;">
+        <div class="modal-content" style="width:560px; max-width:96vw;">
+            <h2 style="margin-bottom:6px;">👥 Composition d'équipe</h2>
+            <p id="dayStaffingModalSubtitle" style="font-size:0.85rem;color:#555;margin:0 0 12px 0;"></p>
+            <div id="dayStaffingModalBody" style="max-height:60vh;overflow-y:auto;"></div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" onclick="closeDayStaffingModal()">Fermer</button>
+            </div>
+        </div>
+    </div>
+
     <div id="printSection"></div>
 
     <!-- Modale Sélection & Attribution de Tâche -->
@@ -2037,9 +2087,17 @@
                     <button type="button" class="btn btn-secondary" style="margin-bottom:18px; font-size:0.8rem;" onclick="applyTeamNamesFromSettings(true)">Appliquer les noms d'équipes</button>
 
                     <h3>Seuils d'effectifs globaux</h3>
+                    <p style="font-size: 0.75rem; color: #666; margin-bottom: 8px;">
+                        Or / Vert : seuils bas d'effectif par quart. Violet : rappel si l'effectif d'un quart est
+                        <strong>strictement supérieur</strong> à la valeur indiquée.
+                    </p>
                     <div class="form-group"><label>Matin (Or / Vert)</label><div style="display:flex; gap:10px;"><input type="number" id="th_M_orange" value="5"><input type="number" id="th_M_green" value="7"></div></div>
                     <div class="form-group"><label>Après-midi (Or / Vert)</label><div style="display:flex; gap:10px;"><input type="number" id="th_A_orange" value="5"><input type="number" id="th_A_green" value="7"></div></div>
                     <div class="form-group"><label>Nuit (Or / Vert)</label><div style="display:flex; gap:10px;"><input type="number" id="th_N_orange" value="3"><input type="number" id="th_N_green" value="5"></div></div>
+                    <div class="form-group">
+                        <label for="overstaffThreshold">Effectif élevé — rappel violet (supérieur à)</label>
+                        <input type="number" id="overstaffThreshold" min="1" max="50" value="6" style="width:100px;">
+                    </div>
 
                     <h3>Seuil minimal d'agents par équipe</h3>
                     <p style="font-size: 0.75rem; color: #666; margin-bottom: 8px;">
@@ -2368,6 +2426,15 @@
         let acknowledgedAlerts = [];
         let knownAlertKeys = new Set(); 
         let dailyAlertColors = {};
+        /** true si au moins un quart (M/A/N) a un effectif > seuil paramétré ce jour-là */
+        let dailyOverstaffing = {};
+
+        /** Seuil d'effectif élevé (rappel violet) — paramétrable dans Paramètres → Effectifs */
+        function getOverstaffThreshold() {
+            const v = (settings && settings.overstaffThreshold !== undefined && settings.overstaffThreshold !== null)
+                ? parseInt(settings.overstaffThreshold, 10) : 6;
+            return (!isNaN(v) && v >= 1) ? v : 6;
+        }
 
         let activeTaskCellSelection = null;
         let selectedTaskCodeInModal = null;
@@ -2405,6 +2472,8 @@
             rplDeadlineDefaultDays: 15,
             /** Seuil minimal d'agents par équipe (suppression interdite si atteint) */
             minAgentsPerTeam: 1,
+            /** Seuil d'effectif élevé : rappel violet si count quart > cette valeur */
+            overstaffThreshold: 6,
             /** Si true : un agent (lecture seule) ne voit que son/ses équipe(s) ; RE et Admin voient tout */
             restrictTeamVisibility: false,
             /** Si true : un agent (lecture seule) ne voit que son propre badge « X q. » ; RE et Admin voient tous */
@@ -2755,6 +2824,68 @@ function markAgentSeenOnSheet(sheetKey, agentId) {
         // ========================================================================
         // 5. AUTHENTIFICATION & PRÉSENCE EN LIGNE
         // ========================================================================
+        /** Écouteur Firebase planning — attaché uniquement après authentification */
+        let planningDataListenerAttached = false;
+        let planningDataLoadedOnce = false;
+
+        /**
+         * Abonne le client aux données planning (Realtime Database).
+         * À appeler après connexion : si l'écouteur était posé avant Auth,
+         * les règles Firebase peuvent renvoyer null et ne pas renvoyer les données
+         * sans nouvel abonnement — d'où l'obligation d'actualiser la page.
+         */
+        function subscribePlanningData() {
+            if (!planningRef) {
+                console.error('subscribePlanningData: planningRef indisponible');
+                return;
+            }
+            if (planningDataListenerAttached) {
+                // Forcer une relecture immédiate (évite l'écran vide au 1er login)
+                planningRef.once('value').then(function(snapshot) {
+                    const data = snapshot.val();
+                    if (data) {
+                        loadAppState(data);
+                        planningDataLoadedOnce = true;
+                    }
+                    renderAll(false);
+                }).catch(function(err) {
+                    console.error('Relecture planningData échouée:', err);
+                    renderAll(false);
+                });
+                return;
+            }
+            planningDataListenerAttached = true;
+            planningRef.on('value', function(snapshot) {
+                const data = snapshot.val();
+                if (data) {
+                    loadAppState(data);
+                    planningDataLoadedOnce = true;
+                }
+                renderAll(false);
+            }, function(err) {
+                console.error('Écoute planningData erreur:', err);
+            });
+            // Première lecture explicite pour garantir l'affichage sans F5
+            planningRef.once('value').then(function(snapshot) {
+                const data = snapshot.val();
+                if (data) {
+                    loadAppState(data);
+                    planningDataLoadedOnce = true;
+                }
+                renderAll(false);
+            }).catch(function(err) {
+                console.error('Chargement initial planningData échoué:', err);
+            });
+        }
+
+        function unsubscribePlanningData() {
+            if (planningRef && planningDataListenerAttached) {
+                try { planningRef.off('value'); } catch (e) {}
+                planningDataListenerAttached = false;
+                planningDataLoadedOnce = false;
+            }
+        }
+
         function checkAuthState() {
             auth.onAuthStateChanged((user) => {
                 currentUser = user;
@@ -2766,17 +2897,19 @@ function markAgentSeenOnSheet(sheetKey, agentId) {
                     
                     setupPresence(user);
                     applyReadOnlyMode();
+                    // Charger / ré-abonner les données APRÈS authentification
+                    subscribePlanningData();
                     if (typeof checkYearlyBackupReminder === 'function') {
                         try { checkYearlyBackupReminder(); } catch (e) {}
                     }
                     if (typeof syncReplacementCountsOnOpen === 'function') {
                         try { syncReplacementCountsOnOpen(); } catch (e) {}
                     }
-                    renderAll(false);
                     if (typeof maybeShowAbsencePendingAlert === 'function') {
                         try { maybeShowAbsencePendingAlert(); } catch (e) {}
                     }
                 } else {
+                    unsubscribePlanningData();
                     document.getElementById('authModal').style.display = 'flex';
                     document.getElementById('userStatus').style.display = 'none';
                     document.getElementById('logoutBtn').style.display = 'none';
@@ -3172,6 +3305,12 @@ if (resetAckBtn) {
             } else if (settings && settings.minAgentsPerTeam < 0) {
                 settings.minAgentsPerTeam = 0;
             }
+            if (settings && (settings.overstaffThreshold === undefined || settings.overstaffThreshold === null || isNaN(parseInt(settings.overstaffThreshold, 10)))) {
+                settings.overstaffThreshold = 6;
+            } else if (settings) {
+                const ov = parseInt(settings.overstaffThreshold, 10);
+                settings.overstaffThreshold = (!isNaN(ov) && ov >= 1) ? ov : 6;
+            }
             if (settings && typeof settings.restrictTeamVisibility !== 'boolean') {
                 settings.restrictTeamVisibility = !!settings.restrictTeamVisibility;
             }
@@ -3355,17 +3494,12 @@ if (resetAckBtn) {
             if (tableContainer) {
                 tableContainer.addEventListener('click', function(e) {
                     if (e.target.closest('th[data-date]')) return;
+                    if (e.target.closest('.header-date-badge')) return;
                     if (selectedColumnDate) clearPlanningColumnSelection();
                 });
             }
-            
-            planningRef.on('value', (snapshot) => {
-                const data = snapshot.val();
-                if (data) {
-                    loadAppState(data);
-                }
-                renderAll(false);
-            });
+            // Les données Firebase sont abonnées dans subscribePlanningData()
+            // après authentification (évite un 1er rendu vide nécessitant F5).
         }
 
         // sert à remplir automatiquement une liste déroulante des années disponibles et à conserver l'année actuellement sélectionnée.
@@ -4286,13 +4420,25 @@ if (resetAckBtn) {
 
                 let badgeHtml = '';
                 const dayStatus = dailyAlertColors[dateStr];
-                if (dayStatus) {
+                const isOverstaff = !!(dailyOverstaffing && dailyOverstaffing[dateStr]);
+                if (dayStatus || isOverstaff) {
                     let colorClass = 'bg-green';
                     let label = 'OK';
                     if (dayStatus === 'RED') { colorClass = 'bg-red'; label = isYear ? '!' : 'Alerte'; }
                     else if (dayStatus === 'ORANGE') { colorClass = 'bg-orange'; label = isYear ? '~' : 'Attention'; }
+                    else if (isOverstaff) {
+                        const _ov = (typeof getOverstaffThreshold === 'function') ? getOverstaffThreshold() : 6;
+                        colorClass = 'bg-purple';
+                        label = isYear ? (_ov + '+') : ('>' + _ov);
+                    }
                     else { label = isYear ? '✓' : 'OK'; }
-                    badgeHtml = `<span class="header-date-badge ${colorClass}">${label}</span>`;
+                    // Si défaut (rouge/orange) ET sur-effectif : badge principal + pastille violette
+                    let extraPurple = '';
+                    if (isOverstaff && (dayStatus === 'RED' || dayStatus === 'ORANGE')) {
+                        const _ovTh = (typeof getOverstaffThreshold === 'function') ? getOverstaffThreshold() : 6;
+                        extraPurple = `<span class="header-date-badge bg-purple clickable-staffing" data-staff-date="${dateStr}" title="Effectif > ${_ovTh} sur au moins un quart — cliquer pour le détail">${isYear ? (_ovTh + '+') : ('>' + _ovTh)}</span>`;
+                    }
+                    badgeHtml = `<span class="header-date-badge ${colorClass} clickable-staffing" data-staff-date="${dateStr}" title="Composition d'équipe — cliquer pour le détail">${label}</span>${extraPurple}`;
                 }
 
                 th.setAttribute('data-date', dateStr);
@@ -4318,6 +4464,14 @@ if (resetAckBtn) {
                 if (selectedColumnDate === dateStr) th.classList.add('selected-col');
 
                 th.onclick = function(e) {
+                    // Clic sur un badge d'effectif → modale composition (pas la sélection de colonne)
+                    const badge = e.target.closest && e.target.closest('.header-date-badge.clickable-staffing');
+                    if (badge) {
+                        e.stopPropagation();
+                        const dStaff = badge.getAttribute('data-staff-date') || dateStr;
+                        if (typeof openDayStaffingModal === 'function') openDayStaffingModal(dStaff);
+                        return;
+                    }
                     e.stopPropagation();
                     if (selectedColumnDate === dateStr) clearPlanningColumnSelection();
                     else selectPlanningColumn(dateStr);
@@ -4576,10 +4730,13 @@ if (resetAckBtn) {
          */
         function computeDailyAlertColors(dates) {
             dailyAlertColors = {};
+            dailyOverstaffing = {};
             const shifts = ['M', 'A', 'N'];
+            const overLimit = (typeof getOverstaffThreshold === 'function') ? getOverstaffThreshold() : 6;
             dates.forEach(function(d) {
                 const dateStr = formatDate(d);
                 let worst = 'GREEN';
+                let maxShiftCount = 0;
                 shifts.forEach(function(shiftId) {
                     let count = 0;
                     let skillCounts = {};
@@ -4602,6 +4759,7 @@ if (resetAckBtn) {
                             }
                         });
                     });
+                    if (count > maxShiftCount) maxShiftCount = count;
                     let exclusiveAlert = false;
                     (exclusiveSkillMonitoredGroups || []).forEach(function(group) {
                         if (!group || group.length < 2) return;
@@ -4630,7 +4788,140 @@ if (resetAckBtn) {
                     else if (status === 'ORANGE' && worst !== 'RED') worst = 'ORANGE';
                 });
                 dailyAlertColors[dateStr] = worst;
+                dailyOverstaffing[dateStr] = maxShiftCount > overLimit;
             });
+        }
+
+        /**
+         * Snapshot effectifs / compétences / agents présents pour une date (tous quarts M/A/N).
+         * Même règles de comptage que le bandeau de surveillance.
+         */
+        function getDayStaffingSnapshot(dateStr) {
+            const shifts = [
+                { id: 'M', name: 'Matin' },
+                { id: 'A', name: 'Après-midi' },
+                { id: 'N', name: 'Nuit' }
+            ];
+            const result = { dateStr: dateStr, shifts: [] };
+            shifts.forEach(function(shift) {
+                let count = 0;
+                let skillCounts = {};
+                skillDefinitions.forEach(function(s) { skillCounts[s.id] = 0; });
+                let presentAgents = [];
+                let exclusiveAlerts = [];
+                teams.forEach(function(team) {
+                    (team.agents || []).forEach(function(agent) {
+                        if (typeof agentHasAtLeastOneSkill === 'function' && !agentHasAtLeastOneSkill(agent)) return;
+                        const taskCode = getEffectiveAgentTask(agent, team.id, dateStr);
+                        const task = TASKS[taskCode] || TASKS['R'];
+                        if (task.shift === shift.id) {
+                            count++;
+                            presentAgents.push({ id: agent.id, name: agent.name, teamName: team.name, skills: agent.skills || [], taskCode: taskCode });
+                            (agent.skills || []).forEach(function(sId) {
+                                if (skillCounts[sId] !== undefined) skillCounts[sId]++;
+                            });
+                        }
+                    });
+                });
+                (exclusiveSkillMonitoredGroups || []).forEach(function(group) {
+                    if (!group || group.length < 2) return;
+                    presentAgents.forEach(function(agent) {
+                        const agentSkills = agent.skills || [];
+                        if (!group.every(function(sId) { return agentSkills.indexOf(sId) !== -1; })) return;
+                        const otherHas = presentAgents.some(function(other) {
+                            if (other.id === agent.id) return false;
+                            const os = other.skills || [];
+                            return group.some(function(sId) { return os.indexOf(sId) !== -1; });
+                        });
+                        if (!otherHas) {
+                            exclusiveAlerts.push({ agentName: agent.name, group: group.slice() });
+                        }
+                    });
+                });
+                const th = (settings && settings.thresholds && settings.thresholds[shift.id])
+                    ? settings.thresholds[shift.id] : { orange: 5, green: 7 };
+                let statusClass = 'bg-red';
+                if (count >= th.green) statusClass = 'bg-green';
+                else if (count >= th.orange) statusClass = 'bg-orange';
+                if (exclusiveAlerts.length > 0) statusClass = 'bg-red';
+                skillDefinitions.forEach(function(s) {
+                    const sCount = skillCounts[s.id] || 0;
+                    const sMin = s.min !== undefined ? s.min : 1;
+                    if (sCount < sMin) statusClass = 'bg-red';
+                });
+                const overLimit = (typeof getOverstaffThreshold === 'function') ? getOverstaffThreshold() : 6;
+                if (count > overLimit && statusClass === 'bg-green') statusClass = 'bg-purple';
+                result.shifts.push({
+                    id: shift.id,
+                    name: shift.name,
+                    count: count,
+                    statusClass: statusClass,
+                    skillCounts: skillCounts,
+                    exclusiveAlerts: exclusiveAlerts,
+                    agents: presentAgents
+                });
+            });
+            return result;
+        }
+
+        function openDayStaffingModal(dateStr) {
+            const modal = document.getElementById('dayStaffingModal');
+            const sub = document.getElementById('dayStaffingModalSubtitle');
+            const body = document.getElementById('dayStaffingModalBody');
+            if (!modal || !body) return;
+            const snap = getDayStaffingSnapshot(dateStr);
+            const displayDate = (typeof formatDateStrDisplay === 'function')
+                ? formatDateStrDisplay(dateStr)
+                : dateStr;
+            if (sub) {
+                sub.textContent = 'Effectifs et compétences pour le ' + displayDate +
+                    ' (mêmes règles que le bandeau de surveillance).';
+            }
+            let html = '';
+            snap.shifts.forEach(function(sh) {
+                let skillsHtml = '<div class="skill-list" style="margin-top:6px;">';
+                skillDefinitions.forEach(function(s) {
+                    const sCount = sh.skillCounts[s.id] || 0;
+                    const sMin = s.min !== undefined ? s.min : 1;
+                    const sClass = sCount >= sMin ? 'bg-green' : 'bg-red';
+                    skillsHtml += '<div class="skill-item ' + sClass + '"><span>' + s.id + '</span><span>' + sCount + '/' + sMin + '</span></div>';
+                });
+                skillsHtml += '</div>';
+                let exclHtml = '';
+                (sh.exclusiveAlerts || []).forEach(function(al) {
+                    exclHtml += '<div class="exclusive-alert-tag" title="Seul l\'agent ' + al.agentName +
+                        ' possède le groupe">⚠️ ' + al.group.join('+') + '</div>';
+                });
+                let agentsHtml = '<div class="day-staffing-agents">';
+                if (!sh.agents.length) {
+                    agentsHtml += '<em style="color:#999;">Aucun agent sur ce quart</em>';
+                } else {
+                    sh.agents.forEach(function(a) {
+                        const sk = (a.skills || []).join(', ') || '—';
+                        agentsHtml += '<span class="agent-chip" title="' + (a.teamName || '') + ' · ' + sk + '">' +
+                            a.name + ' <small>(' + a.taskCode + ')</small></span>';
+                    });
+                }
+                agentsHtml += '</div>';
+                const _ovModal = (typeof getOverstaffThreshold === 'function') ? getOverstaffThreshold() : 6;
+                const overNote = (sh.count > _ovModal)
+                    ? ' <span style="color:#8e44ad;font-weight:bold;font-size:0.75rem;">(effectif &gt; ' +
+                      _ovModal + ')</span>'
+                    : '';
+                html += '<div class="day-staffing-shift-card">' +
+                    '<h3>' + sh.name + ' <span class="kpi-val ' + sh.statusClass +
+                    '" style="display:inline-block;min-width:28px;text-align:center;">' + sh.count +
+                    '</span>' + overNote + '</h3>' +
+                    skillsHtml + exclHtml + agentsHtml +
+                    '</div>';
+            });
+            body.innerHTML = html || '<p style="color:#999;font-style:italic;">Aucune donnée.</p>';
+            modal.style.display = 'flex';
+        }
+
+        function closeDayStaffingModal() {
+            const modal = document.getElementById('dayStaffingModal');
+            if (modal) modal.style.display = 'none';
         }
 
         // Bandeau de surveillance : toujours un mois (dashboardStartDate)
@@ -11756,6 +12047,13 @@ function resetAcknowledgedAlerts() {
         minAgentsInput.value = (!isNaN(minA) && minA >= 0) ? minA : 1;
     }
 
+    const overstaffInput = document.getElementById('overstaffThreshold');
+    if (overstaffInput) {
+        const ov = (settings.overstaffThreshold !== undefined && settings.overstaffThreshold !== null)
+            ? parseInt(settings.overstaffThreshold, 10) : 6;
+        overstaffInput.value = (!isNaN(ov) && ov >= 1) ? ov : 6;
+    }
+
     if (typeof renderTeamNamesSettings === 'function') {
         try { renderTeamNamesSettings(); } catch (e) {}
     }
@@ -12164,6 +12462,9 @@ function renderMonitoredGroupRow(group = []) {
 
     const minAgentsVal = parseInt(document.getElementById('minAgentsPerTeam').value, 10);
     settings.minAgentsPerTeam = (!isNaN(minAgentsVal) && minAgentsVal >= 0) ? minAgentsVal : 1;
+
+    const overstaffVal = parseInt((document.getElementById('overstaffThreshold') || {}).value, 10);
+    settings.overstaffThreshold = (!isNaN(overstaffVal) && overstaffVal >= 1) ? overstaffVal : 6;
 
     const restrictVisCb = document.getElementById('restrictTeamVisibility');
     settings.restrictTeamVisibility = !!(restrictVisCb && restrictVisCb.checked);
