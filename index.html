@@ -2275,9 +2275,10 @@
                 </button>
                 <button type="button" class="btn" style="width:100%; text-align:left; padding:12px 14px; background:#8e44ad; color:#fff;"
                         onclick="confirmRplCloseWithoutVolunteer('task')">
-                    📝 Affecter une tâche
+                    📝 Affecter la tâche prédéfinie
                     <div style="font-weight:normal; font-size:0.75rem; margin-top:4px; opacity:0.9;">
-                        Archive la fiche puis ouvre la fenêtre d’affectation (onglet Absences).
+                        Archive la fiche et applique la conversion de la tâche de remplacement
+                        (ex. RPCA → CA, RPF → F, RPR → R…). Aucune fenêtre supplémentaire.
                     </div>
                 </button>
                 <button type="button" class="btn btn-secondary" style="width:100%;" onclick="cancelRplCloseWithoutVolunteer()">
@@ -7326,56 +7327,123 @@ function confirmRplCloseWithoutVolunteer(mode) {
     const modal = document.getElementById('rplNoVolunteerModal');
     if (modal) modal.style.display = 'none';
 
-    // Toujours archiver et retirer la fiche active
-    archiveRplSheetWithoutVolunteers(ctx, comment);
-
     if (mode === 'rotation') {
+        // Réintégrer au roulement puis archiver
         reintegrateTargetToRotation(ctx);
+        archiveRplSheetWithoutVolunteers(ctx, comment);
         closeReplacementModal();
         if (typeof renderAll === 'function') renderAll(true);
-        alert('✅ Fiche soldée sans volontaire.\\n' +
+        alert('✅ Fiche soldée sans volontaire.\n' +
             (ctx.isTeam
                 ? 'L’équipe est repassée en roulement (R) pour cette date.'
                 : 'L’agent est réintégré dans son roulement d’équipe (aucune tâche individuelle).'));
         return;
     }
 
-    // mode === 'task' : archiver, retirer le RPL (retour temporaire au roulement),
-    // puis ouvrir la fenêtre tâche sur l'onglet Absences.
-    reintegrateTargetToRotation(ctx);
-
-    const isTeam = ctx.isTeam;
-    const targetId = ctx.targetId;
-    const dateStr = ctx.dateStr;
-    let teamId = null;
-    if (!isTeam) {
-        (teams || []).forEach(function(t) {
-            if ((t.agents || []).some(function(a) { return a.id === targetId; })) teamId = t.id;
-        });
-    }
-    let currentCode = 'R';
-    if (isTeam) {
-        currentCode = (teamSchedules[targetId] && teamSchedules[targetId][dateStr] !== undefined)
-            ? teamSchedules[targetId][dateStr]
-            : 'R';
-    } else if (typeof getEffectiveAgentTask === 'function') {
-        currentCode = getEffectiveAgentTask({ id: targetId }, teamId, dateStr) || 'R';
-    }
-
+    // mode === 'task' : appliquer la tâche prédéfinie (conversion RPxx → xx) puis archiver
+    const conv = applyPredefinedRplTargetTask(ctx, comment);
+    archiveRplSheetWithoutVolunteers(ctx, comment);
     closeReplacementModal();
     if (typeof renderAll === 'function') renderAll(true);
 
-    alert('✅ Fiche de remplacement archivée.\nChoisissez maintenant la tâche à affecter (onglet Absences).');
+    let msg = '✅ Fiche soldée sans volontaire.\nTâche prédéfinie appliquée';
+    if (conv && conv.from && conv.to) {
+        msg += ' : ' + conv.from + ' → ' + conv.to;
+    } else if (conv && conv.note) {
+        msg += '.\n' + conv.note;
+    } else {
+        msg += '.';
+    }
+    if (conv && conv.rpaMessage) {
+        msg += '\n\n⚠️ Tâche RPA : pensez à changer le motif du remplacement si besoin.';
+    }
+    alert(msg);
+}
 
-    // forceEdit=true : ouverture autorisée même si la main ✋ n'est pas active
-    if (typeof openTaskModal === 'function') {
-        openTaskModal(isTeam, targetId, ctx.targetName, dateStr, currentCode, '', null, null, true);
-        if (typeof switchTaskModalTab === 'function') {
-            setTimeout(function() { switchTaskModalTab('absences'); }, 50);
+/**
+ * Applique sur la cible la conversion de la tâche de remplacement déjà posée
+ * (même logique que lors d'un solde avec volontaires) :
+ * week-end formation/RPR → R | RPxx → xx | RPA signalé.
+ * @returns {{from:string,to:string,rpaMessage?:boolean,note?:string}|null}
+ */
+function applyPredefinedRplTargetTask(ctx, comment) {
+    if (!ctx) return null;
+    const targetId = ctx.targetId;
+    const dateStr = ctx.dateStr;
+    const isTeam = !!ctx.isTeam;
+
+    // Code actuel sur la cellule cible (avant toute suppression)
+    let currentTargetCode = null;
+    if (isTeam) {
+        if (teamSchedules[targetId] && teamSchedules[targetId][dateStr] !== undefined) {
+            currentTargetCode = teamSchedules[targetId][dateStr];
         }
     } else {
-        alert('Ouvrez une cellule du planning pour affecter une tâche.');
+        if (agentSchedules[targetId] && agentSchedules[targetId][dateStr] !== undefined) {
+            currentTargetCode = agentSchedules[targetId][dateStr];
+        }
+        if (!currentTargetCode) {
+            let teamId = null;
+            (teams || []).forEach(function(t) {
+                if ((t.agents || []).some(function(a) { return a.id === targetId; })) teamId = t.id;
+            });
+            if (teamId && teamSchedules[teamId] && teamSchedules[teamId][dateStr] !== undefined) {
+                currentTargetCode = teamSchedules[teamId][dateStr];
+            }
+        }
     }
+
+    if (!currentTargetCode) {
+        return { from: '', to: '', note: 'Aucune tâche de remplacement trouvée sur la cellule (rien à convertir).' };
+    }
+
+    const codeUp = String(currentTargetCode).toUpperCase();
+    const isWeekend = (typeof isWeekendDateStr === 'function') && isWeekendDateStr(dateStr);
+    const isFormOrRprWeekend = isWeekend && (
+        codeUp === 'RPR' || codeUp === 'RPRC' ||
+        ((typeof isFormationTaskCode === 'function') && isFormationTaskCode(currentTargetCode)) ||
+        codeUp.indexOf('FO') !== -1
+    );
+
+    let newCode = null;
+    let rpaMessage = false;
+
+    if (isFormOrRprWeekend) {
+        newCode = 'R';
+    } else if ((typeof isRplLikeCode === 'function') && isRplLikeCode(currentTargetCode)) {
+        if (codeUp === 'RPA') {
+            rpaMessage = true;
+            newCode = currentTargetCode; // conserve RPA
+        } else if (typeof resolveRplToFinalCode === 'function') {
+            newCode = resolveRplToFinalCode(currentTargetCode);
+        }
+    } else {
+        // Déjà une tâche « finale » (ex. CA posé directement) : on la conserve
+        newCode = currentTargetCode;
+    }
+
+    if (!newCode) {
+        return { from: currentTargetCode, to: '', note: 'Conversion impossible pour le code ' + currentTargetCode + '.' };
+    }
+
+    if (isTeam) {
+        if (!teamSchedules[targetId]) teamSchedules[targetId] = {};
+        teamSchedules[targetId][dateStr] = newCode;
+    } else {
+        if (!agentSchedules[targetId]) agentSchedules[targetId] = {};
+        agentSchedules[targetId][dateStr] = newCode;
+    }
+    if (typeof logCellModification === 'function') {
+        logCellModification(isTeam, targetId, dateStr, currentTargetCode, newCode);
+    }
+
+    const descKey = targetId + '_' + dateStr;
+    if (comment) {
+        if (!taskDescriptions || typeof taskDescriptions !== 'object') taskDescriptions = {};
+        taskDescriptions[descKey] = 'RPL soldé sans volontaire – ' + comment;
+    }
+
+    return { from: currentTargetCode, to: newCode, rpaMessage: rpaMessage };
 }
 
 function validateReplacementSheet() {
