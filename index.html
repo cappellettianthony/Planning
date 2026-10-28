@@ -5137,6 +5137,7 @@ if (resetAckBtn) {
             cellDiv.setAttribute('data-target-id', team.id);
             cellDiv.setAttribute('data-date', dateStr);
             cellDiv.setAttribute('data-is-team', '1');
+            cellDiv.setAttribute('data-team-id', team.id);
             cellDiv.style.backgroundColor = taskDef.color;
             cellDiv.style.color = taskDef.text;
             cellDiv.innerText = currentVal;
@@ -5227,6 +5228,7 @@ if (resetAckBtn) {
                 cellDiv.setAttribute('data-target-id', agent.id);
                 cellDiv.setAttribute('data-date', dateStr);
                 cellDiv.setAttribute('data-is-team', '0');
+                cellDiv.setAttribute('data-team-id', team.id);
 
                 if (hasIndividual) {
                     cellDiv.style.backgroundColor = taskDef.color;
@@ -5245,7 +5247,7 @@ if (resetAckBtn) {
 
                 if (!planningLockedA || isRplAgentCell) {
                     // currentTaskCode = code affiché si individuel, sinon effectif pour l'attribution
-                    bindCellEvents(cellDiv, false, agent.id, agent.name, dateStr, hasIndividual ? taskCode : taskCode, desc);
+                    bindCellEvents(cellDiv, false, agent.id, agent.name, dateStr, hasIndividual ? taskCode : taskCode, desc, team.id);
                 }
                 if (hasIndividual && desc) {
                     attachCellHoverEvents(cellDiv, desc);
@@ -5268,6 +5270,42 @@ function clearMultiSelectHighlights() {
     });
 }
 
+/** Agents visibles d'une équipe (ordre d'affichage), hors ligne de roulement */
+function getVisibleTeamAgentIds(teamId) {
+    const team = (teams || []).find(function(t) { return t && t.id === teamId; });
+    if (!team) return [];
+    const ids = [];
+    (team.agents || []).forEach(function(a) {
+        if (!a || !a.id) return;
+        if (typeof isAgentRowHidden === 'function' && isAgentRowHidden(teamId, a.id)) return;
+        ids.push(a.id);
+    });
+    return ids;
+}
+
+/** Plage d'agents entre deux ids dans l'ordre de l'équipe */
+function getAgentRangeInTeam(teamId, agentIdA, agentIdB) {
+    const ids = getVisibleTeamAgentIds(teamId);
+    const iA = ids.indexOf(agentIdA);
+    const iB = ids.indexOf(agentIdB);
+    if (iA === -1 && iB === -1) return agentIdA ? [agentIdA] : [];
+    if (iA === -1) return [agentIdB];
+    if (iB === -1) return [agentIdA];
+    const lo = Math.min(iA, iB);
+    const hi = Math.max(iA, iB);
+    return ids.slice(lo, hi + 1);
+}
+
+function resolveAgentNameById(agentId) {
+    let name = agentId;
+    (teams || []).forEach(function(t) {
+        (t.agents || []).forEach(function(a) {
+            if (a && a.id === agentId) name = a.name || agentId;
+        });
+    });
+    return name;
+}
+
 function highlightMultiSelectRange(targetId, isTeam, dateA, dateB) {
     clearMultiSelectHighlights();
     if (!dateA || !dateB) return;
@@ -5279,6 +5317,18 @@ function highlightMultiSelectRange(targetId, isTeam, dateA, dateB) {
         if (d && d >= start && d <= end) {
             el.classList.add('task-cell-range-selected');
         }
+    });
+}
+
+/** Surlignage vertical : plusieurs agents, une seule date (jamais la ligne roulement) */
+function highlightMultiSelectAgents(agentIds, dateStr) {
+    clearMultiSelectHighlights();
+    if (!dateStr || !agentIds || !agentIds.length) return;
+    agentIds.forEach(function(aid) {
+        const selector = '.task-cell[data-target-id="' + aid + '"][data-is-team="0"][data-date="' + dateStr + '"]';
+        document.querySelectorAll(selector).forEach(function(el) {
+            el.classList.add('task-cell-range-selected');
+        });
     });
 }
 
@@ -5318,29 +5368,42 @@ function finishMultiSelectDrag() {
     }
     const st = multiSelectState;
     multiSelectState = null;
-    const dates = getDateRangeInclusive(st.startDate, st.endDate || st.startDate);
     clearMultiSelectHighlights();
 
+    if (typeof canModifyPlanning === 'function' && !canModifyPlanning()) return;
+
+    // --- Sélection verticale : plusieurs agents, une date ---
+    if (st.mode === 'vertical') {
+        const agentIds = (st.agentIds && st.agentIds.length)
+            ? st.agentIds.slice()
+            : [st.targetId];
+        // Jamais la ligne de roulement d'équipe
+        if (st.isTeam) return;
+        if (agentIds.length <= 1) {
+            openTaskModal(false, st.targetId, st.targetName, st.startDate, st.currentTaskCode, st.currentDesc);
+            return;
+        }
+        openTaskModal(false, agentIds[0], st.targetName, st.startDate, st.currentTaskCode, st.currentDesc, null, agentIds);
+        return;
+    }
+
+    // --- Sélection horizontale (comportement existant) ---
+    const dates = getDateRangeInclusive(st.startDate, st.endDate || st.startDate);
     if (!dates.length) return;
-    // Une seule date : comportement normal
     if (dates.length === 1) {
-        if (typeof canModifyPlanning === 'function' && !canModifyPlanning()) return;
         openTaskModal(st.isTeam, st.targetId, st.targetName, dates[0], st.currentTaskCode, st.currentDesc);
         return;
     }
-    // Plusieurs dates : uniquement agents (pas équipe / RPL multi)
     if (st.isTeam) {
-        // Pour l'équipe : ouvrir sur la première date (rotation déjà gérée ailleurs)
-        if (typeof canModifyPlanning === 'function' && !canModifyPlanning()) return;
         openTaskModal(true, st.targetId, st.targetName, dates[0], st.currentTaskCode, st.currentDesc);
         return;
     }
-    if (typeof canModifyPlanning === 'function' && !canModifyPlanning()) return;
     openTaskModal(false, st.targetId, st.targetName, dates[0], st.currentTaskCode, st.currentDesc, dates);
 }
 
-function bindCellEvents(cellDiv, isTeam, targetId, targetName, dateStr, currentTaskCode, currentDesc) {
+function bindCellEvents(cellDiv, isTeam, targetId, targetName, dateStr, currentTaskCode, currentDesc, teamId) {
     const isRplTask = TASKS[currentTaskCode] && TASKS[currentTaskCode].isReplacement;
+    const cellTeamId = teamId || cellDiv.getAttribute('data-team-id') || (isTeam ? targetId : null);
 
     // --- GESTION DU MAINTIEN DE 2 SECONDES (MOBILE / TOUCH) ---
     cellDiv.ontouchstart = (e) => {
@@ -5383,11 +5446,11 @@ function bindCellEvents(cellDiv, isTeam, targetId, targetName, dateStr, currentT
         return false;
     };
 
-    // --- CLIC-GLISSER multi-jours (y compris depuis une case RPL) ---
+    // --- CLIC-GLISSER multi-sélection (horizontal = jours / vertical = agents même équipe) ---
+    // RE / Admin uniquement (canModifyPlanning). Vertical : agents d'une même équipe, jamais le roulement.
     cellDiv.onmousedown = (e) => {
         if (e.button !== 0) return;
         if (typeof canModifyPlanning === 'function' && !canModifyPlanning()) return;
-        // Annuler le simple clic différé
         if (clickTimer) {
             clearTimeout(clickTimer);
             clickTimer = null;
@@ -5396,11 +5459,14 @@ function bindCellEvents(cellDiv, isTeam, targetId, targetName, dateStr, currentT
             isTeam: isTeam,
             targetId: targetId,
             targetName: targetName,
+            teamId: cellTeamId || null,
             startDate: dateStr,
             endDate: dateStr,
             currentTaskCode: currentTaskCode,
             currentDesc: currentDesc,
-            moved: false
+            moved: false,
+            mode: null, // 'horizontal' | 'vertical' — fixé au premier mouvement
+            agentIds: isTeam ? null : [targetId]
         };
         document.body.classList.add('planning-dragging');
         highlightMultiSelectRange(targetId, isTeam, dateStr, dateStr);
@@ -5409,10 +5475,51 @@ function bindCellEvents(cellDiv, isTeam, targetId, targetName, dateStr, currentT
 
     cellDiv.onmouseenter = () => {
         if (!multiSelectState) return;
-        if (multiSelectState.targetId !== targetId || multiSelectState.isTeam !== isTeam) return;
-        multiSelectState.endDate = dateStr;
-        multiSelectState.moved = multiSelectState.startDate !== dateStr;
-        highlightMultiSelectRange(targetId, isTeam, multiSelectState.startDate, dateStr);
+        // Ligne de roulement d'équipe : uniquement extension horizontale sur la même équipe
+        if (multiSelectState.isTeam) {
+            if (!isTeam || multiSelectState.targetId !== targetId) return;
+            multiSelectState.mode = 'horizontal';
+            multiSelectState.endDate = dateStr;
+            multiSelectState.moved = multiSelectState.startDate !== dateStr;
+            highlightMultiSelectRange(targetId, true, multiSelectState.startDate, dateStr);
+            return;
+        }
+        // Départ depuis un agent : pas d'extension vers une ligne roulement
+        if (isTeam) return;
+
+        const sameAgent = (multiSelectState.targetId === targetId);
+        const sameDate = (multiSelectState.startDate === dateStr);
+        const sameTeam = multiSelectState.teamId && cellTeamId && multiSelectState.teamId === cellTeamId;
+
+        // Déterminer le mode au premier déplacement réel
+        if (!multiSelectState.mode) {
+            if (!sameAgent && sameDate && sameTeam) {
+                multiSelectState.mode = 'vertical';
+            } else if (sameAgent && !sameDate) {
+                multiSelectState.mode = 'horizontal';
+            } else if (sameAgent && sameDate) {
+                return;
+            } else {
+                // Diagonale ou autre équipe : ignorer
+                return;
+            }
+        }
+
+        if (multiSelectState.mode === 'horizontal') {
+            if (!sameAgent) return;
+            multiSelectState.endDate = dateStr;
+            multiSelectState.moved = multiSelectState.startDate !== dateStr;
+            highlightMultiSelectRange(targetId, false, multiSelectState.startDate, dateStr);
+            return;
+        }
+
+        if (multiSelectState.mode === 'vertical') {
+            if (!sameDate || !sameTeam) return;
+            multiSelectState.agentIds = getAgentRangeInTeam(multiSelectState.teamId, multiSelectState.targetId, targetId);
+            multiSelectState.moved = multiSelectState.agentIds.length > 1;
+            multiSelectState.endDate = dateStr;
+            highlightMultiSelectAgents(multiSelectState.agentIds, dateStr);
+        }
     };
 
     // --- GESTION DU DOUBLE-CLIC (PC / SOURIS) ---
@@ -5455,10 +5562,17 @@ if (typeof window !== 'undefined' && !window._planningDragMouseUpBound) {
         if (!multiSelectState) return;
         const st = multiSelectState;
         // Marquer les cellules pour éviter le clic fantôme
-        const selector = '.task-cell[data-target-id="' + st.targetId + '"]';
-        document.querySelectorAll(selector).forEach(function(el) {
-            el._skipNextClick = true;
-        });
+        if (st.mode === 'vertical' && st.agentIds && st.agentIds.length) {
+            st.agentIds.forEach(function(aid) {
+                document.querySelectorAll('.task-cell[data-target-id="' + aid + '"][data-date="' + st.startDate + '"]').forEach(function(el) {
+                    el._skipNextClick = true;
+                });
+            });
+        } else {
+            document.querySelectorAll('.task-cell[data-target-id="' + st.targetId + '"]').forEach(function(el) {
+                el._skipNextClick = true;
+            });
+        }
         if (clickTimer) {
             clearTimeout(clickTimer);
             clickTimer = null;
@@ -9621,10 +9735,24 @@ function purgeReplacementArchives() {
             const dates = (Array.isArray(dateStrs) && dateStrs.length)
                 ? dateStrs.slice().sort()
                 : [dateStr];
+            // targetIdsOption : 8e argument éventuel (sélection verticale multi-agents)
+            const multiAgentIds = (arguments.length >= 8 && Array.isArray(arguments[7]) && arguments[7].length)
+                ? arguments[7].slice()
+                : null;
+            const targetIds = (!isTeam && multiAgentIds && multiAgentIds.length > 1)
+                ? multiAgentIds
+                : [targetId];
+            const multiAgentNames = targetIds.map(function(id) {
+                return (typeof resolveAgentNameById === 'function') ? resolveAgentNameById(id) : id;
+            });
             activeTaskCellSelection = {
                 isTeam: isTeam,
-                targetId: targetId,
-                targetName: targetName,
+                targetId: targetIds[0],
+                targetIds: targetIds,
+                targetName: targetIds.length > 1
+                    ? (multiAgentNames.length + ' agents')
+                    : targetName,
+                targetNames: multiAgentNames,
                 dateStr: dates[0],
                 dateStrs: dates
             };
@@ -9636,12 +9764,25 @@ function purgeReplacementArchives() {
             }
             const nameBadge = document.getElementById('taskModalTargetNameBadge');
             if (nameBadge) {
-                const prefix = isTeam ? '👥 ' : '👤 ';
-                nameBadge.textContent = prefix + (targetName || targetId || '');
-                nameBadge.title = isTeam ? ('Équipe : ' + (targetName || targetId)) : ('Agent : ' + (targetName || targetId));
+                if (targetIds.length > 1) {
+                    nameBadge.textContent = '👥 ' + targetIds.length + ' agents';
+                    nameBadge.title = multiAgentNames.join(', ');
+                } else {
+                    const prefix = isTeam ? '👥 ' : '👤 ';
+                    nameBadge.textContent = prefix + (targetName || targetId || '');
+                    nameBadge.title = isTeam ? ('Équipe : ' + (targetName || targetId)) : ('Agent : ' + (targetName || targetId));
+                }
+            }
+            let targetLabel;
+            if (isTeam) {
+                targetLabel = 'Équipe : <strong>' + (targetName || targetId) + '</strong>';
+            } else if (targetIds.length > 1) {
+                targetLabel = 'Agents : <strong>' + multiAgentNames.join(', ') + '</strong> <span style="color:#2980b9;">(' + targetIds.length + ')</span>';
+            } else {
+                targetLabel = 'Agent : <strong>' + (targetName || targetId) + '</strong>';
             }
             document.getElementById('taskModalTargetInfo').innerHTML =
-                (isTeam ? 'Équipe' : 'Agent') + ' : <strong>' + (targetName || targetId) + '</strong> | Date : <strong>' + dateLabel + '</strong>';
+                targetLabel + ' | Date : <strong>' + dateLabel + '</strong>';
             document.getElementById('taskModalDescription').value = currentDesc || '';
 
             // Onglets Présences / Remplacement / Absences
@@ -10066,6 +10207,9 @@ function purgeReplacementArchives() {
                 pendingRplTaskAssignment = {
                     isTeam: isTeam,
                     targetId: targetId,
+                    targetIds: (activeTaskCellSelection.targetIds && activeTaskCellSelection.targetIds.length)
+                        ? activeTaskCellSelection.targetIds.slice()
+                        : [targetId],
                     targetName: activeTaskCellSelection.targetName,
                     dateStr: sortedDates[0],
                     dateStrs: sortedDates,
@@ -10073,7 +10217,8 @@ function purgeReplacementArchives() {
                     descValue: descValue,
                     descKey: descKey,
                     userProvidedComment: userProvidedComment,
-                    multiDay: isMulti
+                    multiDay: isMulti,
+                    multiAgent: !!(activeTaskCellSelection.targetIds && activeTaskCellSelection.targetIds.length > 1)
                 };
                 const defaultDeadline = computeDefaultRplDeadline(sortedDates[0]);
                 const infoEl = document.getElementById('rplDeadlineModalInfo');
@@ -10092,8 +10237,13 @@ function purgeReplacementArchives() {
                                 : ' (auto selon dispos / équipe).') +
                             '</span>';
                     }
-                    infoEl.innerHTML = 'Remplacement pour <strong>' + (activeTaskCellSelection.targetName || targetId) +
-                        '</strong> le <strong>' + dateHtml + '</strong>.' + extra;
+                    const nAgents = (activeTaskCellSelection.targetIds && activeTaskCellSelection.targetIds.length) || 1;
+                    const agentLabel = nAgents > 1
+                        ? (nAgents + ' agents')
+                        : (activeTaskCellSelection.targetName || targetId);
+                    infoEl.innerHTML = 'Remplacement pour <strong>' + agentLabel +
+                        '</strong> le <strong>' + dateHtml + '</strong>.' + extra +
+                        (nAgents > 1 ? '<br><span style="font-size:0.8rem;color:#666;">La tâche sera appliquée à chaque agent sélectionné.</span>' : '');
                 }
                 const input = document.getElementById('rplDeadlineDateInput');
                 if (input) input.value = defaultDeadline;
@@ -10114,22 +10264,26 @@ function purgeReplacementArchives() {
                     delete taskDescriptions[descKey];
                 }
             } else {
-                if (!agentSchedules[targetId]) agentSchedules[targetId] = {};
-                dateStrs.forEach(function(dStr) {
-                    const beforeCode = getCellTaskCode(false, targetId, dStr);
-                    let codeToWrite = selectedTaskCodeInModal;
-                    // Formation multi-jours : samedi/dimanche → R
-                    if (dateStrs.length > 1) {
-                        codeToWrite = applyWeekendFormationRule(dStr, codeToWrite, selectedTaskCodeInModal, targetId);
-                    }
-                    agentSchedules[targetId][dStr] = codeToWrite;
-                    logCellModification(false, targetId, dStr, beforeCode, codeToWrite);
-                    const dKey = targetId + '_' + dStr;
-                    if (descValue) {
-                        taskDescriptions[dKey] = descValue;
-                    } else {
-                        delete taskDescriptions[dKey];
-                    }
+                const applyTargetIds = (activeTaskCellSelection.targetIds && activeTaskCellSelection.targetIds.length)
+                    ? activeTaskCellSelection.targetIds
+                    : [targetId];
+                applyTargetIds.forEach(function(tid) {
+                    if (!agentSchedules[tid]) agentSchedules[tid] = {};
+                    dateStrs.forEach(function(dStr) {
+                        const beforeCode = getCellTaskCode(false, tid, dStr);
+                        let codeToWrite = selectedTaskCodeInModal;
+                        if (typeof applyWeekendFormationRule === 'function') {
+                            codeToWrite = applyWeekendFormationRule(dStr, codeToWrite, selectedTaskCodeInModal, tid);
+                        }
+                        agentSchedules[tid][dStr] = codeToWrite;
+                        logCellModification(false, tid, dStr, beforeCode, codeToWrite);
+                        const dKey = tid + '_' + dStr;
+                        if (descValue) {
+                            taskDescriptions[dKey] = descValue;
+                        } else {
+                            delete taskDescriptions[dKey];
+                        }
+                    });
                 });
             }
 
@@ -10333,6 +10487,9 @@ function purgeReplacementArchives() {
             const dateStrs = (pendingRplTaskAssignment.dateStrs && pendingRplTaskAssignment.dateStrs.length)
                 ? pendingRplTaskAssignment.dateStrs
                 : [dateStr];
+            const applyTargetIds = (!isTeam && pendingRplTaskAssignment.targetIds && pendingRplTaskAssignment.targetIds.length)
+                ? pendingRplTaskAssignment.targetIds.slice()
+                : [targetId];
             const isMulti = !!(pendingRplTaskAssignment.multiDay && dateStrs.length > 1);
             const userProvidedComment = !!pendingRplTaskAssignment.userProvidedComment;
 
@@ -10355,70 +10512,72 @@ function purgeReplacementArchives() {
                     delete taskDescriptions[descKey];
                 }
             } else {
-                if (!agentSchedules[targetId]) agentSchedules[targetId] = {};
-                dateStrs.forEach(function(dStr) {
-                    const beforeCode = getCellTaskCode(false, targetId, dStr);
-                    // Si roulement = Repos ou Journée → CA/F/... ; si M/A/N → RPL inchangée
-                    const rotCode = getTeamRotationCodeForAgent(targetId, dStr);
-                    let codeToWrite = resolveRplCodeIfRestOrDay(targetId, dStr, taskCode);
-                    // Formation week-end : M/A/N → RPR ; repos → R
-                    codeToWrite = applyWeekendFormationRule(dStr, codeToWrite, taskCode, targetId);
-                    // Fiche RPL si quart M/A/N et code de type remplacement (RPL, RPR, RPFO…)
-                    const writtenDef = TASKS[codeToWrite];
-                    const isRplLike = (typeof isRplLikeCode === 'function')
-                        ? isRplLikeCode(codeToWrite)
-                        : !!(writtenDef && writtenDef.isReplacement);
-                    const isWorkShiftRpl = !isRotationRestOrDayCode(rotCode) && isRplLike;
-                    agentSchedules[targetId][dStr] = codeToWrite;
-                    logCellModification(false, targetId, dStr, beforeCode, codeToWrite);
+                applyTargetIds.forEach(function(tid) {
+                    if (!agentSchedules[tid]) agentSchedules[tid] = {};
+                    dateStrs.forEach(function(dStr) {
+                        const beforeCode = getCellTaskCode(false, tid, dStr);
+                        // Si roulement = Repos ou Journée → CA/F/... ; si M/A/N → RPL inchangée
+                        const rotCode = getTeamRotationCodeForAgent(tid, dStr);
+                        let codeToWrite = resolveRplCodeIfRestOrDay(tid, dStr, taskCode);
+                        // Formation week-end : M/A/N → RPR ; repos → R
+                        codeToWrite = applyWeekendFormationRule(dStr, codeToWrite, taskCode, tid);
+                        // Fiche RPL si quart M/A/N et code de type remplacement (RPL, RPR, RPFO…)
+                        const writtenDef = TASKS[codeToWrite];
+                        const isRplLike = (typeof isRplLikeCode === 'function')
+                            ? isRplLikeCode(codeToWrite)
+                            : !!(writtenDef && writtenDef.isReplacement);
+                        const isWorkShiftRpl = !isRotationRestOrDayCode(rotCode) && isRplLike;
+                        agentSchedules[tid][dStr] = codeToWrite;
+                        logCellModification(false, tid, dStr, beforeCode, codeToWrite);
 
-                    const dKey = targetId + '_' + dStr;
-                    // Toujours partir du commentaire auto (équipes dispo), puis y ajouter
-                    // le commentaire manuel / demande d'absence s'il y en a un.
-                    const autoComment = (typeof buildRplAvailabilityComment === 'function')
-                        ? (buildRplAvailabilityComment(false, targetId, dStr) || '')
-                        : '';
-                    let dayDesc;
-                    if (userProvidedComment && descValue) {
-                        dayDesc = (typeof mergeRplAutoAndUserComment === 'function')
-                            ? mergeRplAutoAndUserComment(autoComment, descValue)
-                            : (autoComment
-                                ? (autoComment.replace(/\s+$/, '') + '\n' + descValue)
-                                : descValue);
-                    } else {
-                        dayDesc = autoComment || descValue || '';
-                    }
-                    if (dayDesc) {
-                        taskDescriptions[dKey] = dayDesc;
-                    } else {
-                        delete taskDescriptions[dKey];
-                    }
-
-                    // Fiche RPL uniquement si le roulement est un quart travaillé (M/A/N)
-                    // En repos / journée : simple absence (CA, F...) sans fiche de remplacement
-                    if (isWorkShiftRpl) {
-                        let daySkills;
-                        if (isMulti) {
-                            daySkills = computeAutoRecommendedSkillsForAbsence(targetId, dStr);
+                        const dKey = tid + '_' + dStr;
+                        // Toujours partir du commentaire auto (équipes dispo), puis y ajouter
+                        // le commentaire manuel / demande d'absence s'il y en a un.
+                        const autoComment = (typeof buildRplAvailabilityComment === 'function')
+                            ? (buildRplAvailabilityComment(false, tid, dStr) || '')
+                            : '';
+                        let dayDesc;
+                        if (userProvidedComment && descValue) {
+                            dayDesc = (typeof mergeRplAutoAndUserComment === 'function')
+                                ? mergeRplAutoAndUserComment(autoComment, descValue)
+                                : (autoComment
+                                    ? (autoComment.replace(/\s+$/, '') + '\n' + descValue)
+                                    : descValue);
                         } else {
-                            daySkills = manualRecommendedSkills.slice();
+                            dayDesc = autoComment || descValue || '';
                         }
-                        // Fiche RE : conserver uniquement RE + chargé de consignation
-                        if (typeof agentHasRECompetence === 'function' && agentHasRECompetence(targetId)
-                            && typeof filterRecommendedSkillsForReTarget === 'function') {
-                            daySkills = filterRecommendedSkillsForReTarget(daySkills);
+                        if (dayDesc) {
+                            taskDescriptions[dKey] = dayDesc;
+                        } else {
+                            delete taskDescriptions[dKey];
                         }
-                        const sheetKey = targetId + '_' + dStr;
-                        const sheet = ensureReplacementSheet(sheetKey);
-                        sheet.deadlineDate = deadlineDate;
-                        sheet.recommendedSkills = daySkills;
-                        replacementSheets[sheetKey] = sheet;
-                    } else {
-                        const sheetKey = targetId + '_' + dStr;
-                        if (replacementSheets && replacementSheets[sheetKey]) {
-                            delete replacementSheets[sheetKey];
+
+                        // Fiche RPL uniquement si le roulement est un quart travaillé (M/A/N)
+                        // En repos / journée : simple absence (CA, F...) sans fiche de remplacement
+                        if (isWorkShiftRpl) {
+                            let daySkills;
+                            if (isMulti) {
+                                daySkills = computeAutoRecommendedSkillsForAbsence(tid, dStr);
+                            } else {
+                                daySkills = manualRecommendedSkills.slice();
+                            }
+                            // Fiche RE : conserver uniquement RE + chargé de consignation
+                            if (typeof agentHasRECompetence === 'function' && agentHasRECompetence(tid)
+                                && typeof filterRecommendedSkillsForReTarget === 'function') {
+                                daySkills = filterRecommendedSkillsForReTarget(daySkills);
+                            }
+                            const sheetKey = tid + '_' + dStr;
+                            const sheet = ensureReplacementSheet(sheetKey);
+                            sheet.deadlineDate = deadlineDate;
+                            sheet.recommendedSkills = daySkills;
+                            replacementSheets[sheetKey] = sheet;
+                        } else {
+                            const sheetKey = tid + '_' + dStr;
+                            if (replacementSheets && replacementSheets[sheetKey]) {
+                                delete replacementSheets[sheetKey];
+                            }
                         }
-                    }
+                    });
                 });
             }
 
