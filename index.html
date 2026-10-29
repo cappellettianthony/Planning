@@ -2168,6 +2168,27 @@
                         <input type="number" id="rplDeadlineDefaultDays" min="1" max="90" value="15" style="width:100px;">
                     </div>
 
+                    <h3>Traitement automatisé des fiches RPL</h3>
+                    <p style="font-size: 0.75rem; color: #666; margin-bottom: 8px;">
+                        Si activé, les fiches de remplacement peuvent être <strong>soldées automatiquement</strong>
+                        (RE / Admin connecté) lorsqu’un déclencheur est atteint :
+                    </p>
+                    <ul style="font-size: 0.72rem; color: #555; margin: 0 0 10px 18px; line-height: 1.45;">
+                        <li>Date limite de traitement atteinte ou dépassée, <strong>et</strong> au moins un volontaire ;</li>
+                        <li>ou tous les agents disponibles ont vu la fiche, <strong>et</strong> au moins un volontaire.</li>
+                    </ul>
+                    <p style="font-size: 0.72rem; color: #555; margin: 0 0 10px 0; line-height: 1.45;">
+                        Choix du volontaire : <strong>compétences requises en priorité</strong>, puis statut du jour
+                        <strong>J → R → H</strong>, puis celui qui a le <strong>moins de remplacements</strong> sur l’année.
+                        Sans volontaire : aucun traitement auto.
+                    </p>
+                    <div class="form-group">
+                        <label style="display:inline-flex; align-items:center; gap:8px; cursor:pointer;">
+                            <input type="checkbox" id="autoProcessRplEnabled" style="width:auto;">
+                            Activer le traitement automatisé des fiches de remplacement
+                        </label>
+                    </div>
+
                     <h3>Marquage « Vu » des fiches RPL</h3>
                     <p style="font-size: 0.75rem; color: #666; margin-bottom: 8px;">
                         Définissez à quel moment une fiche de remplacement est considérée comme consultée (vu)
@@ -2521,6 +2542,7 @@
         let settings = {
             thresholds: { M: { orange: 5, green: 7 }, A: { orange: 5, green: 7 }, N: { orange: 3, green: 5 } },
             rplDeadlineDefaultDays: 15,
+            autoProcessRplEnabled: false,
             /** Seuil minimal d'agents par équipe (suppression interdite si atteint) */
             minAgentsPerTeam: 1,
             /** Seuil d'effectif élevé : rappel violet si count quart > cette valeur */
@@ -3351,6 +3373,9 @@ if (resetAckBtn) {
             if (settings && (settings.rplDeadlineDefaultDays === undefined || settings.rplDeadlineDefaultDays === null)) {
                 settings.rplDeadlineDefaultDays = 15;
             }
+            if (settings && typeof settings.autoProcessRplEnabled !== 'boolean') {
+                settings.autoProcessRplEnabled = !!settings.autoProcessRplEnabled;
+            }
             if (settings && (settings.minAgentsPerTeam === undefined || settings.minAgentsPerTeam === null || isNaN(settings.minAgentsPerTeam))) {
                 settings.minAgentsPerTeam = 1;
             } else if (settings && settings.minAgentsPerTeam < 0) {
@@ -3423,6 +3448,10 @@ if (resetAckBtn) {
             if (typeof refreshUserRoles === 'function') refreshUserRoles();
             if (typeof maybeShowAbsencePendingAlert === 'function') {
                 try { maybeShowAbsencePendingAlert(); } catch (e) { console.warn(e); }
+            }
+            // Traitement automatisé des fiches RPL (si option activée + RE/Admin)
+            if (typeof scheduleAutoProcessRplSheets === 'function') {
+                try { scheduleAutoProcessRplSheets(); } catch (e) { console.warn(e); }
             }
 }
 
@@ -7444,6 +7473,343 @@ function applyPredefinedRplTargetTask(ctx, comment) {
     }
 
     return { from: currentTargetCode, to: newCode, rpaMessage: rpaMessage };
+}
+
+
+/** Évite les traitements auto concurrent */
+let autoRplProcessRunning = false;
+let autoRplProcessTimer = null;
+
+/**
+ * Rang de priorité du statut du jour pour un volontaire :
+ * J (journée) = 1 (meilleur), R / RD = 2, H / HD = 3, autre repos = 4, sinon 9.
+ */
+function getVolunteerRestPriorityRank(agentId, dateStr) {
+    let teamId = null;
+    let agentObj = null;
+    (teams || []).forEach(function(t) {
+        (t.agents || []).forEach(function(a) {
+            if (a && a.id === agentId) {
+                teamId = t.id;
+                agentObj = a;
+            }
+        });
+    });
+    let code = 'R';
+    if (agentObj && typeof getEffectiveAgentTask === 'function') {
+        code = getEffectiveAgentTask(agentObj, teamId, dateStr) || 'R';
+    }
+    const up = String(code).trim().toUpperCase();
+    const def = (TASKS && TASKS[code]) ? TASKS[code] : (TASKS && TASKS[up] ? TASKS[up] : null);
+    if ((def && def.shift === 'J') || up === 'J') return 1;
+    if (up === 'R' || up === 'RD' || up === 'REPOS') return 2;
+    if (up === 'H' || up === 'HD' || (up.length <= 3 && up.charAt(0) === 'H')) return 3;
+    if (def && def.isRest) return 4;
+    return 9;
+}
+
+/**
+ * Nombre de remplacements (année calendaire de la date RPL) pour un agent.
+ */
+function getVolunteerExtraShiftsForDate(agentId, dateStr) {
+    let teamId = null;
+    let agentObj = null;
+    (teams || []).forEach(function(t) {
+        (t.agents || []).forEach(function(a) {
+            if (a && a.id === agentId) {
+                teamId = t.id;
+                agentObj = a;
+            }
+        });
+    });
+    if (!agentObj || typeof calculateExtraShiftsCount !== 'function') return 0;
+    let year = (typeof currentYear === 'number') ? currentYear : new Date().getFullYear();
+    try {
+        if (dateStr && dateStr.length >= 4) year = parseInt(dateStr.slice(0, 4), 10) || year;
+    } catch (e) {}
+    return calculateExtraShiftsCount(agentObj, teamId, year) || 0;
+}
+
+/**
+ * Sélectionne le meilleur volontaire selon :
+ * 1) compétences requises (fiche) — ceux qui les ont passent devant ;
+ * 2) priorité J → R → H ;
+ * 3) moins de remplacements sur l'année.
+ * @returns {string|null} agentId
+ */
+function selectBestVolunteerForAutoRpl(volunteers, recommendedSkills, dateStr) {
+    const ids = (volunteers || []).filter(Boolean);
+    if (!ids.length) return null;
+    const skills = Array.isArray(recommendedSkills) ? recommendedSkills.filter(Boolean) : [];
+
+    function hasSkills(agentId) {
+        if (!skills.length) return true;
+        let agentObj = null;
+        (teams || []).forEach(function(t) {
+            (t.agents || []).forEach(function(a) {
+                if (a && a.id === agentId) agentObj = a;
+            });
+        });
+        if (!agentObj) return false;
+        if (typeof agentHasAllRecommendedSkills === 'function') {
+            return agentHasAllRecommendedSkills(agentObj, skills);
+        }
+        const agentSkills = Array.isArray(agentObj.skills) ? agentObj.skills : [];
+        return skills.every(function(sk) { return agentSkills.indexOf(sk) !== -1; });
+    }
+
+    const ranked = ids.map(function(id) {
+        return {
+            id: id,
+            skillMiss: hasSkills(id) ? 0 : 1,
+            restRank: getVolunteerRestPriorityRank(id, dateStr),
+            extra: getVolunteerExtraShiftsForDate(id, dateStr)
+        };
+    });
+    ranked.sort(function(a, b) {
+        if (a.skillMiss !== b.skillMiss) return a.skillMiss - b.skillMiss;
+        if (a.restRank !== b.restRank) return a.restRank - b.restRank;
+        if (a.extra !== b.extra) return a.extra - b.extra;
+        return String(a.id).localeCompare(String(b.id));
+    });
+    return ranked[0] ? ranked[0].id : null;
+}
+
+/**
+ * Détermine si une fiche peut être traitée auto (volontaires + deadline ou tous vus).
+ */
+function canAutoProcessRplSheet(sheetKey, sheet) {
+    if (!sheetKey || !sheet) return false;
+    const volunteers = toArraySafe(sheet.volunteers);
+    if (!volunteers.length) return false; // règle stricte : pas de volontaire → pas d'auto
+
+    const lastUnderscore = sheetKey.lastIndexOf('_');
+    if (lastUnderscore < 0) return false;
+    const targetId = sheetKey.slice(0, lastUnderscore);
+    const dateStr = sheetKey.slice(lastUnderscore + 1);
+    if (!dateStr || dateStr.length < 8) return false;
+
+    let isTeam = false;
+    (teams || []).forEach(function(t) { if (t.id === targetId) isTeam = true; });
+
+    // Deadline atteinte ?
+    let deadlineReached = false;
+    const deadlineDate = sheet.deadlineDate ? String(sheet.deadlineDate).trim() : '';
+    if (deadlineDate) {
+        try {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const deadline = parseDate(deadlineDate);
+            deadline.setHours(0, 0, 0, 0);
+            if (deadline.getTime() <= today.getTime()) deadlineReached = true;
+        } catch (e) {}
+    }
+
+    // Tous les agents disponibles ont vu ?
+    let allSeen = false;
+    const seenByAgents = normalizeSeenByAgents(sheet.seenByAgents);
+    const eligible = (typeof getEligibleAgentsForRpl === 'function')
+        ? getEligibleAgentsForRpl(isTeam, targetId, dateStr)
+        : [];
+    if (eligible.length > 0) {
+        allSeen = eligible.every(function(id) { return !!seenByAgents[id]; });
+    }
+
+    return deadlineReached || allSeen;
+}
+
+/**
+ * Solde automatique d'une fiche : 1 volontaire choisi, affectation du quart, conversion cible, archive.
+ * @returns {boolean} true si traité
+ */
+function autoCloseOneRplSheet(sheetKey) {
+    if (!replacementSheets || !replacementSheets[sheetKey]) return false;
+    const sheet = ensureReplacementSheet(sheetKey);
+    if (sheet.autoProcessedAt) return false;
+    if (!canAutoProcessRplSheet(sheetKey, sheet)) return false;
+
+    const volunteers = toArraySafe(sheet.volunteers);
+    if (!volunteers.length) return false;
+
+    const lastUnderscore = sheetKey.lastIndexOf('_');
+    const targetId = sheetKey.slice(0, lastUnderscore);
+    const dateStr = sheetKey.slice(lastUnderscore + 1);
+    let isTeam = false;
+    let targetName = targetId;
+    (teams || []).forEach(function(t) {
+        if (t.id === targetId) {
+            isTeam = true;
+            targetName = t.name || targetId;
+        } else {
+            (t.agents || []).forEach(function(a) {
+                if (a.id === targetId) targetName = a.name || targetId;
+            });
+        }
+    });
+
+    const recommendedSkills = toArraySafe(sheet.recommendedSkills);
+    const bestId = selectBestVolunteerForAutoRpl(volunteers, recommendedSkills, dateStr);
+    if (!bestId) return false;
+
+    // Marquer immédiatement pour limiter les doubles traitements multi-clients
+    sheet.autoProcessedAt = formatDate(new Date());
+    sheet.autoProcessedBy = currentUser ? currentUser.email : 'auto';
+    replacementSheets[sheetKey] = sheet;
+
+    const shiftToFill = (typeof getShiftToFillForRpl === 'function')
+        ? getShiftToFillForRpl(isTeam, targetId, dateStr)
+        : null;
+
+    function getAgentName(id) {
+        let name = id;
+        (teams || []).forEach(function(t) {
+            (t.agents || []).forEach(function(a) {
+                if (a.id === id) name = a.name || id;
+            });
+        });
+        return name;
+    }
+
+    const selected = [bestId];
+    const comment = 'Traitement automatisé — volontaire retenu : ' + getAgentName(bestId) +
+        (shiftToFill ? (' · quart ' + shiftToFill) : '') +
+        ' (priorité compétences / J→R→H / nb remplacements).';
+
+    // Affectation du quart au volontaire
+    if (shiftToFill && TASKS[shiftToFill]) {
+        if (!agentSchedules[bestId]) agentSchedules[bestId] = {};
+        const beforeCode = (typeof getCellTaskCode === 'function')
+            ? getCellTaskCode(false, bestId, dateStr) : '';
+        agentSchedules[bestId][dateStr] = shiftToFill;
+        if (typeof logCellModification === 'function') {
+            logCellModification(false, bestId, dateStr, beforeCode, shiftToFill);
+        }
+        const descKey = bestId + '_' + dateStr;
+        if (!taskDescriptions || typeof taskDescriptions !== 'object') taskDescriptions = {};
+        taskDescriptions[descKey] = 'RPL validé (auto) – ' + comment;
+        if (typeof updateVolunteerRestBlocksAfterAssignment === 'function') {
+            try { updateVolunteerRestBlocksAfterAssignment([bestId]); } catch (e) {}
+        }
+    }
+
+    // Conversion de la tâche RPL sur la cible (même logique que solde manuel)
+    let currentTargetCode = null;
+    if (isTeam) {
+        if (teamSchedules[targetId] && teamSchedules[targetId][dateStr] !== undefined) {
+            currentTargetCode = teamSchedules[targetId][dateStr];
+        }
+    } else {
+        if (agentSchedules[targetId] && agentSchedules[targetId][dateStr] !== undefined) {
+            currentTargetCode = agentSchedules[targetId][dateStr];
+        }
+        if (!currentTargetCode) {
+            let teamId = null;
+            (teams || []).forEach(function(t) {
+                if ((t.agents || []).some(function(a) { return a.id === targetId; })) teamId = t.id;
+            });
+            if (teamId && teamSchedules[teamId] && teamSchedules[teamId][dateStr] !== undefined) {
+                currentTargetCode = teamSchedules[teamId][dateStr];
+            }
+        }
+    }
+
+    if (currentTargetCode) {
+        const codeUp = String(currentTargetCode).toUpperCase();
+        const isWeekend = (typeof isWeekendDateStr === 'function') && isWeekendDateStr(dateStr);
+        const isFormOrRprWeekend = isWeekend && (
+            codeUp === 'RPR' || codeUp === 'RPRC' ||
+            ((typeof isFormationTaskCode === 'function') && isFormationTaskCode(currentTargetCode)) ||
+            codeUp.indexOf('FO') !== -1
+        );
+        let newCode = null;
+        if (isFormOrRprWeekend) {
+            newCode = 'R';
+        } else if ((typeof isRplLikeCode === 'function') && isRplLikeCode(currentTargetCode)) {
+            if (codeUp !== 'RPA' && typeof resolveRplToFinalCode === 'function') {
+                newCode = resolveRplToFinalCode(currentTargetCode);
+            }
+        }
+        if (newCode) {
+            if (isTeam) {
+                if (!teamSchedules[targetId]) teamSchedules[targetId] = {};
+                teamSchedules[targetId][dateStr] = newCode;
+            } else {
+                if (!agentSchedules[targetId]) agentSchedules[targetId] = {};
+                agentSchedules[targetId][dateStr] = newCode;
+            }
+            if (typeof logCellModification === 'function') {
+                logCellModification(isTeam, targetId, dateStr, currentTargetCode, newCode);
+            }
+        }
+    }
+
+    // Archive
+    if (!Array.isArray(replacementArchives)) replacementArchives = [];
+    replacementArchives.push({
+        dateRpl: dateStr,
+        createdAt: (sheet && sheet.createdAt) ? sheet.createdAt : '—',
+        deadlineDate: (sheet && sheet.deadlineDate) ? sheet.deadlineDate : '',
+        targetName: targetName,
+        shiftFilled: shiftToFill || 'N/A',
+        volunteers: volunteers.map(getAgentName).join(', ') || 'Aucun',
+        selected: getAgentName(bestId),
+        comment: comment,
+        closedBy: (currentUser ? currentUser.email : 'auto') + ' (auto)',
+        closedAt: formatDate(new Date()),
+        autoProcessed: true
+    });
+
+    if (typeof recordVolunteerStatsOnSheetClose === 'function') {
+        try {
+            recordVolunteerStatsOnSheetClose(isTeam, targetId, dateStr, volunteers);
+        } catch (e) {}
+    }
+
+    delete replacementSheets[sheetKey];
+    console.info('[RPL auto] Fiche soldée :', sheetKey, '→', bestId);
+    return true;
+}
+
+/**
+ * Parcourt les fiches actives et solde celles éligibles au traitement automatisé.
+ * Réservé aux sessions RE / Admin, option settings.autoProcessRplEnabled.
+ */
+function runAutoProcessRplSheets() {
+    if (autoRplProcessRunning) return;
+    if (isReadOnly) return;
+    if (!settings || !settings.autoProcessRplEnabled) return;
+    if (!replacementSheets || typeof replacementSheets !== 'object') return;
+
+    autoRplProcessRunning = true;
+    let processed = 0;
+    try {
+        const keys = Object.keys(replacementSheets);
+        keys.forEach(function(sheetKey) {
+            try {
+                if (autoCloseOneRplSheet(sheetKey)) processed++;
+            } catch (e) {
+                console.warn('[RPL auto] erreur sur', sheetKey, e);
+            }
+        });
+        if (processed > 0) {
+            if (typeof renderAll === 'function') renderAll(true);
+            else if (typeof saveToFirebase === 'function') saveToFirebase();
+            console.info('[RPL auto] ' + processed + ' fiche(s) traitée(s).');
+        }
+    } finally {
+        autoRplProcessRunning = false;
+    }
+}
+
+/** Planifie un passage auto (debounce) après chargement / synchro Firebase */
+function scheduleAutoProcessRplSheets() {
+    if (!settings || !settings.autoProcessRplEnabled) return;
+    if (isReadOnly) return;
+    if (autoRplProcessTimer) clearTimeout(autoRplProcessTimer);
+    autoRplProcessTimer = setTimeout(function() {
+        autoRplProcessTimer = null;
+        runAutoProcessRplSheets();
+    }, 900);
 }
 
 function validateReplacementSheet() {
@@ -12640,6 +13006,11 @@ function resetAcknowledgedAlerts() {
             : 15;
     }
 
+    const autoRplCb = document.getElementById('autoProcessRplEnabled');
+    if (autoRplCb) {
+        autoRplCb.checked = !!(settings && settings.autoProcessRplEnabled);
+    }
+
     const sideSeenSel = document.getElementById('rplSidePanelMarkSeenOn');
     if (sideSeenSel) {
         sideSeenSel.value = (settings.rplSidePanelMarkSeenOn === 'single') ? 'single' : 'double';
@@ -13036,6 +13407,8 @@ function renderMonitoredGroupRow(group = []) {
 
     const deadlineDaysVal = parseInt(document.getElementById('rplDeadlineDefaultDays').value, 10);
     settings.rplDeadlineDefaultDays = (!isNaN(deadlineDaysVal) && deadlineDaysVal >= 1) ? deadlineDaysVal : 15;
+    const autoRplEl = document.getElementById('autoProcessRplEnabled');
+    settings.autoProcessRplEnabled = !!(autoRplEl && autoRplEl.checked);
 
     const sideSeenVal = (document.getElementById('rplSidePanelMarkSeenOn') || {}).value;
     settings.rplSidePanelMarkSeenOn = (sideSeenVal === 'single') ? 'single' : 'double';
