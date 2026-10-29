@@ -7561,7 +7561,195 @@ function getVolunteerExtraShiftsForDate(agentId, dateStr) {
  * 3) moins de remplacements sur l'année.
  * @returns {string|null} agentId
  */
-function selectBestVolunteerForAutoRpl(volunteers, recommendedSkills, dateStr) {
+
+/**
+ * Définition de tâche sûre (HP peut ne pas être dans TASKS par défaut).
+ */
+function getTaskDefSafeForRest(code) {
+    if (code !== undefined && code !== null && TASKS && TASKS[code]) return TASKS[code];
+    const up = String(code || '').trim().toUpperCase();
+    if (TASKS && TASKS[up]) return TASKS[up];
+    if (up === 'HP') {
+        return { label: 'HP', color: '#9b59b6', text: '#fff', shift: 'none', start: '00:00', end: '00:00', isRest: true };
+    }
+    return (TASKS && TASKS['R']) ? TASKS['R'] : { isRest: true, shift: 'none', start: '00:00', end: '00:00' };
+}
+
+/**
+ * true si le jour est un J hérité du roulement (pas de tâche individuelle déjà posée).
+ * Un HP ne peut être posé automatiquement que dans ce cas.
+ */
+function isPureInheritedJDay(agentId, dateStr) {
+    if (!agentId || !dateStr) return false;
+    if (agentSchedules && agentSchedules[agentId] && agentSchedules[agentId][dateStr] !== undefined) {
+        return false; // tâche déjà définie → pas de HP auto
+    }
+    const info = (typeof getAgentInfoOnDate === 'function') ? getAgentInfoOnDate(agentId, dateStr) : null;
+    if (!info) return false;
+    const code = String(info.taskCode || '').toUpperCase();
+    if (code === 'J') return true;
+    return !!(info.taskDef && info.taskDef.shift === 'J');
+}
+
+/**
+ * Vérifie 11h / 35h / 11 jours SI l'agent prend targetShiftCode le dateStr,
+ * avec overrides optionnels { 'YYYY-MM-DD': code } (ex. HP sur un J voisin).
+ * Strict : s'applique aussi quand l'agent est en J le jour du RPL.
+ * @returns {boolean}
+ */
+function wouldRespectRestTakingShift(agentId, dateStr, targetShiftCode, overrides) {
+    if (!agentId || !dateStr || !targetShiftCode) return false;
+    const targetDef = getTaskDefSafeForRest(targetShiftCode);
+    if (targetDef.isRest) return true;
+
+    const info = (typeof getAgentInfoOnDate === 'function') ? getAgentInfoOnDate(agentId, dateStr) : null;
+    if (!info || !info.agent) return false;
+
+    const ov = overrides && typeof overrides === 'object' ? overrides : {};
+
+    function getSimulatedTask(dStr) {
+        if (ov[dStr] !== undefined && ov[dStr] !== null) return ov[dStr];
+        if (dStr === dateStr) return targetShiftCode;
+        return getEffectiveAgentTask(info.agent, info.teamId, dStr);
+    }
+    function getSimulatedDef(dStr) {
+        return getTaskDefSafeForRest(getSimulatedTask(dStr));
+    }
+    function restHoursBetween(defCurrent, defNext) {
+        let finishCurrent = timeToDecimal(defCurrent.end);
+        let startNext = timeToDecimal(defNext.start);
+        if (defCurrent.shift === 'N' || finishCurrent < timeToDecimal(defCurrent.start)) {
+            return startNext - finishCurrent;
+        }
+        return (24 - finishCurrent) + startNext;
+    }
+    function isManShiftDef(def) {
+        return !!(def && (def.shift === 'M' || def.shift === 'A' || def.shift === 'N'));
+    }
+    function isJShiftDef(def) {
+        return !!(def && def.shift === 'J');
+    }
+
+    // 11 h entre M/A/N voisins
+    const prevDateObj = new Date(parseDate(dateStr));
+    prevDateObj.setDate(prevDateObj.getDate() - 1);
+    const nextDateObj = new Date(parseDate(dateStr));
+    nextDateObj.setDate(nextDateObj.getDate() + 1);
+    const prevDef = getSimulatedDef(formatDate(prevDateObj));
+    const nextDef = getSimulatedDef(formatDate(nextDateObj));
+    if (isManShiftDef(prevDef) && isManShiftDef(targetDef)) {
+        if (restHoursBetween(prevDef, targetDef) < 11) return false;
+    }
+    if (isManShiftDef(targetDef) && isManShiftDef(nextDef)) {
+        if (restHoursBetween(targetDef, nextDef) < 11) return false;
+    }
+
+    // 35 h hebdo
+    if (typeof weekHasValid35hRest === 'function') {
+        const d0 = parseDate(dateStr);
+        const sundayOfWeek = new Date(d0);
+        const day = sundayOfWeek.getDay();
+        // dimanche = fin de semaine (comme ailleurs dans le code)
+        if (day !== 0) {
+            sundayOfWeek.setDate(sundayOfWeek.getDate() + (7 - day));
+        }
+        function getSimDefFor35(dStr) { return getSimulatedDef(dStr); }
+        if (!weekHasValid35hRest(getSimDefFor35, sundayOfWeek)) return false;
+        let sundayNextWeek = new Date(sundayOfWeek);
+        sundayNextWeek.setDate(sundayNextWeek.getDate() + 7);
+        if (!weekHasValid35hRest(getSimDefFor35, sundayNextWeek)) return false;
+    }
+
+    // Max 11 jours consécutifs (J et repos coupent la série)
+    const targetDateObj = parseDate(dateStr);
+    let consecutive = 0;
+    let checkDate = new Date(targetDateObj);
+    while (true) {
+        checkDate.setDate(checkDate.getDate() - 1);
+        const def = getSimulatedDef(formatDate(checkDate));
+        if (def.isRest || isJShiftDef(def)) break;
+        consecutive++;
+        if (consecutive > 20) break;
+    }
+    consecutive++; // jour du remplacement travaillé
+    checkDate = new Date(targetDateObj);
+    while (true) {
+        checkDate.setDate(checkDate.getDate() + 1);
+        const def = getSimulatedDef(formatDate(checkDate));
+        if (def.isRest || isJShiftDef(def)) break;
+        consecutive++;
+        if (consecutive > 20) break;
+    }
+    if (consecutive > 11) return false;
+
+    return true;
+}
+
+/**
+ * Évalue si un volontaire peut être validé en auto :
+ * - OK sans modification, ou
+ * - OK en posant HP sur un/des J hérités voisins (jamais si tâche déjà définie sur le J).
+ * @returns {{ ok: boolean, hpFixes: Array<{dateStr:string, code:string}> }}
+ */
+function evaluateAutoVolunteerRestCompliance(agentId, dateStr, targetShiftCode) {
+    const empty = { ok: false, hpFixes: [] };
+    if (!agentId || !dateStr || !targetShiftCode) return empty;
+
+    // Déjà conforme sans HP
+    if (wouldRespectRestTakingShift(agentId, dateStr, targetShiftCode, null)) {
+        return { ok: true, hpFixes: [] };
+    }
+
+    // Jours candidats HP : J hérités purs autour de la date RPL (D-2..D+2 hors D)
+    const candidates = [];
+    try {
+        const base = parseDate(dateStr);
+        for (let delta = -2; delta <= 2; delta++) {
+            if (delta === 0) continue;
+            const d = new Date(base);
+            d.setDate(d.getDate() + delta);
+            const ds = formatDate(d);
+            if (isPureInheritedJDay(agentId, ds)) {
+                candidates.push(ds);
+            }
+        }
+    } catch (e) {
+        return empty;
+    }
+    if (!candidates.length) return empty;
+
+    // Essais : un seul HP, puis paires
+    for (let i = 0; i < candidates.length; i++) {
+        const ov = {};
+        ov[candidates[i]] = 'HP';
+        if (wouldRespectRestTakingShift(agentId, dateStr, targetShiftCode, ov)) {
+            return { ok: true, hpFixes: [{ dateStr: candidates[i], code: 'HP' }] };
+        }
+    }
+    for (let i = 0; i < candidates.length; i++) {
+        for (let j = i + 1; j < candidates.length; j++) {
+            const ov = {};
+            ov[candidates[i]] = 'HP';
+            ov[candidates[j]] = 'HP';
+            if (wouldRespectRestTakingShift(agentId, dateStr, targetShiftCode, ov)) {
+                return {
+                    ok: true,
+                    hpFixes: [
+                        { dateStr: candidates[i], code: 'HP' },
+                        { dateStr: candidates[j], code: 'HP' }
+                    ]
+                };
+            }
+        }
+    }
+    return empty;
+}
+
+/**
+ * Sélectionne le meilleur volontaire respectant les temps de repos (ou via HP auto sur J).
+ * @returns {{ agentId: string, hpFixes: Array }|null}
+ */
+function selectBestVolunteerForAutoRpl(volunteers, recommendedSkills, dateStr, shiftToFill) {
     const ids = (volunteers || []).filter(Boolean);
     if (!ids.length) return null;
     const skills = Array.isArray(recommendedSkills) ? recommendedSkills.filter(Boolean) : [];
@@ -7582,21 +7770,41 @@ function selectBestVolunteerForAutoRpl(volunteers, recommendedSkills, dateStr) {
         return skills.every(function(sk) { return agentSkills.indexOf(sk) !== -1; });
     }
 
-    const ranked = ids.map(function(id) {
-        return {
+    const ranked = [];
+    ids.forEach(function(id) {
+        // Temps de repos : obligatoire pour validation auto (éventuellement avec HP sur J hérité)
+        let restEval = { ok: false, hpFixes: [] };
+        if (shiftToFill && typeof evaluateAutoVolunteerRestCompliance === 'function') {
+            restEval = evaluateAutoVolunteerRestCompliance(id, dateStr, shiftToFill);
+        } else if (shiftToFill && typeof wouldRespectRestTakingShift === 'function') {
+            restEval = { ok: wouldRespectRestTakingShift(id, dateStr, shiftToFill, null), hpFixes: [] };
+        } else {
+            restEval = { ok: true, hpFixes: [] };
+        }
+        if (!restEval.ok) return; // ne pas valider ce volontaire
+
+        ranked.push({
             id: id,
             skillMiss: hasSkills(id) ? 0 : 1,
             restRank: getVolunteerRestPriorityRank(id, dateStr),
-            extra: getVolunteerExtraShiftsForDate(id, dateStr)
-        };
+            extra: getVolunteerExtraShiftsForDate(id, dateStr),
+            hpFixes: restEval.hpFixes || []
+        });
     });
+
+    if (!ranked.length) return null;
+
     ranked.sort(function(a, b) {
         if (a.skillMiss !== b.skillMiss) return a.skillMiss - b.skillMiss;
         if (a.restRank !== b.restRank) return a.restRank - b.restRank;
         if (a.extra !== b.extra) return a.extra - b.extra;
+        // Préférer sans HP si égalité
+        if ((a.hpFixes.length || 0) !== (b.hpFixes.length || 0)) {
+            return (a.hpFixes.length || 0) - (b.hpFixes.length || 0);
+        }
         return String(a.id).localeCompare(String(b.id));
     });
-    return ranked[0] ? ranked[0].id : null;
+    return { agentId: ranked[0].id, hpFixes: ranked[0].hpFixes || [] };
 }
 
 /**
@@ -7672,17 +7880,19 @@ function autoCloseOneRplSheet(sheetKey) {
     });
 
     const recommendedSkills = toArraySafe(sheet.recommendedSkills);
-    const bestId = selectBestVolunteerForAutoRpl(volunteers, recommendedSkills, dateStr);
-    if (!bestId) return false;
+    const shiftToFill = (typeof getShiftToFillForRpl === 'function')
+        ? getShiftToFillForRpl(isTeam, targetId, dateStr)
+        : null;
+
+    const best = selectBestVolunteerForAutoRpl(volunteers, recommendedSkills, dateStr, shiftToFill);
+    if (!best || !best.agentId) return false;
+    const bestId = best.agentId;
+    const hpFixes = Array.isArray(best.hpFixes) ? best.hpFixes : [];
 
     // Marquer immédiatement pour limiter les doubles traitements multi-clients
     sheet.autoProcessedAt = formatDate(new Date());
     sheet.autoProcessedBy = currentUser ? currentUser.email : 'auto';
     replacementSheets[sheetKey] = sheet;
-
-    const shiftToFill = (typeof getShiftToFillForRpl === 'function')
-        ? getShiftToFillForRpl(isTeam, targetId, dateStr)
-        : null;
 
     function getAgentName(id) {
         let name = id;
@@ -7699,8 +7909,27 @@ function autoCloseOneRplSheet(sheetKey) {
         (shiftToFill ? (' · quart ' + shiftToFill) : '') +
         ' (priorité compétences / J→R→H / nb remplacements).';
 
-    // Affectation du quart au volontaire
-    if (shiftToFill && TASKS[shiftToFill]) {
+    // HP auto sur J hérités (si nécessaire pour respecter les repos)
+    if (hpFixes.length) {
+        if (!agentSchedules[bestId]) agentSchedules[bestId] = {};
+        hpFixes.forEach(function(fix) {
+            if (!fix || !fix.dateStr) return;
+            // Sécurité : ne jamais écraser une tâche individuelle déjà posée
+            if (!isPureInheritedJDay(bestId, fix.dateStr)) return;
+            const beforeHp = (typeof getCellTaskCode === 'function')
+                ? getCellTaskCode(false, bestId, fix.dateStr) : '';
+            agentSchedules[bestId][fix.dateStr] = fix.code || 'HP';
+            if (typeof logCellModification === 'function') {
+                logCellModification(false, bestId, fix.dateStr, beforeHp, fix.code || 'HP');
+            }
+            const hpDescKey = bestId + '_' + fix.dateStr;
+            if (!taskDescriptions || typeof taskDescriptions !== 'object') taskDescriptions = {};
+            taskDescriptions[hpDescKey] = 'HP auto (repos) – traitement RPL auto du ' + dateStr;
+        });
+    }
+
+    // Affectation du quart au volontaire (uniquement si repos OK, déjà filtré)
+    if (shiftToFill && (TASKS[shiftToFill] || shiftToFill)) {
         if (!agentSchedules[bestId]) agentSchedules[bestId] = {};
         const beforeCode = (typeof getCellTaskCode === 'function')
             ? getCellTaskCode(false, bestId, dateStr) : '';
@@ -7710,7 +7939,11 @@ function autoCloseOneRplSheet(sheetKey) {
         }
         const descKey = bestId + '_' + dateStr;
         if (!taskDescriptions || typeof taskDescriptions !== 'object') taskDescriptions = {};
-        taskDescriptions[descKey] = 'RPL validé (auto) – ' + comment;
+        let autoComment = comment;
+        if (hpFixes.length) {
+            autoComment += ' | HP posé le(s) : ' + hpFixes.map(function(f) { return f.dateStr; }).join(', ');
+        }
+        taskDescriptions[descKey] = 'RPL validé (auto) – ' + autoComment;
         if (typeof updateVolunteerRestBlocksAfterAssignment === 'function') {
             try { updateVolunteerRestBlocksAfterAssignment([bestId]); } catch (e) {}
         }
