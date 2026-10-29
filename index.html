@@ -436,6 +436,24 @@
             color: #fff;
         }
         .absence-process-btn:hover { filter: brightness(1.05); }
+        .rpl-auto-process-btn {
+            width: 100%;
+            margin-bottom: 6px;
+            padding: 8px 8px;
+            font-weight: 700;
+            font-size: 0.8rem;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            background: linear-gradient(135deg, #1e8449, #27ae60);
+            color: #fff;
+        }
+        .rpl-auto-process-btn:hover { filter: brightness(1.05); }
+        .rpl-auto-process-btn:disabled {
+            opacity: 0.55;
+            cursor: not-allowed;
+            filter: none;
+        }
         .absence-process-btn .abs-pending-count {
             display: inline-block;
             margin-left: 6px;
@@ -1341,6 +1359,9 @@
             <button type="button" class="absence-process-btn" id="absenceProcessOpenBtn" onclick="openAbsenceProcessModal()" style="display:none;">
                 📥 Traitement des absences <span class="abs-pending-count" id="absencePendingCount" style="display:none;">0</span>
             </button>
+            <button type="button" class="rpl-auto-process-btn" id="rplAutoProcessBtn" onclick="manualProcessRplSheets()" style="display:none;" title="Solde automatique des fiches RPL éligibles (deadline ou tous vus + volontaires)">
+                ⚙️ Traiter les feuilles de remplacement
+            </button>
             <aside class="rpl-side-panel" id="rplSidePanel">
                 <div class="rpl-side-panel-header">
                     📋 Remplacements <span class="count" id="rplSidePanelCount">(0)</span>
@@ -2170,22 +2191,23 @@
 
                     <h3>Traitement automatisé des fiches RPL</h3>
                     <p style="font-size: 0.75rem; color: #666; margin-bottom: 8px;">
-                        Si activé, les fiches de remplacement peuvent être <strong>soldées automatiquement</strong>
-                        (RE / Admin connecté) lorsqu’un déclencheur est atteint :
+                        Si activé, un bouton vert <strong>« Traiter les feuilles de remplacement »</strong> apparaît
+                        sous « Traitement des absences » (RE / Admin). Le traitement <strong>ne se lance jamais tout seul</strong> :
+                        uniquement sur clic de ce bouton.
                     </p>
                     <ul style="font-size: 0.72rem; color: #555; margin: 0 0 10px 18px; line-height: 1.45;">
-                        <li>Date limite de traitement atteinte ou dépassée, <strong>et</strong> au moins un volontaire ;</li>
+                        <li>Fiches avec date limite atteinte ou dépassée, <strong>et</strong> au moins un volontaire ;</li>
                         <li>ou tous les agents disponibles ont vu la fiche, <strong>et</strong> au moins un volontaire.</li>
                     </ul>
                     <p style="font-size: 0.72rem; color: #555; margin: 0 0 10px 0; line-height: 1.45;">
                         Choix du volontaire : <strong>compétences requises en priorité</strong>, puis statut du jour
                         <strong>J → R → H</strong>, puis celui qui a le <strong>moins de remplacements</strong> sur l’année.
-                        Sans volontaire : aucun traitement auto.
+                        Sans volontaire : la fiche n’est pas traitée.
                     </p>
                     <div class="form-group">
                         <label style="display:inline-flex; align-items:center; gap:8px; cursor:pointer;">
                             <input type="checkbox" id="autoProcessRplEnabled" style="width:auto;">
-                            Activer le traitement automatisé des fiches de remplacement
+                            Activer le bouton de traitement automatisé des fiches de remplacement
                         </label>
                     </div>
 
@@ -3263,6 +3285,12 @@ function markAgentSeenOnSheet(sheetKey, agentId) {
             if (absProcBtn) {
                 absProcBtn.style.display = !isReadOnly ? 'block' : 'none';
             }
+            // Traitement auto RPL : bouton manuel RE / Admin (si option activée)
+            const rplAutoBtn = document.getElementById('rplAutoProcessBtn');
+            if (rplAutoBtn) {
+                const showAuto = !isReadOnly && !!(settings && settings.autoProcessRplEnabled);
+                rplAutoBtn.style.display = showAuto ? 'block' : 'none';
+            }
             // Hub archives : bouton absences visible seulement RE / Admin
             const hubAbsBtn = document.getElementById('archivesHubAbsenceBtn');
             if (hubAbsBtn) {
@@ -3448,10 +3476,6 @@ if (resetAckBtn) {
             if (typeof refreshUserRoles === 'function') refreshUserRoles();
             if (typeof maybeShowAbsencePendingAlert === 'function') {
                 try { maybeShowAbsencePendingAlert(); } catch (e) { console.warn(e); }
-            }
-            // Traitement automatisé des fiches RPL (si option activée + RE/Admin)
-            if (typeof scheduleAutoProcessRplSheets === 'function') {
-                try { scheduleAutoProcessRplSheets(); } catch (e) { console.warn(e); }
             }
 }
 
@@ -7772,13 +7796,14 @@ function autoCloseOneRplSheet(sheetKey) {
 
 /**
  * Parcourt les fiches actives et solde celles éligibles au traitement automatisé.
- * Réservé aux sessions RE / Admin, option settings.autoProcessRplEnabled.
+ * Déclenchement uniquement manuel (bouton RE / Admin).
+ * @returns {number} nombre de fiches traitées
  */
 function runAutoProcessRplSheets() {
-    if (autoRplProcessRunning) return;
-    if (isReadOnly) return;
-    if (!settings || !settings.autoProcessRplEnabled) return;
-    if (!replacementSheets || typeof replacementSheets !== 'object') return;
+    if (autoRplProcessRunning) return 0;
+    if (isReadOnly) return 0;
+    if (!settings || !settings.autoProcessRplEnabled) return 0;
+    if (!replacementSheets || typeof replacementSheets !== 'object') return 0;
 
     autoRplProcessRunning = true;
     let processed = 0;
@@ -7799,17 +7824,75 @@ function runAutoProcessRplSheets() {
     } finally {
         autoRplProcessRunning = false;
     }
+    return processed;
 }
 
-/** Planifie un passage auto (debounce) après chargement / synchro Firebase */
+/**
+ * Ordre manuel RE / Admin : traiter les feuilles de remplacement éligibles.
+ */
+function manualProcessRplSheets() {
+    if (isReadOnly) {
+        alert('Action réservée aux RE et Administrateurs.');
+        return;
+    }
+    if (!settings || !settings.autoProcessRplEnabled) {
+        alert('Le traitement automatisé des fiches RPL n’est pas activé.\n' +
+            'Activez-le dans Paramètres → Effectifs & RPL.');
+        return;
+    }
+    if (autoRplProcessRunning) {
+        alert('Un traitement est déjà en cours…');
+        return;
+    }
+
+    // Compter les fiches potentiellement éligibles avant confirmation
+    let eligibleCount = 0;
+    let totalSheets = 0;
+    if (replacementSheets && typeof replacementSheets === 'object') {
+        Object.keys(replacementSheets).forEach(function(k) {
+            totalSheets++;
+            try {
+                const sh = ensureReplacementSheet(k);
+                if (canAutoProcessRplSheet(k, sh)) eligibleCount++;
+            } catch (e) {}
+        });
+    }
+
+    if (totalSheets === 0) {
+        alert('Aucune fiche de remplacement active.');
+        return;
+    }
+    if (eligibleCount === 0) {
+        alert('Aucune fiche éligible pour le moment.\n\n' +
+            'Conditions : au moins un volontaire, et (date limite atteinte ou tous les agents disponibles ont vu la fiche).');
+        return;
+    }
+
+    const ok = confirm(
+        'Traiter automatiquement ' + eligibleCount + ' fiche(s) de remplacement éligible(s) ?\n\n' +
+        'Règles : compétences requises → J puis R puis H → moins de remplacements.\n' +
+        'Les fiches sans volontaire ne seront pas touchées.'
+    );
+    if (!ok) return;
+
+    const btn = document.getElementById('rplAutoProcessBtn');
+    if (btn) btn.disabled = true;
+    let n = 0;
+    try {
+        n = runAutoProcessRplSheets();
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+    if (n > 0) {
+        alert('✅ Traitement terminé : ' + n + ' fiche(s) soldée(s) automatiquement.');
+    } else {
+        alert('Aucune fiche n’a pu être soldée (peut-être déjà traitée entre-temps).');
+    }
+}
+
+/** @deprecated Plus de déclenchement auto au chargement — conservé pour compat. */
 function scheduleAutoProcessRplSheets() {
-    if (!settings || !settings.autoProcessRplEnabled) return;
-    if (isReadOnly) return;
-    if (autoRplProcessTimer) clearTimeout(autoRplProcessTimer);
-    autoRplProcessTimer = setTimeout(function() {
-        autoRplProcessTimer = null;
-        runAutoProcessRplSheets();
-    }, 900);
+    /* no-op : le traitement ne s’enclenche que via manualProcessRplSheets() */
 }
 
 function validateReplacementSheet() {
@@ -13409,6 +13492,10 @@ function renderMonitoredGroupRow(group = []) {
     settings.rplDeadlineDefaultDays = (!isNaN(deadlineDaysVal) && deadlineDaysVal >= 1) ? deadlineDaysVal : 15;
     const autoRplEl = document.getElementById('autoProcessRplEnabled');
     settings.autoProcessRplEnabled = !!(autoRplEl && autoRplEl.checked);
+    // Rafraîchir le bouton vert RE
+    if (typeof applyReadOnlyMode === 'function') {
+        try { applyReadOnlyMode(); } catch (e) {}
+    }
 
     const sideSeenVal = (document.getElementById('rplSidePanelMarkSeenOn') || {}).value;
     settings.rplSidePanelMarkSeenOn = (sideSeenVal === 'single') ? 'single' : 'double';
