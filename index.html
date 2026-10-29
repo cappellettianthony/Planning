@@ -7576,13 +7576,21 @@ function getTaskDefSafeForRest(code) {
 }
 
 /**
- * true si le jour est un J hérité du roulement (pas de tâche individuelle déjà posée).
- * Un HP ne peut être posé automatiquement que dans ce cas.
+ * true si le jour est un J « libre » pour un HP auto :
+ * - roulement hérité J sans tâche individuelle, ou
+ * - tâche individuelle vide, ou
+ * - tâche individuelle explicitement J (équivalent roulement).
+ * Toute autre tâche individuelle (M/A/N, CA, RPL, etc.) bloque le HP auto.
  */
 function isPureInheritedJDay(agentId, dateStr) {
     if (!agentId || !dateStr) return false;
-    if (agentSchedules && agentSchedules[agentId] && agentSchedules[agentId][dateStr] !== undefined) {
-        return false; // tâche déjà définie → pas de HP auto
+    if (agentSchedules && agentSchedules[agentId] && Object.prototype.hasOwnProperty.call(agentSchedules[agentId], dateStr)) {
+        const ind = agentSchedules[agentId][dateStr];
+        if (ind !== undefined && ind !== null && String(ind).trim() !== '') {
+            const up = String(ind).trim().toUpperCase();
+            // Seul un J individuel reste éligible au HP auto ; toute autre tâche bloque
+            if (up !== 'J') return false;
+        }
     }
     const info = (typeof getAgentInfoOnDate === 'function') ? getAgentInfoOnDate(agentId, dateStr) : null;
     if (!info) return false;
@@ -7644,20 +7652,26 @@ function wouldRespectRestTakingShift(agentId, dateStr, targetShiftCode, override
         if (restHoursBetween(targetDef, nextDef) < 11) return false;
     }
 
-    // 35 h hebdo
+    // 35 h hebdo — même convention que getVolunteerRestWarnings / canAgentTakeReplacement :
+    // dimanche = DÉBUT de semaine (on remonte jusqu'au dimanche ≤ dateStr).
+    // weekHasValid35hRest parcourt ensuite les offsets 0..6 = dimanche → samedi.
     if (typeof weekHasValid35hRest === 'function') {
         const d0 = parseDate(dateStr);
         const sundayOfWeek = new Date(d0);
-        const day = sundayOfWeek.getDay();
-        // dimanche = fin de semaine (comme ailleurs dans le code)
-        if (day !== 0) {
-            sundayOfWeek.setDate(sundayOfWeek.getDate() + (7 - day));
+        sundayOfWeek.setHours(0, 0, 0, 0);
+        while (sundayOfWeek.getDay() !== 0) {
+            sundayOfWeek.setDate(sundayOfWeek.getDate() - 1);
         }
         function getSimDefFor35(dStr) { return getSimulatedDef(dStr); }
         if (!weekHasValid35hRest(getSimDefFor35, sundayOfWeek)) return false;
+        // Semaine suivante (si le quart empiète / enchaînement)
         let sundayNextWeek = new Date(sundayOfWeek);
         sundayNextWeek.setDate(sundayNextWeek.getDate() + 7);
         if (!weekHasValid35hRest(getSimDefFor35, sundayNextWeek)) return false;
+        // Semaine précédente (nuit / enchaînement avant le dimanche de début)
+        let sundayPrevWeek = new Date(sundayOfWeek);
+        sundayPrevWeek.setDate(sundayPrevWeek.getDate() - 7);
+        if (!weekHasValid35hRest(getSimDefFor35, sundayPrevWeek)) return false;
     }
 
     // Max 11 jours consécutifs (J et repos coupent la série)
@@ -7700,12 +7714,14 @@ function evaluateAutoVolunteerRestCompliance(agentId, dateStr, targetShiftCode) 
         return { ok: true, hpFixes: [] };
     }
 
-    // Jours candidats HP : J hérités purs autour de la date RPL (D-2..D+2 hors D)
+    // Jours candidats HP : J libres autour de la date RPL (D-3..D+3 hors D),
+    // triés par proximité (D±1 d'abord) pour minimiser les HP posés.
     const candidates = [];
     try {
         const base = parseDate(dateStr);
-        for (let delta = -2; delta <= 2; delta++) {
-            if (delta === 0) continue;
+        const deltas = [-1, 1, -2, 2, -3, 3];
+        for (let di = 0; di < deltas.length; di++) {
+            const delta = deltas[di];
             const d = new Date(base);
             d.setDate(d.getDate() + delta);
             const ds = formatDate(d);
@@ -7718,7 +7734,7 @@ function evaluateAutoVolunteerRestCompliance(agentId, dateStr, targetShiftCode) 
     }
     if (!candidates.length) return empty;
 
-    // Essais : un seul HP, puis paires
+    // Essais : un seul HP, puis paires (toujours dans l'ordre de proximité)
     for (let i = 0; i < candidates.length; i++) {
         const ov = {};
         ov[candidates[i]] = 'HP';
