@@ -1307,6 +1307,7 @@
         <div style="display:flex; gap:8px; flex-wrap: wrap;">
             <button class="btn btn-purple" onclick="openPrintModal()">🖨️ Imprimer Mois</button>
             <button class="btn btn-secondary" onclick="openArchivesHubModal()" id="archivesHubBtn" title="Accéder aux différentes archives">📁 Archives</button>
+            <button class="btn btn-success" onclick="addNewTeam()" id="addTeamBtn" style="display:none;" title="Ajouter une équipe journée (lun–ven) avec au moins un agent">+ Équipe</button>
             <input type="file" id="importFile" style="display:none" accept=".json" onchange="importData(event)">
             <button class="btn btn-secondary" onclick="openModificationLogModal()" id="modLogBtn" style="display:none;">📝 Suivi des modifications</button>
             <button class="btn" onclick="openSettings()" id="settingsBtn">⚙️ Paramètres</button>
@@ -2124,7 +2125,13 @@
                         plannings, roulements, RPL et liaisons restent intactes.
                     </p>
                     <div id="teamNamesConfigContainer" style="margin-bottom:16px;"></div>
-                    <button type="button" class="btn btn-secondary" style="margin-bottom:18px; font-size:0.8rem;" onclick="applyTeamNamesFromSettings(true)">Appliquer les noms d'équipes</button>
+                    <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:18px;">
+                        <button type="button" class="btn btn-secondary" style="font-size:0.8rem;" onclick="applyTeamNamesFromSettings(true)">Appliquer les noms d'équipes</button>
+                        <button type="button" class="btn btn-success" style="font-size:0.8rem;" id="addTeamFromSettingsBtn" onclick="addNewTeam()" title="Crée une équipe isDayTeam avec roulement J lun–ven et au moins un agent">+ Ajouter une équipe (journée)</button>
+                    </div>
+                    <p style="font-size:0.72rem; color:#666; margin:-10px 0 16px 0;">
+                        Une nouvelle équipe apparaît ici, dans <strong>Agents &amp; Rôles</strong> (liaison e-mail), et dans les listes de copie / changement d'équipe de la fiche agent.
+                    </p>
 
                     <h3>Seuils d'effectifs globaux</h3>
                     <p style="font-size: 0.75rem; color: #666; margin-bottom: 8px;">
@@ -3280,6 +3287,12 @@ function markAgentSeenOnSheet(sheetKey, agentId) {
                 modLogBtn.style.display = canSeeLog ? 'inline-block' : 'none';
                 modLogBtn.disabled = !canSeeLog;
             }
+            // Ajout d'équipe : RE + Admin
+            const addTeamBtn = document.getElementById('addTeamBtn');
+            if (addTeamBtn) {
+                addTeamBtn.style.display = !isReadOnly ? 'inline-block' : 'none';
+                addTeamBtn.disabled = isReadOnly;
+            }
             // Demandes d'absence : traitement pour RE / Admin
             const absProcBtn = document.getElementById('absenceProcessOpenBtn');
             if (absProcBtn) {
@@ -3369,17 +3382,25 @@ if (resetAckBtn) {
 
             const defaultTeams = createDefaultTeams();
             if (Array.isArray(data.teams) && data.teams.length > 0) {
+                // Normaliser compétences
+                data.teams.forEach(function(loadedTeam) {
+                    if (!loadedTeam || !Array.isArray(loadedTeam.agents)) return;
+                    loadedTeam.agents.forEach(function(a) {
+                        if (!Array.isArray(a.skills)) a.skills = [];
+                    });
+                });
+                // 1) Équipes par défaut (écrasées par la version chargée si présente)
                 teams = defaultTeams.map(function(defTeam) {
                     const loadedTeam = data.teams.find(function(t) { return t && t.id === defTeam.id; });
-                    if (loadedTeam) {
-                        if (Array.isArray(loadedTeam.agents)) {
-                            loadedTeam.agents.forEach(function(a) {
-                                if (!Array.isArray(a.skills)) a.skills = [];
-                            });
-                        }
-                        return loadedTeam;
-                    }
-                    return defTeam;
+                    return loadedTeam || defTeam;
+                });
+                // 2) Équipes personnalisées (team_8, team_9, …) — ne pas les perdre au rechargement
+                data.teams.forEach(function(loadedTeam) {
+                    if (!loadedTeam || !loadedTeam.id) return;
+                    const isDefault = defaultTeams.some(function(d) { return d.id === loadedTeam.id; });
+                    if (isDefault) return;
+                    const already = teams.some(function(t) { return t && t.id === loadedTeam.id; });
+                    if (!already) teams.push(loadedTeam);
                 });
             } else {
                 teams = defaultTeams;
@@ -3487,9 +3508,16 @@ if (resetAckBtn) {
                 return;
             }
             try {
-                if (!teams || teams.length < 7) {
+                if (!teams || teams.length === 0) {
+                    teams = createDefaultTeams();
+                } else {
+                    // Garantir la présence des 7 équipes de base sans supprimer les équipes ajoutées (team_8+…)
                     const defaultTeams = createDefaultTeams();
-                    teams = defaultTeams.map(defTeam => teams.find(t => t && t.id === defTeam.id) || defTeam);
+                    defaultTeams.forEach(function(defTeam) {
+                        if (!(teams || []).some(function(t) { return t && t.id === defTeam.id; })) {
+                            teams.push(defTeam);
+                        }
+                    });
                 }
                 
                 teams.forEach(t => {
@@ -13888,6 +13916,120 @@ function renderMonitoredGroupRow(group = []) {
         }
 
 // Fonction pour ajouter un nouvel agent à une équipe
+/**
+ * Prochain identifiant d'équipe libre (team_8, team_9, …).
+ * @returns {string}
+ */
+function getNextAvailableTeamId() {
+    let maxNum = 0;
+    (teams || []).forEach(function(t) {
+        if (!t || !t.id) return;
+        const m = String(t.id).match(/^team_(\d+)$/i);
+        if (m) {
+            const n = parseInt(m[1], 10);
+            if (!isNaN(n) && n > maxNum) maxNum = n;
+        }
+    });
+    // Au moins team_8 si les 7 de base existent déjà
+    if (maxNum < 7) maxNum = 7;
+    return 'team_' + (maxNum + 1);
+}
+
+/**
+ * Initialise le roulement d'une équipe journée : J du lundi au vendredi, R le week-end,
+ * sur toute la plage d'années disponibles (sans écraser les cases déjà renseignées).
+ * @param {string} teamId
+ */
+function initDayTeamWeekSchedule(teamId) {
+    if (!teamId) return;
+    if (!teamSchedules[teamId]) teamSchedules[teamId] = {};
+    const yStart = (typeof minYearAvailable === 'number') ? minYearAvailable : new Date().getFullYear();
+    const yEnd = (typeof maxYearAvailable === 'number') ? maxYearAvailable : yStart + 2;
+    const cur = new Date(yStart, 0, 1);
+    const end = new Date(yEnd, 11, 31);
+    while (cur <= end) {
+        const dStr = formatDate(cur);
+        const existing = teamSchedules[teamId][dStr];
+        if (existing === undefined || existing === null || existing === '') {
+            const day = cur.getDay(); // 0=dim … 6=sam
+            teamSchedules[teamId][dStr] = (day >= 1 && day <= 5) ? 'J' : 'R';
+        }
+        cur.setDate(cur.getDate() + 1);
+    }
+}
+
+/**
+ * Rafraîchit les listes Paramètres qui dépendent des équipes / agents
+ * (noms d'équipes, liaisons e-mail & rôles) si la modale est ouverte.
+ */
+function refreshSettingsTeamDependentUI() {
+    try {
+        if (typeof renderTeamNamesSettings === 'function') renderTeamNamesSettings();
+    } catch (e) {}
+    try {
+        if (typeof renderAgentEmailLinksConfig === 'function') renderAgentEmailLinksConfig();
+    } catch (e) {}
+}
+
+/**
+ * Ajoute une nouvelle équipe « journée » :
+ * - isDayTeam = true
+ * - roulement J lun–ven / R week-end
+ * - au moins un agent
+ * Visible immédiatement dans le planning et dans Paramètres (Effectifs, Agents & Rôles, listes de copie / changement d'équipe).
+ */
+function addNewTeam() {
+    if (isReadOnly) {
+        alert('Ajout d\'équipe réservé aux RE et Administrateurs.');
+        return;
+    }
+
+    const teamName = prompt('Nom de la nouvelle équipe :', 'Équipe journée');
+    if (!teamName || !String(teamName).trim()) return;
+
+    const agentName = prompt(
+        'Nom du premier agent (obligatoire — une équipe doit contenir au moins un agent) :',
+        'Agent 1'
+    );
+    if (!agentName || !String(agentName).trim()) {
+        alert('Création annulée : une équipe doit comporter au moins un agent.');
+        return;
+    }
+
+    const teamId = getNextAvailableTeamId();
+    const teamNum = String(teamId).replace(/^team_/i, '');
+    const agentId = 'e' + teamNum + '_a' + Date.now();
+
+    const newTeam = {
+        id: teamId,
+        name: String(teamName).trim(),
+        isDayTeam: true,
+        agents: [{
+            id: agentId,
+            name: String(agentName).trim(),
+            skills: ['C1']
+        }]
+    };
+
+    if (!Array.isArray(teams)) teams = [];
+    teams.push(newTeam);
+    initDayTeamWeekSchedule(teamId);
+
+    // Les onglets Paramètres (Effectifs / Agents & Rôles) parcourent `teams` dynamiquement
+    refreshSettingsTeamDependentUI();
+
+    if (typeof renderAll === 'function') renderAll(true);
+    else if (typeof saveToFirebase === 'function') saveToFirebase();
+
+    alert(
+        'Équipe « ' + newTeam.name + ' » créée.\n\n' +
+        '• Roulement : J du lundi au vendredi, R le week-end\n' +
+        '• Agent initial : ' + newTeam.agents[0].name + '\n' +
+        '• Vous pouvez ajouter d\'autres agents via « + Agent » sur la ligne d\'équipe\n\n' +
+        'Dans Paramètres : renommer l\'équipe (Effectifs), lier l\'e-mail / rôles (Agents & Rôles).'
+    );
+}
+
 function addNewAgentToTeam(teamId) {
     if (isReadOnly) return;
 
@@ -13909,6 +14051,9 @@ function addNewAgentToTeam(teamId) {
     };
 
     team.agents.push(newAgent);
+    if (typeof refreshSettingsTeamDependentUI === 'function') {
+        try { refreshSettingsTeamDependentUI(); } catch (e) {}
+    }
     renderAll(true); // Redessine et sauvegarde automatiquement dans Firebase
 }
 
