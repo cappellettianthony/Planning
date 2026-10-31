@@ -2576,7 +2576,8 @@
         let TASKS = {
             'R':   { label: 'Repos', color: '#ecf0f1', text: '#7f8c8d', shift: 'none', start: '00:00', end: '00:00', isRest: true },
             'RD':  { label: 'Repos Début Cycle', color: '#f1c40f', text: '#000000', shift: 'none', start: '00:00', end: '00:00', isRest: true },
-            'OFF': { label: 'Indisponible', color: '#95a5a6', text: '#ffffff', shift: 'none', start: '00:00', end: '00:00', isRest: true },
+            'OFF': { label: 'Indisponible (ancien)', color: '#95a5a6', text: '#ffffff', shift: 'none', start: '00:00', end: '00:00', isRest: true },
+            'I':   { label: 'Indisponible', color: '#95a5a6', text: '#000000', shift: 'none', start: '00:00', end: '00:00', isRest: true, isReplacement: false },
             'M':   { label: 'Matin', color: '#3498db', text: '#ffffff', shift: 'M', start: '06:00', end: '14:00', isRest: false },
             'A':   { label: 'Après-Midi', color: '#e67e22', text: '#ffffff', shift: 'A', start: '14:00', end: '22:00', isRest: false },
             'N':   { label: 'Nuit', color: '#2c3e50', text: '#ffffff', shift: 'N', start: '22:00', end: '06:00', isRest: false },
@@ -3432,6 +3433,10 @@ if (resetAckBtn) {
                 taskOrder = Object.keys(TASKS);
             }
             settings = data.settings || settings;
+            // Tâche I (Indisponible) : création auto si absente des paramètres
+            if (typeof ensureUnavailableTaskI === 'function') {
+                try { ensureUnavailableTaskI(); } catch (e) {}
+            }
             if (settings && (settings.rplDeadlineDefaultDays === undefined || settings.rplDeadlineDefaultDays === null)) {
                 settings.rplDeadlineDefaultDays = 15;
             }
@@ -11003,7 +11008,7 @@ function purgeReplacementArchives() {
             if (t.isReplacement) return 'remplacement';
             if (t.isRest) return 'absences';
             const c = String(code).toUpperCase();
-            if (['CA', 'F', 'RC', 'HP', 'OFF', 'MAL', 'AT', 'CSS', 'C'].indexOf(c) !== -1) return 'absences';
+            if (['CA', 'F', 'RC', 'HP', 'OFF', 'I', 'MAL', 'AT', 'CSS', 'C'].indexOf(c) !== -1) return 'absences';
             const label = String(t.label || '').toLowerCase();
             if (label.indexOf('congé') !== -1 || label.indexOf('formation') !== -1 || label.indexOf('absence') !== -1 || label.indexOf('maladie') !== -1) {
                 return 'absences';
@@ -14680,16 +14685,50 @@ function addNewTeam() {
  * Code « Indisponible » pour un agent non encore intégré à l'effectif.
  * Préfère OFF (paramétré), sinon première tâche isRest hors quarts, sinon R.
  */
-function getUnavailableTaskCode() {
-    if (TASKS && TASKS['OFF']) return 'OFF';
-    if (TASKS && TASKS['off']) return 'off';
-    const keys = Object.keys(TASKS || {});
-    for (let i = 0; i < keys.length; i++) {
-        const t = TASKS[keys[i]];
-        if (t && t.isRest && t.shift === 'none') return keys[i];
+/**
+ * Garantit l'existence de la tâche I (Indisponible) dans TASKS / onglet Absences.
+ * Création auto si absente des paramètres.
+ * @returns {string} toujours 'I'
+ */
+function ensureUnavailableTaskI() {
+    if (!TASKS || typeof TASKS !== 'object') TASKS = {};
+    const def = {
+        label: 'Indisponible',
+        color: '#95a5a6',
+        text: '#000000',
+        shift: 'none',
+        start: '00:00',
+        end: '00:00',
+        isRest: true,
+        isReplacement: false
+    };
+    if (!TASKS['I']) {
+        TASKS['I'] = def;
+    } else {
+        // Compléter les champs manquants sans écraser une config admin déjà valide
+        const t = TASKS['I'];
+        if (!t.label) t.label = def.label;
+        if (!t.color) t.color = def.color;
+        if (!t.text) t.text = def.text;
+        if (t.shift === undefined || t.shift === null || t.shift === '') t.shift = 'none';
+        if (!t.start) t.start = '00:00';
+        if (!t.end) t.end = '00:00';
+        if (typeof t.isRest !== 'boolean') t.isRest = true;
+        if (t.isReplacement) t.isReplacement = false;
     }
-    if (TASKS && TASKS['R']) return 'R';
-    return 'OFF';
+    if (!settings || typeof settings !== 'object') settings = {};
+    if (!settings.taskTabMap || typeof settings.taskTabMap !== 'object') settings.taskTabMap = {};
+    settings.taskTabMap['I'] = 'absences';
+    if (typeof taskOrder !== 'undefined') {
+        if (!Array.isArray(taskOrder)) taskOrder = Object.keys(TASKS);
+        if (taskOrder.indexOf('I') === -1) taskOrder.push('I');
+    }
+    return 'I';
+}
+
+/** Code tâche Indisponible pour non-intégration effectif : toujours I. */
+function getUnavailableTaskCode() {
+    return ensureUnavailableTaskI();
 }
 
 /**
@@ -14775,13 +14814,14 @@ function addNewAgentToTeam(teamId) {
         return;
     }
 
-    const offLabel = (TASKS && TASKS['OFF'] && TASKS['OFF'].label) ? TASKS['OFF'].label : 'Indisponible';
+    ensureUnavailableTaskI();
+    const offLabel = (TASKS && TASKS['I'] && TASKS['I'].label) ? TASKS['I'].label : 'Indisponible';
     const ok = confirm(
         'Confirmer l\'ajout de l\'agent ?\n\n' +
         '• Nom : « ' + String(newAgentName).trim() + ' »\n' +
         '• Équipe : « ' + (team.name || teamId) + ' »\n' +
         '• Intégration effectif à partir du : ' + integrationDateStr + '\n\n' +
-        'Toute la période antérieure sera renseignée en « ' + offLabel + ' » (OFF)\n' +
+        'Toute la période antérieure sera renseignée en « ' + offLabel + ' » (I)\n' +
         'afin que l\'agent ne soit pas compté dans les effectifs avant cette date.\n\n' +
         'Voulez-vous continuer ?'
     );
@@ -14808,7 +14848,7 @@ function addNewAgentToTeam(teamId) {
         'Agent « ' + newAgent.name + ' » ajouté.\n\n' +
         'Intégration effectif : ' + integrationDateStr + '\n' +
         (daysOff > 0
-            ? (daysOff + ' jour(s) antérieurs marquées « ' + offLabel + ' ».')
+            ? (daysOff + ' jour(s) antérieurs marqués « ' + offLabel + ' » (I).')
             : 'Aucune période antérieure à remplir (date en début de plage).')
     );
 }
