@@ -2386,6 +2386,7 @@
             <table class="archive-table">
                 <thead>
                     <tr>
+                        <th>Action</th>
                         <th>Date RPL</th>
                         <th>Créée le</th>
                         <th>Date limite traitement</th>
@@ -10697,23 +10698,52 @@ function recallRplFromArchive(archId, fallbackIndex) {
 
 function openArchiveRemplacementModal() {
     const tbody = document.getElementById('archiveRplTableBody');
+    if (!tbody) return;
     tbody.innerHTML = '';
 
-    if (replacementArchives.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;">Aucune archive de remplacement disponible.</td></tr>';
+    const archives = Array.isArray(replacementArchives) ? replacementArchives : [];
+    if (archives.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;">Aucune archive de remplacement disponible.</td></tr>';
     } else {
-        replacementArchives.forEach(arch => {
+        archives.forEach(function(arch, idx) {
             const tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td>${formatDateStrDisplay(arch.dateRpl || '')}</td>
-                <td>${arch.createdAt ? formatDateStrDisplay(arch.createdAt) : '—'}</td>
-                <td>${arch.deadlineDate ? formatDateStrDisplay(arch.deadlineDate) : '—'}</td>
-                <td>${arch.targetName || ''}</td>
-                <td>${arch.volunteers || ''}</td>
-                <td><strong>${arch.selected || ''}</strong></td>
-                <td>${arch.comment || ''}</td>
-                <td>${arch.closedBy || ''}<br><small>${arch.closedAt ? formatDateStrDisplay(arch.closedAt) : ''}</small></td>
-            `;
+            const archId = (arch && arch.id) ? String(arch.id) : ('idx_' + idx);
+            // Bouton rappel : RE / Admin uniquement
+            let actionCell = document.createElement('td');
+            if (!isReadOnly) {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'btn btn-ack';
+                btn.style.cssText = 'padding:3px 8px;font-size:0.72rem;white-space:nowrap;';
+                btn.title = 'Rappeler la fiche : annule l\'affectation du sélectionné et rouvre la fiche RPL';
+                btn.textContent = '↩️ Rappeler';
+                btn.addEventListener('click', function(ev) {
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                    recallRplFromArchive(archId, idx);
+                });
+                actionCell.appendChild(btn);
+            } else {
+                actionCell.textContent = '—';
+            }
+            tr.appendChild(actionCell);
+
+            function addTd(html) {
+                const td = document.createElement('td');
+                td.innerHTML = html;
+                tr.appendChild(td);
+            }
+            addTd(formatDateStrDisplay((arch && arch.dateRpl) || ''));
+            addTd(arch && arch.createdAt ? formatDateStrDisplay(arch.createdAt) : '—');
+            addTd(arch && arch.deadlineDate ? formatDateStrDisplay(arch.deadlineDate) : '—');
+            addTd((arch && arch.targetName) || '');
+            addTd((arch && arch.volunteers) || '');
+            addTd('<strong>' + ((arch && arch.selected) || '') + '</strong>');
+            addTd((arch && arch.comment) || '');
+            addTd(
+                ((arch && arch.closedBy) || '') +
+                '<br><small>' + (arch && arch.closedAt ? formatDateStrDisplay(arch.closedAt) : '') + '</small>'
+            );
             tbody.appendChild(tr);
         });
     }
