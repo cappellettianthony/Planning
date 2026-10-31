@@ -7333,13 +7333,20 @@ function archiveRplSheetWithoutVolunteers(ctx, comment) {
     const sheetCreatedAt = (sheet && sheet.createdAt) ? sheet.createdAt : '—';
     if (!Array.isArray(replacementArchives)) replacementArchives = [];
     replacementArchives.push({
+        id: 'rplarch_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
         dateRpl: ctx.dateStr,
         createdAt: sheetCreatedAt,
         deadlineDate: (sheet && sheet.deadlineDate) ? sheet.deadlineDate : '',
+        targetId: ctx.targetId,
+        isTeam: !!ctx.isTeam,
         targetName: ctx.targetName,
         shiftFilled: ctx.shiftToFill || 'N/A',
+        originalRplCode: (ctx.originalRplCode || ''),
         volunteers: volunteersNames,
+        volunteersIds: volunteersList.slice(),
         selected: 'Aucun (solde sans volontaire)',
+        selectedIds: [],
+        recommendedSkills: toArraySafe(sheet && sheet.recommendedSkills),
         comment: comment || '',
         closedBy: currentUser ? currentUser.email : 'RE',
         closedAt: formatDate(new Date()),
@@ -8038,16 +8045,23 @@ function autoCloseOneRplSheet(sheetKey) {
         }
     }
 
-    // Archive
+    // Archive (ids pour rappel)
     if (!Array.isArray(replacementArchives)) replacementArchives = [];
     replacementArchives.push({
+        id: 'rplarch_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
         dateRpl: dateStr,
         createdAt: (sheet && sheet.createdAt) ? sheet.createdAt : '—',
         deadlineDate: (sheet && sheet.deadlineDate) ? sheet.deadlineDate : '',
+        targetId: targetId,
+        isTeam: !!isTeam,
         targetName: targetName,
         shiftFilled: shiftToFill || 'N/A',
+        originalRplCode: currentTargetCode || '',
         volunteers: volunteers.map(getAgentName).join(', ') || 'Aucun',
+        volunteersIds: volunteers.slice(),
         selected: getAgentName(bestId),
+        selectedIds: bestId ? [bestId] : [],
+        recommendedSkills: toArraySafe(sheet.recommendedSkills),
         comment: comment,
         closedBy: (currentUser ? currentUser.email : 'auto') + ' (auto)',
         closedAt: formatDate(new Date()),
@@ -10386,6 +10400,301 @@ function closeReplacementModal() {
 
         // sert à afficher l'historique des fiches de remplacement (RPL) clôturées dans une fenêtre modale.
         // En pratique, elle lit le contenu de replacementArchives, construit un tableau HTML puis ouvre la fenêtre d'archives.
+/**
+ * Retrouve un agent par nom affiché (archives anciennes sans selectedIds).
+ * @param {string} name
+ * @returns {string|null} agentId
+ */
+function resolveAgentIdByName(name) {
+    if (!name) return null;
+    const n = String(name).trim().toLowerCase();
+    if (!n || n === 'aucun' || n.indexOf('aucun (') === 0) return null;
+    let found = null;
+    (teams || []).forEach(function(t) {
+        (t.agents || []).forEach(function(a) {
+            if (a && a.name && String(a.name).trim().toLowerCase() === n) found = a.id;
+        });
+    });
+    return found;
+}
+
+/**
+ * Devine un code RPL à partir du code final (CA → RPCA, F → RPF…).
+ * @param {string} finalCode
+ * @returns {string|null}
+ */
+function guessRplCodeFromFinal(finalCode) {
+    if (!finalCode) return null;
+    const up = String(finalCode).trim().toUpperCase();
+    if (typeof isRplLikeCode === 'function' && isRplLikeCode(up)) return finalCode;
+    const candidates = ['RP' + up, 'RP' + up.charAt(0) + up.slice(1).toLowerCase()];
+    // Variantes courantes
+    if (up === 'F') candidates.push('RPF', 'RPFO', 'RPFORM');
+    if (up === 'FO') candidates.push('RPFO', 'RPF');
+    if (up === 'CA') candidates.push('RPCA');
+    if (up === 'RC') candidates.push('RPRC', 'RPR');
+    if (up === 'R') candidates.push('RPR');
+    if (up === 'HP') candidates.push('RPHP');
+    for (let i = 0; i < candidates.length; i++) {
+        const c = candidates[i];
+        if (TASKS && TASKS[c]) return c;
+        const keys = Object.keys(TASKS || {});
+        for (let k = 0; k < keys.length; k++) {
+            if (String(keys[k]).toUpperCase() === String(c).toUpperCase()) return keys[k];
+        }
+    }
+    // Tâche isReplacement dont le suffixe correspond
+    const keys2 = Object.keys(TASKS || {});
+    for (let k = 0; k < keys2.length; k++) {
+        const key = keys2[k];
+        if (typeof isRplLikeCode === 'function' && isRplLikeCode(key)) {
+            if (typeof resolveRplToFinalCode === 'function') {
+                const fin = resolveRplToFinalCode(key);
+                if (fin && String(fin).toUpperCase() === up) return key;
+            }
+        }
+    }
+    return null;
+}
+
+/**
+ * Résout la cible (équipe ou agent) depuis une entrée d'archive.
+ * @returns {{ targetId:string, isTeam:boolean, targetName:string }|null}
+ */
+function resolveArchiveRplTarget(arch) {
+    if (!arch) return null;
+    if (arch.targetId) {
+        let isTeam = !!arch.isTeam;
+        if (typeof arch.isTeam !== 'boolean') {
+            isTeam = !!(teams || []).some(function(t) { return t.id === arch.targetId; });
+        }
+        return {
+            targetId: arch.targetId,
+            isTeam: isTeam,
+            targetName: arch.targetName || arch.targetId
+        };
+    }
+    const name = String(arch.targetName || '').trim().toLowerCase();
+    if (!name) return null;
+    for (let i = 0; i < (teams || []).length; i++) {
+        const t = teams[i];
+        if (t && t.name && String(t.name).trim().toLowerCase() === name) {
+            return { targetId: t.id, isTeam: true, targetName: t.name };
+        }
+    }
+    for (let i = 0; i < (teams || []).length; i++) {
+        const t = teams[i];
+        const agents = t.agents || [];
+        for (let j = 0; j < agents.length; j++) {
+            const a = agents[j];
+            if (a && a.name && String(a.name).trim().toLowerCase() === name) {
+                return { targetId: a.id, isTeam: false, targetName: a.name };
+            }
+        }
+    }
+    return null;
+}
+
+/**
+ * Rappelle une fiche RPL depuis les archives (RE / Admin) :
+ * - supprime la tâche affectée au(x) sélectionné(s)
+ * - retire le(s) sélectionné(s) de la liste des volontaires
+ * - réintègre la fiche active sur le planning (code RPL sur la cible)
+ * - ouvre la fiche pour nouveau traitement
+ * @param {string} archId
+ * @param {number} fallbackIndex
+ */
+function recallRplFromArchive(archId, fallbackIndex) {
+    if (isReadOnly) {
+        alert('Rappel de fiche réservé aux RE et Administrateurs.');
+        return;
+    }
+    if (!Array.isArray(replacementArchives) || !replacementArchives.length) {
+        alert('Aucune archive disponible.');
+        return;
+    }
+
+    let idx = -1;
+    if (archId && String(archId).indexOf('idx_') !== 0) {
+        idx = replacementArchives.findIndex(function(a) { return a && a.id === archId; });
+    }
+    if (idx < 0 && typeof fallbackIndex === 'number' && fallbackIndex >= 0 && fallbackIndex < replacementArchives.length) {
+        idx = fallbackIndex;
+    }
+    if (idx < 0) {
+        alert('Archive introuvable.');
+        return;
+    }
+
+    const arch = replacementArchives[idx];
+    const dateStr = arch.dateRpl;
+    if (!dateStr) {
+        alert('Archive invalide (date RPL manquante).');
+        return;
+    }
+
+    const targetInfo = resolveArchiveRplTarget(arch);
+    if (!targetInfo) {
+        alert(
+            'Impossible d\'identifier la cible de cette archive.\n' +
+            'Les archives créées avant cette fonctionnalité peuvent nécessiter une reconstitution manuelle.'
+        );
+        return;
+    }
+
+    // Sélectionnés
+    let selectedIds = Array.isArray(arch.selectedIds) ? arch.selectedIds.filter(Boolean) : [];
+    if (!selectedIds.length && arch.selected) {
+        String(arch.selected).split(',').forEach(function(part) {
+            const id = resolveAgentIdByName(part);
+            if (id) selectedIds.push(id);
+        });
+    }
+
+    // Volontaires d'origine (sans les sélectionnés)
+    let volunteersIds = Array.isArray(arch.volunteersIds) ? arch.volunteersIds.filter(Boolean) : [];
+    if (!volunteersIds.length && arch.volunteers) {
+        String(arch.volunteers).split(',').forEach(function(part) {
+            const id = resolveAgentIdByName(part);
+            if (id) volunteersIds.push(id);
+        });
+    }
+    volunteersIds = volunteersIds.filter(function(id) {
+        return selectedIds.indexOf(id) === -1;
+    });
+
+    const ok = confirm(
+        '↩️ Rappeler cette fiche de remplacement ?\n\n' +
+        'Date : ' + dateStr + '\n' +
+        'Cible : ' + (targetInfo.targetName || targetInfo.targetId) + '\n' +
+        'Sélectionné(s) retiré(s) : ' + (arch.selected || '—') + '\n\n' +
+        'Actions :\n' +
+        '• suppression de la tâche affectée au(x) sélectionné(s)\n' +
+        '• retrait du/des sélectionné(s) des volontaires\n' +
+        '• réintégration de la fiche RPL sur le planning\n' +
+        '• ouverture de la fiche pour nouveau traitement\n\n' +
+        'Voulez-vous continuer ?'
+    );
+    if (!ok) return;
+
+    const sheetKey = targetInfo.targetId + '_' + dateStr;
+
+    // 1) Supprimer la tâche affectée aux sélectionnés
+    selectedIds.forEach(function(agentId) {
+        if (!agentId) return;
+        if (agentSchedules && agentSchedules[agentId] && agentSchedules[agentId][dateStr] !== undefined) {
+            const before = agentSchedules[agentId][dateStr];
+            // Ne retirer que si c'est le quart de remplacement (ou description RPL)
+            const shift = arch.shiftFilled && arch.shiftFilled !== 'N/A' ? String(arch.shiftFilled) : null;
+            const descKey = agentId + '_' + dateStr;
+            const desc = (taskDescriptions && taskDescriptions[descKey]) ? String(taskDescriptions[descKey]) : '';
+            const looksLikeRplAssign =
+                (shift && String(before) === shift) ||
+                /RPL validé/i.test(desc) ||
+                /traitement automatisé/i.test(desc) ||
+                /RPL validé \(auto\)/i.test(desc);
+            if (looksLikeRplAssign || !shift) {
+                delete agentSchedules[agentId][dateStr];
+                if (typeof logCellModification === 'function') {
+                    logCellModification(false, agentId, dateStr, before, '');
+                }
+            }
+        }
+        if (taskDescriptions && taskDescriptions[agentId + '_' + dateStr]) {
+            delete taskDescriptions[agentId + '_' + dateStr];
+        }
+    });
+
+    // 2) Restaurer le code RPL sur la cible
+    let rplCode = arch.originalRplCode || '';
+    if (!rplCode || (typeof isRplLikeCode === 'function' && !isRplLikeCode(rplCode))) {
+        // Essayer à partir du code actuel final
+        let currentCode = null;
+        if (targetInfo.isTeam) {
+            currentCode = (teamSchedules[targetInfo.targetId] && teamSchedules[targetInfo.targetId][dateStr] !== undefined)
+                ? teamSchedules[targetInfo.targetId][dateStr] : null;
+        } else {
+            currentCode = (agentSchedules[targetInfo.targetId] && agentSchedules[targetInfo.targetId][dateStr] !== undefined)
+                ? agentSchedules[targetInfo.targetId][dateStr] : null;
+        }
+        rplCode = guessRplCodeFromFinal(currentCode) || guessRplCodeFromFinal(arch.shiftFilled) || rplCode;
+        // Dernier recours : première tâche isReplacement
+        if (!rplCode || (typeof isRplLikeCode === 'function' && !isRplLikeCode(rplCode))) {
+            const keys = Object.keys(TASKS || {});
+            for (let i = 0; i < keys.length; i++) {
+                if (TASKS[keys[i]] && TASKS[keys[i]].isReplacement) {
+                    rplCode = keys[i];
+                    break;
+                }
+            }
+        }
+    }
+    if (!rplCode) {
+        alert('Impossible de déterminer le code RPL à restaurer sur la cible.');
+        return;
+    }
+
+    if (targetInfo.isTeam) {
+        if (!teamSchedules[targetInfo.targetId]) teamSchedules[targetInfo.targetId] = {};
+        const beforeT = teamSchedules[targetInfo.targetId][dateStr];
+        teamSchedules[targetInfo.targetId][dateStr] = rplCode;
+        if (typeof logCellModification === 'function') {
+            logCellModification(true, targetInfo.targetId, dateStr, beforeT, rplCode);
+        }
+    } else {
+        if (!agentSchedules[targetInfo.targetId]) agentSchedules[targetInfo.targetId] = {};
+        const beforeA = agentSchedules[targetInfo.targetId][dateStr];
+        agentSchedules[targetInfo.targetId][dateStr] = rplCode;
+        if (typeof logCellModification === 'function') {
+            logCellModification(false, targetInfo.targetId, dateStr, beforeA, rplCode);
+        }
+    }
+
+    // 3) Réintégrer la fiche active (sans les sélectionnés dans les volontaires)
+    if (!replacementSheets || typeof replacementSheets !== 'object') replacementSheets = {};
+    const prevSheet = replacementSheets[sheetKey];
+    const newSheet = {
+        createdAt: arch.createdAt && arch.createdAt !== '—' ? arch.createdAt : formatDate(new Date()),
+        deadlineDate: arch.deadlineDate || '',
+        volunteers: volunteersIds.slice(),
+        selectedVolunteers: [],
+        recommendedSkills: Array.isArray(arch.recommendedSkills) ? arch.recommendedSkills.slice() : [],
+        seenByAgents: (prevSheet && prevSheet.seenByAgents) ? prevSheet.seenByAgents : {},
+        seenByEmails: (prevSheet && prevSheet.seenByEmails) ? prevSheet.seenByEmails : {},
+        recalledAt: formatDate(new Date()),
+        recalledBy: currentUser ? currentUser.email : 'RE',
+        recalledFromArchiveId: arch.id || null
+    };
+    // Conserver commentaire archive dans une note interne si utile
+    if (arch.comment) {
+        newSheet.recallNote = 'Rappelée depuis archive. Commentaire du solde précédent : ' + arch.comment;
+    }
+    replacementSheets[sheetKey] = newSheet;
+
+    // 4) Retirer l'entrée d'archive
+    replacementArchives.splice(idx, 1);
+
+    // 5) Fermer archives, rafraîchir, ouvrir la fiche
+    closeArchiveRemplacementModal();
+    if (typeof renderAll === 'function') renderAll(true);
+    else if (typeof saveToFirebase === 'function') saveToFirebase();
+
+    if (typeof openReplacementModal === 'function') {
+        openReplacementModal(
+            targetInfo.isTeam,
+            targetInfo.targetId,
+            targetInfo.targetName,
+            dateStr
+        );
+    }
+
+    alert(
+        '✅ Fiche de remplacement rappelée.\n\n' +
+        'La tâche du/des sélectionné(s) a été retirée, la fiche est de nouveau active.\n' +
+        'Traitez-la à nouveau dans la fenêtre ouverte.'
+    );
+}
+
 function openArchiveRemplacementModal() {
     const tbody = document.getElementById('archiveRplTableBody');
     tbody.innerHTML = '';
