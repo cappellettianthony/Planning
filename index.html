@@ -1630,6 +1630,12 @@
     <div class="modal" id="absenceArchiveModal" style="display:none;">
         <div class="modal-content" style="width:900px; max-width:96vw;">
             <h2>📂 Archives des demandes d'absence</h2>
+            <div id="absenceArchiveFilterBar" style="display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin:0 0 12px 0; padding:10px 12px; background:#f4f6f7; border:1px solid #e0e0e0; border-radius:6px;">
+                <label for="absenceArchiveDateFilter" style="font-size:0.85rem; font-weight:bold; margin:0; color:#2c3e50;">Filtrer par date de période :</label>
+                <input type="date" id="absenceArchiveDateFilter" onchange="onAbsenceArchiveDateFilterChange()" style="padding:6px 8px; border:1px solid #ccc; border-radius:5px; font-size:0.85rem;">
+                <button type="button" class="btn btn-secondary" style="padding:5px 10px; font-size:0.8rem;" onclick="clearAbsenceArchiveDateFilter()" title="Réinitialiser le filtre">✕ Effacer</button>
+                <span id="absenceArchiveFilterCount" style="font-size:0.78rem; color:#7f8c8d; margin-left:auto;"></span>
+            </div>
             <div style="max-height:60vh;overflow-y:auto;">
                 <table class="archive-table">
                     <thead>
@@ -1834,6 +1840,12 @@
             <p style="font-size:0.8rem; color:#666; margin-bottom:10px;">
                 Historique des changements de cellules (valeur avant → après, auteur, date/heure).
             </p>
+            <div id="modLogFilterBar" style="display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin:0 0 12px 0; padding:10px 12px; background:#f4f6f7; border:1px solid #e0e0e0; border-radius:6px;">
+                <label for="modLogDateFilter" style="font-size:0.85rem; font-weight:bold; margin:0; color:#2c3e50;">Filtrer par date planning :</label>
+                <input type="date" id="modLogDateFilter" onchange="onModLogDateFilterChange()" style="padding:6px 8px; border:1px solid #ccc; border-radius:5px; font-size:0.85rem;">
+                <button type="button" class="btn btn-secondary" style="padding:5px 10px; font-size:0.8rem;" onclick="clearModLogDateFilter()" title="Réinitialiser le filtre">✕ Effacer</button>
+                <span id="modLogFilterCount" style="font-size:0.78rem; color:#7f8c8d; margin-left:auto;"></span>
+            </div>
             <div style="max-height: 60vh; overflow-y: auto;">
                 <table class="archive-table">
                     <thead>
@@ -2382,6 +2394,12 @@
 <div class="modal" id="archiveRemplacementModal">
     <div class="modal-content" style="width: 960px;">
         <h2>Archive des Fiches de Remplacement (RPL)</h2>
+        <div id="archiveRplFilterBar" style="display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin:0 0 12px 0; padding:10px 12px; background:#f4f6f7; border:1px solid #e0e0e0; border-radius:6px;">
+            <label for="archiveRplDateFilter" style="font-size:0.85rem; font-weight:bold; margin:0; color:#2c3e50;">Filtrer par date RPL :</label>
+            <input type="date" id="archiveRplDateFilter" onchange="onArchiveRplDateFilterChange()" style="padding:6px 8px; border:1px solid #ccc; border-radius:5px; font-size:0.85rem;">
+            <button type="button" class="btn btn-secondary" style="padding:5px 10px; font-size:0.8rem;" onclick="clearArchiveRplDateFilter()" title="Réinitialiser le filtre">✕ Effacer</button>
+            <span id="archiveRplFilterCount" style="font-size:0.78rem; color:#7f8c8d; margin-left:auto;"></span>
+        </div>
         <div style="max-height: 60vh; overflow-y: auto;">
             <table class="archive-table">
                 <thead>
@@ -9665,61 +9683,119 @@ function openArchiveFromHub(kind) {
     }
 }
 
-function openAbsenceArchiveModal() {
+/**
+ * true si la date filtrée tombe dans la période [startDate, endDate] (inclus).
+ */
+function absenceArchivePeriodContainsDate(arch, filterDate) {
+    if (!arch || !filterDate) return true;
+    const start = String(arch.startDate || '').trim();
+    const end = String(arch.endDate || arch.startDate || '').trim();
+    if (!start && !end) return false;
+    // Comparaison lexicographique OK pour YYYY-MM-DD
+    const s = start || end;
+    const e = end || start;
+    return filterDate >= s && filterDate <= e;
+}
 
+function resetAbsenceArchiveDateFilter() {
+    const input = document.getElementById('absenceArchiveDateFilter');
+    if (input) input.value = '';
+    const countEl = document.getElementById('absenceArchiveFilterCount');
+    if (countEl) countEl.textContent = '';
+}
+
+function onAbsenceArchiveDateFilterChange() {
+    renderAbsenceArchiveTableBody();
+}
+
+function clearAbsenceArchiveDateFilter() {
+    resetAbsenceArchiveDateFilter();
+    renderAbsenceArchiveTableBody();
+}
+
+function renderAbsenceArchiveTableBody() {
+    const tbody = document.getElementById('absenceArchiveTableBody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    const filterInput = document.getElementById('absenceArchiveDateFilter');
+    const filterDate = filterInput && filterInput.value ? String(filterInput.value).trim() : '';
+
+    const archives = Array.isArray(absenceRequestArchives) ? absenceRequestArchives.slice() : [];
+    const filtered = filterDate
+        ? archives.filter(function(arch) { return absenceArchivePeriodContainsDate(arch, filterDate); })
+        : archives;
+
+    const countEl = document.getElementById('absenceArchiveFilterCount');
+    if (countEl) {
+        if (filterDate) {
+            countEl.textContent = filtered.length + ' / ' + archives.length + ' demande(s)';
+        } else {
+            countEl.textContent = archives.length ? (archives.length + ' demande(s)') : '';
+        }
+    }
+
+    if (!archives.length) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#888;">Aucune archive de demande d\'absence.</td></tr>';
+        return;
+    }
+    if (!filtered.length) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#888;">Aucune demande dont la période contient cette date.</td></tr>';
+        return;
+    }
+
+    filtered.forEach(function(arch) {
+        const tr = document.createElement('tr');
+        const period = formatDateStrDisplay(arch.startDate || '') +
+            (arch.startDate !== arch.endDate ? (' → ' + formatDateStrDisplay(arch.endDate || '')) : '');
+        let decision;
+        if (arch.status === 'approved') {
+            decision = '<span style="color:#1e8449;font-weight:bold;">Validée</span>';
+        } else if (arch.status === 'refused') {
+            decision = '<span style="color:#c0392b;font-weight:bold;">Refusée</span>';
+        } else if (arch.status === 'mixed' || arch.status === 'partial') {
+            decision = '<span style="color:#8e44ad;font-weight:bold;">Partielle</span>';
+            if (arch.dayStatuses && typeof arch.dayStatuses === 'object') {
+                const bits = [];
+                Object.keys(arch.dayStatuses).sort().forEach(function(d) {
+                    const ds = arch.dayStatuses[d];
+                    if (!ds) return;
+                    const lab = ds.status === 'approved' ? 'OK' : (ds.status === 'refused' ? ('refus' + (ds.refuseReason ? ': ' + ds.refuseReason : '')) : ds.status);
+                    bits.push(formatDateStrDisplay(d) + ' ' + lab);
+                });
+                if (bits.length) {
+                    decision += '<br><small style="color:#666;">' + bits.join(' · ').replace(/</g, '&lt;') + '</small>';
+                }
+            }
+        } else {
+            decision = (arch.status || '—');
+        }
+        tr.innerHTML =
+            '<td>' + (arch.agentName || arch.agentId || '') +
+            (arch.teamName ? '<br><small style="color:#888;">' + arch.teamName + '</small>' : '') + '</td>' +
+            '<td>' + period + '</td>' +
+            '<td><strong>' + (arch.reasonCode || '') + '</strong><br><small>' + (arch.reasonLabel || '') + '</small></td>' +
+            '<td>' + (arch.comment ? String(arch.comment).replace(/</g, '&lt;').replace(/>/g, '&gt;') : '—') + '</td>' +
+            '<td>' + decision + '</td>' +
+            '<td>' + (arch.processedBy || '—') +
+            '<br><small>' + (arch.processedAt ? formatDateStrDisplay(arch.processedAt) : '') + '</small></td>';
+        tbody.appendChild(tr);
+    });
+}
+
+function openAbsenceArchiveModal() {
     if (isReadOnly) {
         alert('Accès réservé aux RE et Administrateurs.');
         return;
     }
-    const tbody = document.getElementById('absenceArchiveTableBody');
-    if (!tbody) return;
-    tbody.innerHTML = '';
-    const archives = Array.isArray(absenceRequestArchives) ? absenceRequestArchives.slice() : [];
-    if (!archives.length) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#888;">Aucune archive de demande d\'absence.</td></tr>';
-    } else {
-        archives.forEach(function(arch) {
-            const tr = document.createElement('tr');
-            const period = formatDateStrDisplay(arch.startDate || '') +
-                (arch.startDate !== arch.endDate ? (' → ' + formatDateStrDisplay(arch.endDate || '')) : '');
-            let decision;
-            if (arch.status === 'approved') {
-                decision = '<span style="color:#1e8449;font-weight:bold;">Validée</span>';
-            } else if (arch.status === 'refused') {
-                decision = '<span style="color:#c0392b;font-weight:bold;">Refusée</span>';
-            } else if (arch.status === 'mixed' || arch.status === 'partial') {
-                decision = '<span style="color:#8e44ad;font-weight:bold;">Partielle</span>';
-                if (arch.dayStatuses && typeof arch.dayStatuses === 'object') {
-                    const bits = [];
-                    Object.keys(arch.dayStatuses).sort().forEach(function(d) {
-                        const ds = arch.dayStatuses[d];
-                        if (!ds) return;
-                        const lab = ds.status === 'approved' ? 'OK' : (ds.status === 'refused' ? ('refus' + (ds.refuseReason ? ': ' + ds.refuseReason : '')) : ds.status);
-                        bits.push(formatDateStrDisplay(d) + ' ' + lab);
-                    });
-                    if (bits.length) {
-                        decision += '<br><small style="color:#666;">' + bits.join(' · ').replace(/</g, '&lt;') + '</small>';
-                    }
-                }
-            } else {
-                decision = (arch.status || '—');
-            }
-            tr.innerHTML =
-                '<td>' + (arch.agentName || arch.agentId || '') +
-                (arch.teamName ? '<br><small style="color:#888;">' + arch.teamName + '</small>' : '') + '</td>' +
-                '<td>' + period + '</td>' +
-                '<td><strong>' + (arch.reasonCode || '') + '</strong><br><small>' + (arch.reasonLabel || '') + '</small></td>' +
-                '<td>' + (arch.comment ? String(arch.comment).replace(/</g, '&lt;').replace(/>/g, '&gt;') : '—') + '</td>' +
-                '<td>' + decision + '</td>' +
-                '<td>' + (arch.processedBy || '—') +
-                '<br><small>' + (arch.processedAt ? formatDateStrDisplay(arch.processedAt) : '') + '</small></td>';
-            tbody.appendChild(tr);
-        });
-    }
+    // Filtre toujours remis à zéro à l'ouverture
+    resetAbsenceArchiveDateFilter();
+    renderAbsenceArchiveTableBody();
     document.getElementById('absenceArchiveModal').style.display = 'flex';
 }
 
 function closeAbsenceArchiveModal() {
+    resetAbsenceArchiveDateFilter();
     const m = document.getElementById('absenceArchiveModal');
     if (m) m.style.display = 'none';
 }
@@ -10696,57 +10772,122 @@ function recallRplFromArchive(archId, fallbackIndex) {
     );
 }
 
-function openArchiveRemplacementModal() {
+/**
+ * Réinitialise le filtre date des archives RPL (valeur + compteur).
+ */
+function resetArchiveRplDateFilter() {
+    const input = document.getElementById('archiveRplDateFilter');
+    if (input) input.value = '';
+    const countEl = document.getElementById('archiveRplFilterCount');
+    if (countEl) countEl.textContent = '';
+}
+
+/**
+ * Callback du champ date : refiltre le tableau.
+ */
+function onArchiveRplDateFilterChange() {
+    renderArchiveRplTableBody();
+}
+
+/**
+ * Efface le filtre date et rafraîchit la liste.
+ */
+function clearArchiveRplDateFilter() {
+    resetArchiveRplDateFilter();
+    renderArchiveRplTableBody();
+}
+
+/**
+ * Construit le tableau des archives RPL en appliquant le filtre date éventuel
+ * (égalité sur arch.dateRpl, format YYYY-MM-DD).
+ */
+function renderArchiveRplTableBody() {
     const tbody = document.getElementById('archiveRplTableBody');
     if (!tbody) return;
     tbody.innerHTML = '';
 
+    const filterInput = document.getElementById('archiveRplDateFilter');
+    const filterDate = filterInput && filterInput.value ? String(filterInput.value).trim() : '';
+
     const archives = Array.isArray(replacementArchives) ? replacementArchives : [];
+    // Indices d'origine conservés pour le rappel (recallRplFromArchive)
+    const filtered = [];
+    archives.forEach(function(arch, idx) {
+        if (!filterDate) {
+            filtered.push({ arch: arch, idx: idx });
+            return;
+        }
+        const d = arch && arch.dateRpl ? String(arch.dateRpl).trim() : '';
+        if (d === filterDate) filtered.push({ arch: arch, idx: idx });
+    });
+
+    const countEl = document.getElementById('archiveRplFilterCount');
+    if (countEl) {
+        if (filterDate) {
+            countEl.textContent = filtered.length + ' / ' + archives.length + ' fiche(s)';
+        } else {
+            countEl.textContent = archives.length ? (archives.length + ' fiche(s)') : '';
+        }
+    }
+
     if (archives.length === 0) {
         tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;">Aucune archive de remplacement disponible.</td></tr>';
-    } else {
-        archives.forEach(function(arch, idx) {
-            const tr = document.createElement('tr');
-            const archId = (arch && arch.id) ? String(arch.id) : ('idx_' + idx);
-            // Bouton rappel : RE / Admin uniquement
-            let actionCell = document.createElement('td');
-            if (!isReadOnly) {
-                const btn = document.createElement('button');
-                btn.type = 'button';
-                btn.className = 'btn btn-ack';
-                btn.style.cssText = 'padding:3px 8px;font-size:0.72rem;white-space:nowrap;';
-                btn.title = 'Rappeler la fiche : annule l\'affectation du sélectionné et rouvre la fiche RPL';
-                btn.textContent = '↩️ Rappeler';
-                btn.addEventListener('click', function(ev) {
-                    ev.preventDefault();
-                    ev.stopPropagation();
-                    recallRplFromArchive(archId, idx);
-                });
-                actionCell.appendChild(btn);
-            } else {
-                actionCell.textContent = '—';
-            }
-            tr.appendChild(actionCell);
-
-            function addTd(html) {
-                const td = document.createElement('td');
-                td.innerHTML = html;
-                tr.appendChild(td);
-            }
-            addTd(formatDateStrDisplay((arch && arch.dateRpl) || ''));
-            addTd(arch && arch.createdAt ? formatDateStrDisplay(arch.createdAt) : '—');
-            addTd(arch && arch.deadlineDate ? formatDateStrDisplay(arch.deadlineDate) : '—');
-            addTd((arch && arch.targetName) || '');
-            addTd((arch && arch.volunteers) || '');
-            addTd('<strong>' + ((arch && arch.selected) || '') + '</strong>');
-            addTd((arch && arch.comment) || '');
-            addTd(
-                ((arch && arch.closedBy) || '') +
-                '<br><small>' + (arch && arch.closedAt ? formatDateStrDisplay(arch.closedAt) : '') + '</small>'
-            );
-            tbody.appendChild(tr);
-        });
+        return;
     }
+    if (filtered.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;">Aucune fiche pour la date sélectionnée.</td></tr>';
+        return;
+    }
+
+    filtered.forEach(function(item) {
+        const arch = item.arch;
+        const idx = item.idx;
+        const tr = document.createElement('tr');
+        const archId = (arch && arch.id) ? String(arch.id) : ('idx_' + idx);
+
+        const actionCell = document.createElement('td');
+        if (!isReadOnly) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'btn btn-ack';
+            btn.style.cssText = 'padding:3px 8px;font-size:0.72rem;white-space:nowrap;';
+            btn.title = 'Rappeler la fiche : annule l\'affectation du sélectionné et rouvre la fiche RPL';
+            btn.textContent = '↩️ Rappeler';
+            btn.addEventListener('click', function(ev) {
+                ev.preventDefault();
+                ev.stopPropagation();
+                recallRplFromArchive(archId, idx);
+            });
+            actionCell.appendChild(btn);
+        } else {
+            actionCell.textContent = '—';
+        }
+        tr.appendChild(actionCell);
+
+        function addTd(html) {
+            const td = document.createElement('td');
+            td.innerHTML = html;
+            tr.appendChild(td);
+        }
+        addTd(formatDateStrDisplay((arch && arch.dateRpl) || ''));
+        addTd(arch && arch.createdAt ? formatDateStrDisplay(arch.createdAt) : '—');
+        addTd(arch && arch.deadlineDate ? formatDateStrDisplay(arch.deadlineDate) : '—');
+        addTd((arch && arch.targetName) || '');
+        addTd((arch && arch.volunteers) || '');
+        addTd('<strong>' + ((arch && arch.selected) || '') + '</strong>');
+        addTd((arch && arch.comment) || '');
+        addTd(
+            ((arch && arch.closedBy) || '') +
+            '<br><small>' + (arch && arch.closedAt ? formatDateStrDisplay(arch.closedAt) : '') + '</small>'
+        );
+        tbody.appendChild(tr);
+    });
+}
+
+function openArchiveRemplacementModal() {
+    // Filtre toujours remis à zéro à l'ouverture
+    resetArchiveRplDateFilter();
+    renderArchiveRplTableBody();
 
     // Boutons réservés aux RE (pas lecture seule)
     const exportBtn = document.getElementById('exportRplArchivesBtn');
@@ -10760,15 +10901,13 @@ function openArchiveRemplacementModal() {
     document.getElementById('archiveRemplacementModal').style.display = 'flex';
 }
 
-        // rôle très simple : fermer la fenêtre d'affichage des archives de remplacement.
 function closeArchiveRemplacementModal() {
-    document.getElementById('archiveRemplacementModal').style.display = 'none';
+    // Filtre remis à zéro à la fermeture
+    resetArchiveRplDateFilter();
+    const modal = document.getElementById('archiveRemplacementModal');
+    if (modal) modal.style.display = 'none';
 }
 
-/**
- * Export des archives RPL au format CSV (ouvert parfaitement par Excel).
- * Accessible uniquement aux RE.
- */
 function exportRplArchivesToExcel() {
     if (isReadOnly) {
         alert("Accès réservé aux Responsables d'Équipe.");
@@ -12430,33 +12569,81 @@ function resetAcknowledgedAlerts() {
          * Ouvre la fenêtre d'historique des modifications de cellules
          * (réservé RE / Admin). Permet l'export CSV et la purge (Admin).
          */
+        function resetModLogDateFilter() {
+            const input = document.getElementById('modLogDateFilter');
+            if (input) input.value = '';
+            const countEl = document.getElementById('modLogFilterCount');
+            if (countEl) countEl.textContent = '';
+        }
+
+        function onModLogDateFilterChange() {
+            renderModificationLogTableBody();
+        }
+
+        function clearModLogDateFilter() {
+            resetModLogDateFilter();
+            renderModificationLogTableBody();
+        }
+
+        /**
+         * Construit le tableau du suivi des modifications (filtre optionnel sur planningDate).
+         */
+        function renderModificationLogTableBody() {
+            const tbody = document.getElementById('modificationLogTableBody');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+
+            const filterInput = document.getElementById('modLogDateFilter');
+            const filterDate = filterInput && filterInput.value ? String(filterInput.value).trim() : '';
+
+            const logs = Array.isArray(modificationLog) ? modificationLog : [];
+            const filtered = filterDate
+                ? logs.filter(function(entry) {
+                    return entry && String(entry.planningDate || '').trim() === filterDate;
+                })
+                : logs;
+
+            const countEl = document.getElementById('modLogFilterCount');
+            if (countEl) {
+                if (filterDate) {
+                    countEl.textContent = filtered.length + ' / ' + logs.length + ' ligne(s)';
+                } else {
+                    countEl.textContent = logs.length ? (logs.length + ' ligne(s)') : '';
+                }
+            }
+
+            if (logs.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">Aucune modification enregistrée.</td></tr>';
+                return;
+            }
+            if (filtered.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">Aucune modification pour la date planning sélectionnée.</td></tr>';
+                return;
+            }
+
+            filtered.forEach(function(entry) {
+                const tr = document.createElement('tr');
+                const typeIcon = entry.isTeam ? '👥 ' : '👤 ';
+                tr.innerHTML =
+                    '<td>' + (entry.when || '') + '</td>' +
+                    '<td>' + (entry.planningDate ? formatDateStrDisplay(entry.planningDate) : '') + '</td>' +
+                    '<td>' + typeIcon + (entry.targetName || entry.targetId || '') + '</td>' +
+                    '<td><strong>' + (entry.before || '—') + '</strong></td>' +
+                    '<td><strong>' + (entry.after || '—') + '</strong></td>' +
+                    '<td>' + (entry.by || '') + '</td>';
+                tbody.appendChild(tr);
+            });
+        }
+
         function openModificationLogModal() {
             // Accès réservé aux RE et Admin
             if (isReadOnly) {
                 alert('Accès réservé aux Responsables d\'Équipe et Administrateurs.');
                 return;
             }
-            const tbody = document.getElementById('modificationLogTableBody');
-            if (!tbody) return;
-            tbody.innerHTML = '';
-
-            const logs = Array.isArray(modificationLog) ? modificationLog : [];
-            if (logs.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">Aucune modification enregistrée.</td></tr>';
-            } else {
-                logs.forEach(function(entry) {
-                    const tr = document.createElement('tr');
-                    const typeIcon = entry.isTeam ? '👥 ' : '👤 ';
-                    tr.innerHTML =
-                        '<td>' + (entry.when || '') + '</td>' +
-                        '<td>' + (entry.planningDate ? formatDateStrDisplay(entry.planningDate) : '') + '</td>' +
-                        '<td>' + typeIcon + (entry.targetName || entry.targetId || '') + '</td>' +
-                        '<td><strong>' + (entry.before || '—') + '</strong></td>' +
-                        '<td><strong>' + (entry.after || '—') + '</strong></td>' +
-                        '<td>' + (entry.by || '') + '</td>';
-                    tbody.appendChild(tr);
-                });
-            }
+            // Filtre toujours remis à zéro à l'ouverture
+            resetModLogDateFilter();
+            renderModificationLogTableBody();
 
             // Export CSV + purge : Admin uniquement
             const purgeBtn = document.getElementById('purgeModLogBtn');
@@ -12476,6 +12663,7 @@ function resetAcknowledgedAlerts() {
          * Ferme la fenêtre de suivi des modifications.
          */
         function closeModificationLogModal() {
+            resetModLogDateFilter();
             document.getElementById('modificationLogModal').style.display = 'none';
         }
 
@@ -14488,31 +14676,141 @@ function addNewTeam() {
     );
 }
 
+/**
+ * Code « Indisponible » pour un agent non encore intégré à l'effectif.
+ * Préfère OFF (paramétré), sinon première tâche isRest hors quarts, sinon R.
+ */
+function getUnavailableTaskCode() {
+    if (TASKS && TASKS['OFF']) return 'OFF';
+    if (TASKS && TASKS['off']) return 'off';
+    const keys = Object.keys(TASKS || {});
+    for (let i = 0; i < keys.length; i++) {
+        const t = TASKS[keys[i]];
+        if (t && t.isRest && t.shift === 'none') return keys[i];
+    }
+    if (TASKS && TASKS['R']) return 'R';
+    return 'OFF';
+}
+
+/**
+ * Remplit le planning individuel d'un agent en indisponible (OFF)
+ * depuis le début de la plage d'années jusqu'à la veille de la date d'intégration.
+ * À partir de integrationDateStr, l'agent suit le roulement d'équipe (pas d'entrée individuelle forcée).
+ * @param {string} agentId
+ * @param {string} integrationDateStr YYYY-MM-DD
+ * @returns {number} nombre de jours marqués OFF
+ */
+function fillAgentUnavailableBeforeIntegration(agentId, integrationDateStr) {
+    if (!agentId || !integrationDateStr) return 0;
+    const integ = (typeof parseDate === 'function') ? parseDate(integrationDateStr) : new Date(integrationDateStr);
+    if (!integ || isNaN(integ.getTime())) return 0;
+
+    const yStart = (typeof minYearAvailable === 'number') ? minYearAvailable : integ.getFullYear();
+    const rangeStart = new Date(yStart, 0, 1);
+    // Ne rien faire si intégration avant le début de plage
+    if (integ <= rangeStart) return 0;
+
+    if (!agentSchedules[agentId]) agentSchedules[agentId] = {};
+    const offCode = getUnavailableTaskCode();
+    let n = 0;
+    const cur = new Date(rangeStart);
+    while (cur < integ) {
+        const dStr = formatDate(cur);
+        const before = (typeof getCellTaskCode === 'function')
+            ? getCellTaskCode(false, agentId, dStr)
+            : (agentSchedules[agentId][dStr] || '');
+        agentSchedules[agentId][dStr] = offCode;
+        if (typeof logCellModification === 'function') {
+            logCellModification(false, agentId, dStr, before, offCode);
+        }
+        n++;
+        cur.setDate(cur.getDate() + 1);
+    }
+    return n;
+}
+
+/**
+ * Ajoute un agent à une équipe après saisie du nom et de la date d'intégration effectif.
+ * Avant cette date : planning rempli en Indisponible (OFF) → non compté dans les effectifs de quart.
+ */
 function addNewAgentToTeam(teamId) {
     if (isReadOnly) return;
 
-    const team = teams.find(t => t.id === teamId);
+    const team = teams.find(function(t) { return t.id === teamId; });
     if (!team) return;
 
-    const newAgentNumber = team.agents.length + 1;
-    const teamNum = teamId.replace('team_', '');
-    const newAgentId = `e${teamNum}_a${Date.now()}`; // Identifiant unique
-    const newAgentName = prompt("Nom du nouvel agent :", `Agent ${teamNum}.${newAgentNumber}`);
+    const newAgentNumber = (team.agents || []).length + 1;
+    const teamNum = String(teamId).replace(/^team_/i, '');
+    const newAgentId = 'e' + teamNum + '_a' + Date.now();
+    const defaultName = 'Agent ' + teamNum + '.' + newAgentNumber;
 
-    if (!newAgentName || !newAgentName.trim()) return;
+    const newAgentName = prompt('Nom du nouvel agent :', defaultName);
+    if (!newAgentName || !String(newAgentName).trim()) return;
 
-    // Création de la structure de l'agent
+    const todayStr = (typeof formatDate === 'function') ? formatDate(new Date()) : '';
+    let integrationDateStr = prompt(
+        'Date d\'intégration dans l\'effectif de l\'équipe « ' + (team.name || teamId) + ' »\n' +
+        '(format AAAA-MM-JJ).\n\n' +
+        'Avant cette date, l\'agent sera marqué Indisponible (OFF)\n' +
+        'et ne comptera pas dans les effectifs de quart.',
+        todayStr
+    );
+    if (!integrationDateStr || !String(integrationDateStr).trim()) {
+        alert('Création annulée : une date d\'intégration est obligatoire.');
+        return;
+    }
+    integrationDateStr = String(integrationDateStr).trim();
+    // Accepter JJ/MM/AAAA → convertir si besoin
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(integrationDateStr)) {
+        const p = integrationDateStr.split('/');
+        integrationDateStr = p[2] + '-' + p[1] + '-' + p[0];
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(integrationDateStr)) {
+        alert('Date invalide. Utilisez le format AAAA-MM-JJ (ex. ' + todayStr + ').');
+        return;
+    }
+    const integDate = (typeof parseDate === 'function') ? parseDate(integrationDateStr) : new Date(integrationDateStr);
+    if (!integDate || isNaN(integDate.getTime())) {
+        alert('Date d\'intégration invalide.');
+        return;
+    }
+
+    const offLabel = (TASKS && TASKS['OFF'] && TASKS['OFF'].label) ? TASKS['OFF'].label : 'Indisponible';
+    const ok = confirm(
+        'Confirmer l\'ajout de l\'agent ?\n\n' +
+        '• Nom : « ' + String(newAgentName).trim() + ' »\n' +
+        '• Équipe : « ' + (team.name || teamId) + ' »\n' +
+        '• Intégration effectif à partir du : ' + integrationDateStr + '\n\n' +
+        'Toute la période antérieure sera renseignée en « ' + offLabel + ' » (OFF)\n' +
+        'afin que l\'agent ne soit pas compté dans les effectifs avant cette date.\n\n' +
+        'Voulez-vous continuer ?'
+    );
+    if (!ok) return;
+
     const newAgent = {
         id: newAgentId,
-        name: newAgentName.trim(),
-        skills: ['C1'] // Compétence attribuée par défaut
+        name: String(newAgentName).trim(),
+        skills: ['C1'],
+        integrationDate: integrationDateStr
     };
 
+    if (!Array.isArray(team.agents)) team.agents = [];
     team.agents.push(newAgent);
+
+    const daysOff = fillAgentUnavailableBeforeIntegration(newAgentId, integrationDateStr);
+
     if (typeof refreshSettingsTeamDependentUI === 'function') {
         try { refreshSettingsTeamDependentUI(); } catch (e) {}
     }
-    renderAll(true); // Redessine et sauvegarde automatiquement dans Firebase
+    if (typeof renderAll === 'function') renderAll(true);
+
+    alert(
+        'Agent « ' + newAgent.name + ' » ajouté.\n\n' +
+        'Intégration effectif : ' + integrationDateStr + '\n' +
+        (daysOff > 0
+            ? (daysOff + ' jour(s) antérieurs marquées « ' + offLabel + ' ».')
+            : 'Aucune période antérieure à remplir (date en début de plage).')
+    );
 }
 
 let pendingDeleteAgent = null; // { teamId, agentId, agentName, teamName }
