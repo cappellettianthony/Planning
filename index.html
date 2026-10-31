@@ -1307,7 +1307,6 @@
         <div style="display:flex; gap:8px; flex-wrap: wrap;">
             <button class="btn btn-purple" onclick="openPrintModal()">🖨️ Imprimer Mois</button>
             <button class="btn btn-secondary" onclick="openArchivesHubModal()" id="archivesHubBtn" title="Accéder aux différentes archives">📁 Archives</button>
-            <button class="btn btn-success" onclick="addNewTeam()" id="addTeamBtn" style="display:none;" title="Ajouter une équipe journée (lun–ven) avec au moins un agent">+ Équipe</button>
             <input type="file" id="importFile" style="display:none" accept=".json" onchange="importData(event)">
             <button class="btn btn-secondary" onclick="openModificationLogModal()" id="modLogBtn" style="display:none;">📝 Suivi des modifications</button>
             <button class="btn" onclick="openSettings()" id="settingsBtn">⚙️ Paramètres</button>
@@ -2130,7 +2129,8 @@
                         <button type="button" class="btn btn-success" style="font-size:0.8rem;" id="addTeamFromSettingsBtn" onclick="addNewTeam()" title="Crée une équipe isDayTeam avec roulement J lun–ven et au moins un agent">+ Ajouter une équipe (journée)</button>
                     </div>
                     <p style="font-size:0.72rem; color:#666; margin:-10px 0 16px 0;">
-                        Une nouvelle équipe apparaît ici, dans <strong>Agents &amp; Rôles</strong> (liaison e-mail), et dans les listes de copie / changement d'équipe de la fiche agent.
+                        Ajouter ou supprimer une équipe se fait uniquement ici. Une nouvelle équipe apparaît aussi dans <strong>Agents &amp; Rôles</strong> et dans les listes de la fiche agent.
+                        La suppression retire l'équipe, ses agents, roulements et liaisons associées.
                     </p>
 
                     <h3>Seuils d'effectifs globaux</h3>
@@ -3286,12 +3286,6 @@ function markAgentSeenOnSheet(sheetKey, agentId) {
                 const canSeeLog = !isReadOnly; // RE ou Admin
                 modLogBtn.style.display = canSeeLog ? 'inline-block' : 'none';
                 modLogBtn.disabled = !canSeeLog;
-            }
-            // Ajout d'équipe : RE + Admin
-            const addTeamBtn = document.getElementById('addTeamBtn');
-            if (addTeamBtn) {
-                addTeamBtn.style.display = !isReadOnly ? 'inline-block' : 'none';
-                addTeamBtn.disabled = isReadOnly;
             }
             // Demandes d'absence : traitement pour RE / Admin
             const absProcBtn = document.getElementById('absenceProcessOpenBtn');
@@ -13212,13 +13206,24 @@ function resetAcknowledgedAlerts() {
                 input.className = 'team-name-settings-input';
                 input.value = team.name || '';
                 input.placeholder = 'Nom de l\'équipe';
-                input.style.cssText = 'flex:1; min-width:160px; max-width:320px; padding:6px 8px;';
+                input.style.cssText = 'flex:1; min-width:160px; max-width:280px; padding:6px 8px;';
                 const badge = document.createElement('span');
                 badge.style.cssText = 'font-size:0.72rem;color:#888;';
                 badge.textContent = team.isDayTeam ? '(équipe journée)' : '';
+                const delBtn = document.createElement('button');
+                delBtn.type = 'button';
+                delBtn.className = 'btn btn-danger';
+                delBtn.style.cssText = 'padding:4px 10px; font-size:0.75rem;';
+                delBtn.title = 'Supprimer cette équipe et tous ses agents';
+                delBtn.textContent = '🗑️ Supprimer';
+                delBtn.setAttribute('data-team-id', team.id);
+                delBtn.onclick = function() {
+                    deleteTeamById(team.id);
+                };
                 row.appendChild(label);
                 row.appendChild(input);
                 row.appendChild(badge);
+                row.appendChild(delBtn);
                 container.appendChild(row);
             });
         }
@@ -13978,9 +13983,111 @@ function refreshSettingsTeamDependentUI() {
  * - au moins un agent
  * Visible immédiatement dans le planning et dans Paramètres (Effectifs, Agents & Rôles, listes de copie / changement d'équipe).
  */
+/**
+ * Supprime entièrement une équipe : agents, roulement équipe, plannings individuels,
+ * descriptions, fiches RPL liées, liaisons e-mail / rôles, agents masqués.
+ * @param {string} teamId
+ */
+function deleteTeamById(teamId) {
+    if (!isAdmin) {
+        alert('Suppression d\'équipe réservée aux Administrateurs.');
+        return;
+    }
+    if (!teamId) return;
+
+    const team = (teams || []).find(function(t) { return t && t.id === teamId; });
+    if (!team) {
+        alert('Équipe introuvable.');
+        return;
+    }
+
+    if ((teams || []).length <= 1) {
+        alert('Impossible de supprimer la dernière équipe restante.');
+        return;
+    }
+
+    const agentCount = (team.agents || []).length;
+    const agentNames = (team.agents || []).map(function(a) { return a && a.name ? a.name : a.id; }).filter(Boolean);
+    const preview = agentNames.slice(0, 8).join(', ') + (agentNames.length > 8 ? '…' : '');
+
+    const ok = confirm(
+        '⚠️ SUPPRESSION DÉFINITIVE DE L\'ÉQUIPE\n\n' +
+        'Équipe : « ' + (team.name || teamId) + ' » (' + teamId + ')\n' +
+        'Agents (' + agentCount + ') : ' + (preview || 'aucun') + '\n\n' +
+        'Seront supprimés :\n' +
+        '• la ligne de roulement de l\'équipe\n' +
+        '• tous les agents de l\'équipe et leurs plannings individuels\n' +
+        '• les notes / descriptions associées\n' +
+        '• les fiches de remplacement liées\n' +
+        '• les liaisons e-mail et rôles de ces agents\n\n' +
+        'Cette action est irréversible.\n\n' +
+        'Voulez-vous continuer ?'
+    );
+    if (!ok) return;
+
+    const agentIds = (team.agents || []).map(function(a) { return a && a.id; }).filter(Boolean);
+
+    // Agents hors de l'équipe
+    teams = (teams || []).filter(function(t) { return t && t.id !== teamId; });
+
+    // Roulement équipe
+    if (teamSchedules && teamSchedules[teamId]) {
+        delete teamSchedules[teamId];
+    }
+
+    // Plannings individuels + descriptions + fiches RPL + masquage + liaisons
+    agentIds.forEach(function(aid) {
+        if (agentSchedules && agentSchedules[aid]) delete agentSchedules[aid];
+        if (hiddenAgentIds && hiddenAgentIds[aid]) delete hiddenAgentIds[aid];
+        if (agentEmailLinks && agentEmailLinks[aid]) delete agentEmailLinks[aid];
+        if (agentRoles && agentRoles[aid]) delete agentRoles[aid];
+    });
+
+    // taskDescriptions : clés teamId_date ou agentId_date
+    if (taskDescriptions && typeof taskDescriptions === 'object') {
+        Object.keys(taskDescriptions).forEach(function(key) {
+            if (key.indexOf(teamId + '_') === 0) {
+                delete taskDescriptions[key];
+                return;
+            }
+            for (let i = 0; i < agentIds.length; i++) {
+                if (key.indexOf(agentIds[i] + '_') === 0) {
+                    delete taskDescriptions[key];
+                    break;
+                }
+            }
+        });
+    }
+
+    // Fiches de remplacement actives (clé = targetId_date)
+    if (replacementSheets && typeof replacementSheets === 'object') {
+        Object.keys(replacementSheets).forEach(function(sheetKey) {
+            const lastUnderscore = sheetKey.lastIndexOf('_');
+            if (lastUnderscore < 0) return;
+            const targetId = sheetKey.slice(0, lastUnderscore);
+            if (targetId === teamId || agentIds.indexOf(targetId) !== -1) {
+                delete replacementSheets[sheetKey];
+            }
+        });
+    }
+
+    if (collapsedTeamAgentRows && collapsedTeamAgentRows[teamId]) {
+        delete collapsedTeamAgentRows[teamId];
+    }
+
+    refreshSettingsTeamDependentUI();
+    if (typeof renderAll === 'function') renderAll(true);
+    else if (typeof saveToFirebase === 'function') saveToFirebase();
+
+    alert('Équipe « ' + (team.name || teamId) + ' » et ses agents ont été supprimés.');
+}
+
+/**
+ * Ajoute une nouvelle équipe « journée » (Paramètres → Effectifs uniquement).
+ */
 function addNewTeam() {
-    if (isReadOnly) {
-        alert('Ajout d\'équipe réservé aux RE et Administrateurs.');
+    if (!isAdmin) {
+        alert('Ajout d\'équipe réservé aux Administrateurs.');
         return;
     }
 
@@ -13996,17 +14103,30 @@ function addNewTeam() {
         return;
     }
 
+    const nameTrim = String(teamName).trim();
+    const agentTrim = String(agentName).trim();
+
+    const ok = confirm(
+        'Confirmer la création de l\'équipe ?\n\n' +
+        '• Nom : « ' + nameTrim + ' »\n' +
+        '• Type : équipe journée (isDayTeam)\n' +
+        '• Roulement : J du lundi au vendredi, R le week-end\n' +
+        '• Premier agent : « ' + agentTrim + ' »\n\n' +
+        'Voulez-vous continuer ?'
+    );
+    if (!ok) return;
+
     const teamId = getNextAvailableTeamId();
     const teamNum = String(teamId).replace(/^team_/i, '');
     const agentId = 'e' + teamNum + '_a' + Date.now();
 
     const newTeam = {
         id: teamId,
-        name: String(teamName).trim(),
+        name: nameTrim,
         isDayTeam: true,
         agents: [{
             id: agentId,
-            name: String(agentName).trim(),
+            name: agentTrim,
             skills: ['C1']
         }]
     };
@@ -14015,7 +14135,6 @@ function addNewTeam() {
     teams.push(newTeam);
     initDayTeamWeekSchedule(teamId);
 
-    // Les onglets Paramètres (Effectifs / Agents & Rôles) parcourent `teams` dynamiquement
     refreshSettingsTeamDependentUI();
 
     if (typeof renderAll === 'function') renderAll(true);
@@ -14025,8 +14144,8 @@ function addNewTeam() {
         'Équipe « ' + newTeam.name + ' » créée.\n\n' +
         '• Roulement : J du lundi au vendredi, R le week-end\n' +
         '• Agent initial : ' + newTeam.agents[0].name + '\n' +
-        '• Vous pouvez ajouter d\'autres agents via « + Agent » sur la ligne d\'équipe\n\n' +
-        'Dans Paramètres : renommer l\'équipe (Effectifs), lier l\'e-mail / rôles (Agents & Rôles).'
+        '• Ajoutez d\'autres agents via « + Agent » sur la ligne d\'équipe dans le planning\n' +
+        '• Liez les e-mails / rôles dans Paramètres → Agents & Rôles'
     );
 }
 
